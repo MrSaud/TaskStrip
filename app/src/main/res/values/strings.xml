@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Task Strips</string>
+    <string name="widget_description">Shows your top active flight strips on the home screen</string>
+</resources>

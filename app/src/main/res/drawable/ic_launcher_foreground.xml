@@ -1,0 +1,27 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- antenna mast -->
+    <path
+        android:fillColor="#F4EFE1"
+        android:pathData="M52,18 L56,18 L56,38 L52,38 Z" />
+    <!-- control cab (observation deck) -->
+    <path
+        android:fillColor="#E0A63A"
+        android:pathData="M28,38 L80,38 L80,62 L28,62 Z" />
+    <!-- window band across the cab -->
+    <path
+        android:fillColor="#14171C"
+        android:fillAlpha="0.55"
+        android:pathData="M33,46 L75,46 L75,51 L33,51 Z" />
+    <!-- tower shaft, tapered -->
+    <path
+        android:fillColor="#F4EFE1"
+        android:pathData="M45,62 L63,62 L59,90 L49,90 Z" />
+    <!-- base flare -->
+    <path
+        android:fillColor="#E0A63A"
+        android:pathData="M40,90 L68,90 L68,95 L40,95 Z" />
+</vector>

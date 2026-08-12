@@ -1,0 +1,13 @@
+<resources>
+    <color name="ic_launcher_background">#14171C</color>
+
+    <color name="widget_bay_background">#14171C</color>
+    <color name="widget_bay_surface">#1C2027</color>
+    <color name="widget_paper">#F4EFE1</color>
+    <color name="widget_paper_faded">#B0AA9C</color>
+    <color name="widget_amber">#E0A63A</color>
+    <color name="widget_priority_urgent">#C0392B</color>
+    <color name="widget_priority_high">#E08E2D</color>
+    <color name="widget_priority_normal">#3D7A5C</color>
+    <color name="widget_priority_low">#5B6B7A</color>
+</resources>

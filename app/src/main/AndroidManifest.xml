@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Only used when the user picks a contact from the strip's contacts section. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- Only used to fetch the daily quote shown on the board — every other feature in this app
+         stays fully on-device and never touches the network. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:allowBackup="false"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.TaskStrip">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.TaskStrip">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/x-vcard" />
+                <data android:mimeType="text/vcard" />
+            </intent-filter>
+        </activity>
+
+        <receiver
+            android:name=".notifications.ReminderReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".notifications.DigestReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".notifications.WeeklyDigestReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".notifications.FollowUpReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".backup.AutoBackupReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".widget.TaskStripWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/task_strip_widget_info" />
+        </receiver>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+    </application>
+
+</manifest>
