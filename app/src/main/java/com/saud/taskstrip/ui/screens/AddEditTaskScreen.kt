@@ -110,7 +110,7 @@ import com.saud.taskstrip.data.Priority
 import com.saud.taskstrip.data.TaskActionLogEntry
 import com.saud.taskstrip.data.TaskContact
 import com.saud.taskstrip.data.TaskEntity
-import com.saud.taskstrip.media.ShareImageRenderer
+import com.saud.taskstrip.media.SharePdfRenderer
 import com.saud.taskstrip.media.SketchStorage
 import com.saud.taskstrip.ui.components.AttachmentsSection
 import com.saud.taskstrip.ui.components.ContactsSection
@@ -430,8 +430,8 @@ fun AddEditTaskScreen(
                 },
                 actions = {
                     if (title.isNotBlank()) {
-                        IconButton(onClick = { ShareImageRenderer.shareTask(context, snapshotForShare()) }) {
-                            Icon(Icons.Default.Share, contentDescription = "Share as image", tint = Paper)
+                        IconButton(onClick = { SharePdfRenderer.shareTask(context, snapshotForShare()) }) {
+                            Icon(Icons.Default.Share, contentDescription = "Share as PDF", tint = Paper)
                         }
                     }
                 },
