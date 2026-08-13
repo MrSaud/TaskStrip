@@ -3,6 +3,7 @@ package com.saud.taskstrip.ui.screens
 import android.Manifest
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.net.Uri
 import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.CalendarContract
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Fullscreen
@@ -110,6 +112,7 @@ import com.saud.taskstrip.data.Priority
 import com.saud.taskstrip.data.TaskActionLogEntry
 import com.saud.taskstrip.data.TaskContact
 import com.saud.taskstrip.data.TaskEntity
+import com.saud.taskstrip.data.TaskLink
 import com.saud.taskstrip.media.SharePdfRenderer
 import com.saud.taskstrip.media.SketchStorage
 import com.saud.taskstrip.ui.components.AttachmentsSection
@@ -165,6 +168,7 @@ private data class FormSnapshot(
     val blockedByTaskId: Long?,
     val linkedSketchId: String?,
     val actionLog: List<TaskActionLogEntry>,
+    val links: List<TaskLink>,
     val waitingOnName: String,
     val waitingOnSince: Long?,
     val waitingOnFollowUpDays: Int?,
@@ -205,6 +209,7 @@ fun AddEditTaskScreen(
     var blockedByTaskId by rememberSaveable { mutableStateOf<Long?>(null) }
     var linkedSketchId by rememberSaveable { mutableStateOf<String?>(null) }
     var actionLog by rememberSaveable { mutableStateOf<List<TaskActionLogEntry>>(emptyList()) }
+    var links by rememberSaveable { mutableStateOf<List<TaskLink>>(emptyList()) }
     var waitingOnName by rememberSaveable { mutableStateOf("") }
     var waitingOnSince by rememberSaveable { mutableStateOf<Long?>(null) }
     var waitingOnFollowUpDays by rememberSaveable { mutableStateOf<Int?>(null) }
@@ -241,6 +246,7 @@ fun AddEditTaskScreen(
         blockedByTaskId = blockedByTaskId,
         linkedSketchId = linkedSketchId,
         actionLog = actionLog,
+        links = links,
         waitingOnName = waitingOnName,
         waitingOnSince = waitingOnSince,
         waitingOnFollowUpDays = waitingOnFollowUpDays,
@@ -287,6 +293,7 @@ fun AddEditTaskScreen(
                 blockedByTaskId = t.blockedByTaskId
                 linkedSketchId = t.linkedSketchId
                 actionLog = t.actionLog
+                links = t.links
                 waitingOnName = t.waitingOnName
                 waitingOnSince = t.waitingOnSince
                 waitingOnFollowUpDays = t.waitingOnFollowUpDays
@@ -378,6 +385,7 @@ fun AddEditTaskScreen(
                     blockedByTaskId = blockedByTaskId,
                     linkedSketchId = linkedSketchId,
                     actionLog = actionLog,
+                    links = links,
                     waitingOnName = waitingOnName,
                     waitingOnSince = waitingOnSince,
                     waitingOnFollowUpDays = waitingOnFollowUpDays
@@ -400,7 +408,8 @@ fun AddEditTaskScreen(
                 contacts,
                 tags,
                 linkedSketchId,
-                actionLog
+                actionLog,
+                links
             )
         }
         return true
@@ -753,6 +762,17 @@ fun AddEditTaskScreen(
                     actionLog = actionLog + TaskActionLogEntry(text.trim(), System.currentTimeMillis())
                 },
                 onRemoveAction = { entry -> actionLog = actionLog - entry }
+            )
+            Spacer(Modifier.height(18.dp))
+            LinksSection(
+                links = links,
+                onAddLink = { url ->
+                    val normalized = url.trim()
+                    if (normalized.isNotEmpty() && links.none { it.url == normalized }) {
+                        links = links + TaskLink(url = normalized)
+                    }
+                },
+                onRemoveLink = { link -> links = links - link }
             )
             // Save/Delete live in the Scaffold's bottomBar (below) so they stay fixed at the
             // bottom of the screen instead of scrolling away with the form.
@@ -1247,6 +1267,121 @@ private fun ActionLogSection(
                 TextButton(onClick = { pendingRemoval = null }) { Text("CANCEL") }
             }
         )
+    }
+}
+
+// Opens a stored link. Bare hosts (no scheme) are assumed https so a pasted "example.com" still
+// resolves; anything with a scheme (https:, mailto:, the long https URL Outlook-web gives for a
+// message, etc.) is opened as-is.
+private fun openLink(context: android.content.Context, rawUrl: String) {
+    val url = rawUrl.trim()
+    val target = if (url.contains("://") || url.startsWith("mailto:")) url else "https://$url"
+    try {
+        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(target)))
+    } catch (e: Exception) {
+        Toast.makeText(context, "No app can open this link", Toast.LENGTH_SHORT).show()
+    }
+}
+
+// Friendly one-line name for a link when it has no explicit label — its host, falling back to the
+// raw string if it can't be parsed.
+private fun linkDisplayName(link: TaskLink): String {
+    if (link.label.isNotBlank()) return link.label
+    return try {
+        val url = link.url.trim()
+        val target = if (url.contains("://")) url else "https://$url"
+        Uri.parse(target).host ?: link.url
+    } catch (e: Exception) {
+        link.url
+    }
+}
+
+@Composable
+private fun LinksSection(
+    links: List<TaskLink>,
+    onAddLink: (String) -> Unit,
+    onRemoveLink: (TaskLink) -> Unit
+) {
+    val context = LocalContext.current
+    var input by rememberSaveable { mutableStateOf("") }
+
+    fun submit() {
+        val trimmed = input.trim()
+        if (trimmed.isNotEmpty()) {
+            onAddLink(trimmed)
+            input = ""
+        }
+    }
+
+    Text("LINKS (optional)", style = MaterialTheme.typography.labelSmall, color = Paper.copy(alpha = 0.7f))
+    Spacer(Modifier.height(6.dp))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = input,
+            onValueChange = { input = it },
+            placeholder = { Text("Paste a link (e.g. an email URL)…") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { submit() }),
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(Modifier.width(8.dp))
+        IconButton(onClick = { submit() }) {
+            Icon(Icons.Default.Add, contentDescription = "Add link", tint = AmberTab)
+        }
+    }
+
+    if (links.isNotEmpty()) {
+        Spacer(Modifier.height(10.dp))
+        Column {
+            links.forEach { link ->
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { openLink(context, link.url) }
+                        .padding(vertical = 8.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Link,
+                        contentDescription = null,
+                        tint = AmberTab,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = linkDisplayName(link),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = Paper,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = link.url,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = Paper.copy(alpha = 0.5f),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    IconButton(
+                        onClick = { onRemoveLink(link) },
+                        modifier = Modifier.size(32.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = "Remove link",
+                            tint = Paper.copy(alpha = 0.5f),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+                if (link != links.last()) {
+                    HorizontalDivider(color = InkColor.copy(alpha = 0.1f))
+                }
+            }
+        }
     }
 }
 

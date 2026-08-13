@@ -84,4 +84,35 @@ class Converters {
             emptyList()
         }
     }
+
+    @TypeConverter
+    fun fromLinks(links: List<TaskLink>): String {
+        val arr = JSONArray()
+        links.forEach { l ->
+            arr.put(
+                JSONObject().apply {
+                    put("url", l.url)
+                    put("label", l.label)
+                }
+            )
+        }
+        return arr.toString()
+    }
+
+    @TypeConverter
+    fun toLinks(value: String): List<TaskLink> {
+        if (value.isBlank()) return emptyList()
+        return try {
+            val arr = JSONArray(value)
+            (0 until arr.length()).map { i ->
+                val obj = arr.getJSONObject(i)
+                TaskLink(
+                    url = obj.optString("url"),
+                    label = obj.optString("label")
+                )
+            }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
 }

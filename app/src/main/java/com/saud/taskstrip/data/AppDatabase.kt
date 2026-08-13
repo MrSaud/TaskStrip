@@ -89,7 +89,13 @@ val MIGRATION_11_12 = object : Migration(11, 12) {
     }
 }
 
-@Database(entities = [TaskEntity::class, CredentialEntity::class, NoteEntity::class], version = 12, exportSchema = false)
+val MIGRATION_12_13 = object : Migration(12, 13) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE tasks ADD COLUMN links TEXT NOT NULL DEFAULT '[]'")
+    }
+}
+
+@Database(entities = [TaskEntity::class, CredentialEntity::class, NoteEntity::class], version = 13, exportSchema = false)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
@@ -107,7 +113,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "taskstrip.db"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                     // Only reached for version jumps with no real user data behind them
                     // (e.g. a stale pre-v3 dev install) — every jump from here on gets a
                     // real Migration above instead, so saved tasks are never silently wiped.

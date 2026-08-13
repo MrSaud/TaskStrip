@@ -10,6 +10,7 @@ import com.saud.taskstrip.data.TaskActionLogEntry
 import com.saud.taskstrip.data.TaskContact
 import com.saud.taskstrip.data.TaskDao
 import com.saud.taskstrip.data.TaskEntity
+import com.saud.taskstrip.data.TaskLink
 import com.saud.taskstrip.notifications.FollowUpScheduler
 import com.saud.taskstrip.notifications.ReminderScheduler
 import com.saud.taskstrip.security.CredentialCrypto
@@ -93,6 +94,12 @@ object BackupHelper {
                 JSONObject().apply {
                     put("text", e.text)
                     put("timestamp", e.timestamp)
+                }
+            }))
+            obj.put("links", JSONArray(t.links.map { l ->
+                JSONObject().apply {
+                    put("url", l.url)
+                    put("label", l.label)
                 }
             }))
             obj.put("createdAt", t.createdAt)
@@ -257,6 +264,12 @@ object BackupHelper {
                     (0 until arr.length()).map { i ->
                         val e = arr.getJSONObject(i)
                         TaskActionLogEntry(text = e.optString("text"), timestamp = e.optLong("timestamp"))
+                    }
+                },
+                links = (obj.optJSONArray("links") ?: JSONArray()).let { arr ->
+                    (0 until arr.length()).map { i ->
+                        val l = arr.getJSONObject(i)
+                        TaskLink(url = l.optString("url"), label = l.optString("label"))
                     }
                 },
                 createdAt = obj.getLong("createdAt")

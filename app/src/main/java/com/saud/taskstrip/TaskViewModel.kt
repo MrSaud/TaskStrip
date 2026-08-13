@@ -8,6 +8,7 @@ import com.saud.taskstrip.data.Priority
 import com.saud.taskstrip.data.TaskActionLogEntry
 import com.saud.taskstrip.data.TaskContact
 import com.saud.taskstrip.data.TaskEntity
+import com.saud.taskstrip.data.TaskLink
 import com.saud.taskstrip.data.TaskRepository
 import com.saud.taskstrip.notifications.FollowUpScheduler
 import com.saud.taskstrip.notifications.NotificationHelper
@@ -98,12 +99,13 @@ class TaskViewModel(
         contacts: List<TaskContact> = emptyList(),
         tags: List<String> = emptyList(),
         linkedSketchId: String? = null,
-        actionLog: List<TaskActionLogEntry> = emptyList()
+        actionLog: List<TaskActionLogEntry> = emptyList(),
+        links: List<TaskLink> = emptyList()
     ) {
         viewModelScope.launch {
             val id = repository.addTask(
                 title, route, notes, priority, dueAt, progress, images, voiceNotes, documents, videos,
-                reminderMinutesBefore, repeatIntervalDays, contacts, tags, linkedSketchId, actionLog
+                reminderMinutesBefore, repeatIntervalDays, contacts, tags, linkedSketchId, actionLog, links
             )
             repository.getTask(id)?.let { ReminderScheduler.schedule(getApplication(), it) }
         }

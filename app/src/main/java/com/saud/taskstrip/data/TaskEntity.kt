@@ -41,5 +41,7 @@ data class TaskEntity(
     // Free-text activity log — each entry is stamped with the moment it was added, building up a
     // running history of what's happened on this strip over time.
     val actionLog: List<TaskActionLogEntry> = emptyList(),
+    // Links attached to the strip (e.g. a URL back to an email or web page) — tap one to open it.
+    val links: List<TaskLink> = emptyList(),
     val createdAt: Long = System.currentTimeMillis()
 )
