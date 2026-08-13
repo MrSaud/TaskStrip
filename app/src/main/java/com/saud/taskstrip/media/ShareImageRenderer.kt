@@ -15,6 +15,7 @@ import androidx.core.content.FileProvider
 import com.saud.taskstrip.data.Priority
 import com.saud.taskstrip.data.TaskEntity
 import com.saud.taskstrip.ui.components.formatEtaFull
+import com.saud.taskstrip.ui.components.formatTimestampFull
 import java.io.File
 import java.io.FileOutputStream
 import java.time.Instant
@@ -81,6 +82,31 @@ object ShareImageRenderer {
             color = Color.argb(38, Color.red(ink), Color.green(ink), Color.blue(ink))
             strokeWidth = 2f
         }
+        val logTimePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.argb(120, Color.red(ink), Color.green(ink), Color.blue(ink))
+            textSize = 24f
+            typeface = Typeface.MONOSPACE
+            letterSpacing = 0.04f
+        }
+
+        // Activity log — one wrapped text block per entry, newest first, each stamped with when it
+        // was logged (matching the edit screen). Built once here and reused by both the measure
+        // pass and the draw pass below.
+        val logGapBefore = 36f
+        val logHeaderToFirst = 20f
+        val logTextToTime = 8f
+        val logTimeLine = 26f
+        val logEntryGap = 22f
+        val logEntries: List<Pair<StaticLayout, String>> =
+            task.actionLog
+                .sortedByDescending { it.timestamp }
+                .map { entry ->
+                    val layout = StaticLayout.Builder
+                        .obtain(entry.text, 0, entry.text.length, notesPaint, contentWidth)
+                        .setLineSpacing(6f, 1f)
+                        .build()
+                    layout to formatTimestampFull(entry.timestamp)
+                }
 
         // --- measure content height first ---
         var y = 64f
@@ -96,6 +122,14 @@ object ShareImageRenderer {
                 .setLineSpacing(6f, 1f)
                 .build()
             y += notesLayout.height
+        }
+
+        if (logEntries.isNotEmpty()) {
+            y += logGapBefore + logHeaderToFirst
+            logEntries.forEachIndexed { index, (layout, _) ->
+                y += layout.height + logTextToTime + logTimeLine
+                if (index != logEntries.lastIndex) y += logEntryGap
+            }
         }
 
         y += 40f // progress bar
@@ -147,6 +181,27 @@ object ShareImageRenderer {
             notesLayout.draw(canvas)
             canvas.restore()
             cursorY += notesLayout.height
+        }
+
+        if (logEntries.isNotEmpty()) {
+            cursorY += logGapBefore
+            canvas.drawLine(contentLeft.toFloat(), cursorY - 24f, contentRight.toFloat(), cursorY - 24f, dividerPaint)
+            canvas.drawText("ACTIVITY LOG", contentLeft.toFloat(), cursorY, labelPaint)
+            cursorY += logHeaderToFirst
+            logEntries.forEachIndexed { index, (layout, timeText) ->
+                canvas.save()
+                canvas.translate(contentLeft.toFloat(), cursorY)
+                layout.draw(canvas)
+                canvas.restore()
+                cursorY += layout.height + logTextToTime
+                canvas.drawText(timeText, contentLeft.toFloat(), cursorY + 18f, logTimePaint)
+                cursorY += logTimeLine
+                if (index != logEntries.lastIndex) {
+                    val dividerY = cursorY + logEntryGap / 2f
+                    canvas.drawLine(contentLeft.toFloat(), dividerY, contentRight.toFloat(), dividerY, dividerPaint)
+                    cursorY += logEntryGap
+                }
+            }
         }
 
         cursorY += 40f
