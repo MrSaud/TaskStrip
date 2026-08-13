@@ -357,7 +357,11 @@ fun AddEditTaskScreen(
             progress = progress.roundToInt(),
             images = images,
             voiceNotes = voiceNotes,
-            contacts = contacts
+            documents = documents,
+            videos = videos,
+            contacts = contacts,
+            actionLog = actionLog,
+            links = links
         )
 
     // Shared by the SAVE button and the unsaved-changes prompt so both write identically.
