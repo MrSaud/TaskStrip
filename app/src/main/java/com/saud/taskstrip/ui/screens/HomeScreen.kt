@@ -30,7 +30,9 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudUpload
@@ -56,12 +58,11 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.FloatingActionButton
+import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -92,6 +93,7 @@ import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.saud.taskstrip.TaskViewModel
 import com.saud.taskstrip.data.Priority
+import com.saud.taskstrip.data.TaskActionLogEntry
 import com.saud.taskstrip.data.TaskEntity
 import com.saud.taskstrip.notifications.DigestPrefs
 import com.saud.taskstrip.notifications.DigestScheduler
@@ -129,7 +131,11 @@ fun HomeScreen(
     onBackupClick: () -> Unit,
     onNotesClick: () -> Unit,
     onStandupClick: () -> Unit,
-    onTagProgressClick: () -> Unit
+    onTagProgressClick: () -> Unit,
+    onRemindersClick: () -> Unit,
+    onNewReminderClick: () -> Unit,
+    onNewReminderByVoice: (String) -> Unit,
+    onStorageClick: () -> Unit
 ) {
     val tasks by viewModel.tasks.collectAsStateWithLifecycle()
     val quote by viewModel.quote.collectAsStateWithLifecycle()
@@ -143,6 +149,8 @@ fun HomeScreen(
     }
 
     var menuExpanded by remember { mutableStateOf(false) }
+    var newStripMenuExpanded by remember { mutableStateOf(false) }
+    var reminderMenuExpanded by remember { mutableStateOf(false) }
     var searchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var filterMenuExpanded by remember { mutableStateOf(false) }
@@ -221,6 +229,18 @@ fun HomeScreen(
             if (!spoken.isNullOrBlank()) {
                 viewModel.setPendingDraft(VoiceCommandParser.parse(spoken))
                 onAddClick()
+            }
+        }
+    }
+    val reminderVoiceLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val spoken = result.data
+                ?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)
+                ?.firstOrNull()
+            if (!spoken.isNullOrBlank()) {
+                onNewReminderByVoice(spoken)
             }
         }
     }
@@ -385,6 +405,22 @@ fun HomeScreen(
                                 }
                             )
                             DropdownMenuItem(
+                                text = { Text("REMINDERS") },
+                                leadingIcon = { Icon(Icons.Default.Alarm, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onRemindersClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("STORAGE") },
+                                leadingIcon = { Icon(Icons.Default.Folder, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onStorageClick()
+                                }
+                            )
+                            DropdownMenuItem(
                                 text = { Text("BACKUP & RESTORE") },
                                 leadingIcon = { Icon(Icons.Default.CloudUpload, contentDescription = null) },
                                 onClick = {
@@ -460,42 +496,96 @@ fun HomeScreen(
         },
         floatingActionButton = {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                FloatingActionButton(
+                SmallFloatingActionButton(
                     onClick = onSketchesClick,
                     containerColor = BaySurface,
                     contentColor = Paper
                 ) {
                     Icon(Icons.Default.Draw, contentDescription = "Sketch notes")
                 }
-                Spacer(Modifier.width(12.dp))
-                FloatingActionButton(
-                    onClick = {
-                        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                            putExtra(
-                                RecognizerIntent.EXTRA_PROMPT,
-                                "\"Create a strip for ..., description is ...\""
-                            )
-                        }
-                        try {
-                            voiceLauncher.launch(intent)
-                        } catch (e: ActivityNotFoundException) {
-                            Toast.makeText(context, "Voice input isn't available on this device", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    containerColor = BaySurface,
-                    contentColor = Paper
-                ) {
-                    Icon(Icons.Default.Mic, contentDescription = "Quick strip by voice")
+                Spacer(Modifier.width(10.dp))
+                Box {
+                    SmallFloatingActionButton(
+                        onClick = { reminderMenuExpanded = true },
+                        containerColor = BaySurface,
+                        contentColor = Paper
+                    ) {
+                        Icon(Icons.Default.Alarm, contentDescription = "Reminders")
+                    }
+                    DropdownMenu(expanded = reminderMenuExpanded, onDismissRequest = { reminderMenuExpanded = false }) {
+                        DropdownMenuItem(
+                            text = { Text("VIEW REMINDERS") },
+                            leadingIcon = { Icon(Icons.Default.Alarm, contentDescription = null) },
+                            onClick = {
+                                reminderMenuExpanded = false
+                                onRemindersClick()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("NEW REMINDER") },
+                            leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
+                            onClick = {
+                                reminderMenuExpanded = false
+                                onNewReminderClick()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("NEW REMINDER BY VOICE") },
+                            leadingIcon = { Icon(Icons.Default.Mic, contentDescription = null) },
+                            onClick = {
+                                reminderMenuExpanded = false
+                                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                    putExtra(RecognizerIntent.EXTRA_PROMPT, "Speak your reminder")
+                                }
+                                try {
+                                    reminderVoiceLauncher.launch(intent)
+                                } catch (e: ActivityNotFoundException) {
+                                    Toast.makeText(context, "Voice input isn't available on this device", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        )
+                    }
                 }
-                Spacer(Modifier.width(12.dp))
-                ExtendedFloatingActionButton(
-                    onClick = onAddClick,
-                    containerColor = AmberTab,
-                    contentColor = InkColor,
-                    icon = { Icon(Icons.Default.Add, contentDescription = null) },
-                    text = { Text("NEW STRIP", style = MaterialTheme.typography.bodyLarge) }
-                )
+                Spacer(Modifier.width(10.dp))
+                Box {
+                    SmallFloatingActionButton(
+                        onClick = { newStripMenuExpanded = true },
+                        containerColor = BaySurface,
+                        contentColor = Paper
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "New strip")
+                    }
+                    DropdownMenu(expanded = newStripMenuExpanded, onDismissRequest = { newStripMenuExpanded = false }) {
+                        DropdownMenuItem(
+                            text = { Text("CREATE") },
+                            leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) },
+                            onClick = {
+                                newStripMenuExpanded = false
+                                onAddClick()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("CREATE BY VOICE") },
+                            leadingIcon = { Icon(Icons.Default.Mic, contentDescription = null) },
+                            onClick = {
+                                newStripMenuExpanded = false
+                                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                    putExtra(
+                                        RecognizerIntent.EXTRA_PROMPT,
+                                        "\"Create a strip for ..., description is ...\""
+                                    )
+                                }
+                                try {
+                                    voiceLauncher.launch(intent)
+                                } catch (e: ActivityNotFoundException) {
+                                    Toast.makeText(context, "Voice input isn't available on this device", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        )
+                    }
+                }
             }
         }
     ) { padding ->
@@ -556,6 +646,9 @@ fun HomeScreen(
                         completed = false,
                         onClick = { onTaskClick(task.id) },
                         onToggleDone = { viewModel.toggleDone(task) },
+                        onQuickLog = { text ->
+                            viewModel.updateTask(task.copy(actionLog = task.actionLog + TaskActionLogEntry(text, System.currentTimeMillis())))
+                        },
                         onDelete = { viewModel.deleteTask(task) },
                         blockerTask = task.blockedByTaskId?.let { id -> tasks.find { it.id == id } },
                         modifier = Modifier
@@ -615,13 +708,16 @@ fun HomeScreen(
                             completed = true,
                             onClick = { onTaskClick(task.id) },
                             onToggleDone = { viewModel.toggleDone(task) },
+                            onQuickLog = { text ->
+                                viewModel.updateTask(task.copy(actionLog = task.actionLog + TaskActionLogEntry(text, System.currentTimeMillis())))
+                            },
                             onDelete = { viewModel.deleteTask(task) },
                             trailingActions = {
                                 IconButton(onClick = { pendingArchive = task }) {
                                     Icon(
                                         Icons.Default.Archive,
                                         contentDescription = "Archive",
-                                        tint = InkColor.copy(alpha = 0.5f)
+                                        tint = Paper.copy(alpha = 0.5f)
                                     )
                                 }
                             }
@@ -634,10 +730,10 @@ fun HomeScreen(
     }
     }
 
-        FloatingActionButton(
+        SmallFloatingActionButton(
             onClick = onNotesClick,
-            containerColor = AmberTab,
-            contentColor = InkColor,
+            containerColor = BaySurface,
+            contentColor = Paper,
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .navigationBarsPadding()

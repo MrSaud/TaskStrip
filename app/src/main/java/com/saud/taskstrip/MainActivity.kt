@@ -27,10 +27,14 @@ import com.saud.taskstrip.backup.BackupViewModelFactory
 import com.saud.taskstrip.data.AppDatabase
 import com.saud.taskstrip.data.CredentialRepository
 import com.saud.taskstrip.data.NoteRepository
+import com.saud.taskstrip.data.ReminderRepository
+import com.saud.taskstrip.data.StorageRepository
 import com.saud.taskstrip.data.TaskRepository
 import com.saud.taskstrip.notifications.DigestPrefs
 import com.saud.taskstrip.notifications.DigestScheduler
+import com.saud.taskstrip.notifications.GeneralReminderScheduler
 import com.saud.taskstrip.notifications.NotificationHelper
+import com.saud.taskstrip.notifications.ReminderScheduler
 import com.saud.taskstrip.notifications.WeeklyDigestPrefs
 import com.saud.taskstrip.notifications.WeeklyDigestScheduler
 import com.saud.taskstrip.ui.screens.AddEditTaskScreen
@@ -40,13 +44,19 @@ import com.saud.taskstrip.ui.screens.CredentialEditScreen
 import com.saud.taskstrip.ui.screens.CredentialsScreen
 import com.saud.taskstrip.ui.screens.HomeScreen
 import com.saud.taskstrip.ui.screens.NotesScreen
+import com.saud.taskstrip.ui.screens.ReminderEditScreen
+import com.saud.taskstrip.ui.screens.RemindersScreen
 import com.saud.taskstrip.ui.screens.ShareTargetScreen
 import com.saud.taskstrip.ui.screens.SketchCanvasScreen
 import com.saud.taskstrip.ui.screens.SketchListScreen
 import com.saud.taskstrip.ui.screens.StandupScreen
+import com.saud.taskstrip.ui.screens.StorageScreen
 import com.saud.taskstrip.ui.screens.TagProgressScreen
 import com.saud.taskstrip.ui.theme.TaskStripTheme
 import com.saud.taskstrip.voice.VoiceDraft
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import java.net.URLDecoder
 import java.net.URLEncoder
 
@@ -55,6 +65,7 @@ class MainActivity : FragmentActivity() {
     companion object {
         const val EXTRA_OPEN_TASK_ID = "open_task_id"
         const val EXTRA_OPEN_NEW_TASK = "open_new_task"
+        const val EXTRA_OPEN_REMINDER_ID = "open_reminder_id"
 
         private val VCARD_MIME_TYPES = setOf("text/x-vcard", "text/vcard")
 
@@ -63,6 +74,21 @@ class MainActivity : FragmentActivity() {
             return when (intent.type) {
                 "text/plain" -> parseTextShare(intent)
                 in VCARD_MIME_TYPES -> parseContactShare(context, intent)
+                else -> null
+            }
+        }
+
+        /** A photo, video, or document shared in from another app's share sheet — single or
+         * multiple. Returns the stream Uris to hand to [StorageViewModel.addFromUri]; null if this
+         * intent isn't a file share at all (text/vcard shares are handled by [parseShareIntent]). */
+        private fun parseFileShareIntent(intent: Intent?): List<Uri>? {
+            val type = intent?.type ?: return null
+            if (type == "text/plain" || type in VCARD_MIME_TYPES) return null
+            return when (intent.action) {
+                Intent.ACTION_SEND ->
+                    IntentCompat.getParcelableExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)?.let { listOf(it) }
+                Intent.ACTION_SEND_MULTIPLE ->
+                    IntentCompat.getParcelableArrayListExtra(intent, Intent.EXTRA_STREAM, Uri::class.java)
                 else -> null
             }
         }
@@ -155,12 +181,32 @@ class MainActivity : FragmentActivity() {
         val backupFactory = BackupViewModelFactory(application)
         val noteRepository = NoteRepository(database.noteDao())
         val noteFactory = NoteViewModelFactory(application, noteRepository)
+        val reminderRepository = ReminderRepository(database.reminderDao())
+        val reminderFactory = ReminderViewModelFactory(application, reminderRepository)
+        val storageRepository = StorageRepository(database.storageItemDao())
+        val storageFactory = StorageViewModelFactory(application, storageRepository)
+
+        // One-time correction for alarms scheduled by an older build that treated the picked
+        // wall-clock time as a real UTC instant instead of re-anchoring it to this device's
+        // timezone — any reminder/due-date alarm already registered with AlarmManager keeps its
+        // stale (offset) trigger time until something re-schedules it, which a plain app update
+        // does not do on its own.
+        CoroutineScope(Dispatchers.IO).launch {
+            database.reminderDao().getAllOnce().forEach { reminder ->
+                GeneralReminderScheduler.schedule(applicationContext, reminder)
+            }
+            database.taskDao().getAllOnce().forEach { task ->
+                if (task.dueAt != null) ReminderScheduler.schedule(applicationContext, task)
+            }
+        }
         setContent {
             TaskStripTheme {
                 val viewModel: TaskViewModel = viewModel(factory = factory)
                 val credentialViewModel: CredentialViewModel = viewModel(factory = credentialFactory)
                 val backupViewModel: BackupViewModel = viewModel(factory = backupFactory)
                 val noteViewModel: NoteViewModel = viewModel(factory = noteFactory)
+                val reminderViewModel: ReminderViewModel = viewModel(factory = reminderFactory)
+                val storageViewModel: StorageViewModel = viewModel(factory = storageFactory)
                 val navController = rememberNavController()
                 var sharedContent by remember { mutableStateOf<VoiceDraft?>(null) }
 
@@ -175,13 +221,28 @@ class MainActivity : FragmentActivity() {
                     val current = intent
                     val taskId = current.getLongExtra(EXTRA_OPEN_TASK_ID, -1L)
                     val newTask = current.getBooleanExtra(EXTRA_OPEN_NEW_TASK, false)
+                    val reminderId = current.getLongExtra(EXTRA_OPEN_REMINDER_ID, -1L)
                     val shared = parseShareIntent(applicationContext, current)
+                    val sharedFiles = parseFileShareIntent(current)
                     when {
                         taskId >= 0 -> navController.navigate("editor/$taskId")
                         newTask -> navController.navigate("editor/-1")
+                        reminderId >= 0 -> navController.navigate("reminder-editor/$reminderId")
                         shared != null -> {
                             sharedContent = shared
                             navController.navigate("share-target")
+                        }
+                        !sharedFiles.isNullOrEmpty() -> {
+                            sharedFiles.forEach { uri ->
+                                val resolvedType = contentResolver.getType(uri) ?: current.type
+                                storageViewModel.addFromUri(uri, resolvedType, null)
+                            }
+                            android.widget.Toast.makeText(
+                                applicationContext,
+                                if (sharedFiles.size == 1) "Saved to Storage" else "Saved ${sharedFiles.size} files to Storage",
+                                android.widget.Toast.LENGTH_SHORT
+                            ).show()
+                            navController.navigate("storage")
                         }
                     }
                 }
@@ -201,7 +262,39 @@ class MainActivity : FragmentActivity() {
                             onBackupClick = { navController.navigate("backup") },
                             onNotesClick = { navController.navigate("notes") },
                             onStandupClick = { navController.navigate("standup") },
-                            onTagProgressClick = { navController.navigate("tag-progress") }
+                            onTagProgressClick = { navController.navigate("tag-progress") },
+                            onRemindersClick = { navController.navigate("reminders") },
+                            onNewReminderClick = { navController.navigate("reminder-editor/-1") },
+                            onNewReminderByVoice = { spoken ->
+                                reminderViewModel.setPendingText(spoken)
+                                navController.navigate("reminder-editor/-1")
+                            },
+                            onStorageClick = { navController.navigate("storage") }
+                        )
+                    }
+                    composable("storage") {
+                        StorageScreen(
+                            viewModel = storageViewModel,
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                    composable("reminders") {
+                        RemindersScreen(
+                            viewModel = reminderViewModel,
+                            onBack = { navController.popBackStack() },
+                            onAddClick = { navController.navigate("reminder-editor/-1") },
+                            onEditClick = { id -> navController.navigate("reminder-editor/$id") }
+                        )
+                    }
+                    composable(
+                        route = "reminder-editor/{reminderId}",
+                        arguments = listOf(navArgument("reminderId") { type = NavType.LongType })
+                    ) { backStackEntry ->
+                        val reminderId = backStackEntry.arguments?.getLong("reminderId") ?: -1L
+                        ReminderEditScreen(
+                            viewModel = reminderViewModel,
+                            reminderId = reminderId,
+                            onDone = { navController.popBackStack() }
                         )
                     }
                     composable("standup") {
@@ -255,6 +348,7 @@ class MainActivity : FragmentActivity() {
                         val taskId = backStackEntry.arguments?.getLong("taskId") ?: -1L
                         AddEditTaskScreen(
                             viewModel = viewModel,
+                            storageViewModel = storageViewModel,
                             taskId = taskId,
                             onDone = { navController.popBackStack() },
                             onOpenSketch = { fileName ->

@@ -95,12 +95,72 @@ val MIGRATION_12_13 = object : Migration(12, 13) {
     }
 }
 
-@Database(entities = [TaskEntity::class, CredentialEntity::class, NoteEntity::class], version = 13, exportSchema = false)
+val MIGRATION_13_14 = object : Migration(13, 14) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS reminders (" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "text TEXT NOT NULL, " +
+                "triggerAt INTEGER NOT NULL, " +
+                "isDone INTEGER NOT NULL DEFAULT 0, " +
+                "createdAt INTEGER NOT NULL)"
+        )
+    }
+}
+
+val MIGRATION_14_15 = object : Migration(14, 15) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE reminders ADD COLUMN leadMinutesBefore INTEGER")
+    }
+}
+
+val MIGRATION_15_16 = object : Migration(15, 16) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE reminders ADD COLUMN repeatAmount INTEGER")
+        db.execSQL("ALTER TABLE reminders ADD COLUMN repeatUnit TEXT")
+    }
+}
+
+val MIGRATION_16_17 = object : Migration(16, 17) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE reminders ADD COLUMN description TEXT NOT NULL DEFAULT ''")
+    }
+}
+
+val MIGRATION_17_18 = object : Migration(17, 18) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE reminders ADD COLUMN tag TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE reminders ADD COLUMN tagEmoji TEXT NOT NULL DEFAULT ''")
+    }
+}
+
+val MIGRATION_18_19 = object : Migration(18, 19) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS storage_items (" +
+                "id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
+                "name TEXT NOT NULL, " +
+                "path TEXT NOT NULL, " +
+                "type TEXT NOT NULL, " +
+                "mimeType TEXT NOT NULL DEFAULT '', " +
+                "sizeBytes INTEGER NOT NULL DEFAULT 0, " +
+                "createdAt INTEGER NOT NULL)"
+        )
+    }
+}
+
+@Database(
+    entities = [TaskEntity::class, CredentialEntity::class, NoteEntity::class, ReminderEntity::class, StorageItemEntity::class],
+    version = 19,
+    exportSchema = false
+)
 @TypeConverters(Converters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun taskDao(): TaskDao
     abstract fun credentialDao(): CredentialDao
     abstract fun noteDao(): NoteDao
+    abstract fun reminderDao(): ReminderDao
+    abstract fun storageItemDao(): StorageItemDao
 
     companion object {
         @Volatile
@@ -113,7 +173,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "taskstrip.db"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19)
                     // Only reached for version jumps with no real user data behind them
                     // (e.g. a stale pre-v3 dev install) — every jump from here on gets a
                     // real Migration above instead, so saved tasks are never silently wiped.

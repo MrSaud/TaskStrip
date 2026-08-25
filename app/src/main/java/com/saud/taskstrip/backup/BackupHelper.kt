@@ -6,12 +6,17 @@ import com.saud.taskstrip.data.CredentialEntity
 import com.saud.taskstrip.data.NoteDao
 import com.saud.taskstrip.data.NoteEntity
 import com.saud.taskstrip.data.Priority
+import com.saud.taskstrip.data.ReminderDao
+import com.saud.taskstrip.data.ReminderEntity
+import com.saud.taskstrip.data.StorageItemDao
+import com.saud.taskstrip.data.StorageItemEntity
 import com.saud.taskstrip.data.TaskActionLogEntry
 import com.saud.taskstrip.data.TaskContact
 import com.saud.taskstrip.data.TaskDao
 import com.saud.taskstrip.data.TaskEntity
 import com.saud.taskstrip.data.TaskLink
 import com.saud.taskstrip.notifications.FollowUpScheduler
+import com.saud.taskstrip.notifications.GeneralReminderScheduler
 import com.saud.taskstrip.notifications.ReminderScheduler
 import com.saud.taskstrip.security.CredentialCrypto
 import org.json.JSONArray
@@ -41,11 +46,15 @@ object BackupHelper {
         taskDao: TaskDao,
         credentialDao: CredentialDao,
         noteDao: NoteDao,
+        reminderDao: ReminderDao,
+        storageItemDao: StorageItemDao,
         backupPassphrase: String?
     ): File {
         val tasks = taskDao.getAllOnce()
         val credentials = credentialDao.getAllOnce()
         val notes = noteDao.getAllOnce()
+        val reminders = reminderDao.getAllOnce()
+        val storageItems = storageItemDao.getAllOnce()
         val filesRoot = context.filesDir.absolutePath
 
         fun relative(path: String): String? {
@@ -138,11 +147,41 @@ object BackupHelper {
             notesJson.put(obj)
         }
 
+        val remindersJson = JSONArray()
+        reminders.forEach { r ->
+            val obj = JSONObject()
+            obj.put("text", r.text)
+            obj.put("description", r.description)
+            obj.put("triggerAt", r.triggerAt)
+            obj.put("leadMinutesBefore", r.leadMinutesBefore ?: JSONObject.NULL)
+            obj.put("repeatAmount", r.repeatAmount ?: JSONObject.NULL)
+            obj.put("repeatUnit", r.repeatUnit ?: JSONObject.NULL)
+            obj.put("tag", r.tag)
+            obj.put("tagEmoji", r.tagEmoji)
+            obj.put("isDone", r.isDone)
+            obj.put("createdAt", r.createdAt)
+            remindersJson.put(obj)
+        }
+
+        val storageItemsJson = JSONArray()
+        storageItems.forEach { s ->
+            val obj = JSONObject()
+            obj.put("name", s.name)
+            obj.put("path", relative(s.path) ?: return@forEach)
+            obj.put("type", s.type)
+            obj.put("mimeType", s.mimeType)
+            obj.put("sizeBytes", s.sizeBytes)
+            obj.put("createdAt", s.createdAt)
+            storageItemsJson.put(obj)
+        }
+
         val manifest = JSONObject().apply {
             put("version", 1)
             put("tasks", tasksJson)
             put("credentials", credentialsJson)
             put("notes", notesJson)
+            put("reminders", remindersJson)
+            put("storageItems", storageItemsJson)
         }
 
         val zipFile = File(context.cacheDir, "backup_${UUID.randomUUID()}.zip")
@@ -160,7 +199,11 @@ object BackupHelper {
                 .filter { it.isDirectory }
                 .flatMap { noteDir -> noteDir.listFiles()?.toList() ?: emptyList() }
                 .map { it.absolutePath }
-            val allPaths = (tasks.flatMap { it.images + it.voiceNotes + it.documents + it.videos } + sketchPaths).toSet()
+            val allPaths = (
+                tasks.flatMap { it.images + it.voiceNotes + it.documents + it.videos } +
+                    sketchPaths +
+                    storageItems.map { it.path }
+                ).toSet()
             allPaths.forEach { path ->
                 val rel = relative(path) ?: return@forEach
                 val file = File(path)
@@ -190,6 +233,8 @@ object BackupHelper {
         taskDao: TaskDao,
         credentialDao: CredentialDao,
         noteDao: NoteDao,
+        reminderDao: ReminderDao,
+        storageItemDao: StorageItemDao,
         restorePassphrase: String?
     ): RestoreResult {
         val filesRoot = context.filesDir
@@ -216,6 +261,8 @@ object BackupHelper {
         taskDao.deleteAll()
         credentialDao.deleteAll()
         noteDao.deleteAll()
+        reminderDao.deleteAll()
+        storageItemDao.deleteAll()
 
         val tasksJson = data.getJSONArray("tasks")
         // Index (within tasksJson) of the strip each restored task is blocked by, if any — see
@@ -324,10 +371,43 @@ object BackupHelper {
         }
         noteDao.insertAll(restoredNotes)
 
+        val remindersJson = data.optJSONArray("reminders") ?: JSONArray()
+        val restoredReminders = (0 until remindersJson.length()).map { i ->
+            val obj = remindersJson.getJSONObject(i)
+            ReminderEntity(
+                text = obj.getString("text"),
+                description = obj.optString("description"),
+                triggerAt = obj.getLong("triggerAt"),
+                leadMinutesBefore = if (!obj.has("leadMinutesBefore") || obj.isNull("leadMinutesBefore")) null else obj.getInt("leadMinutesBefore"),
+                repeatAmount = if (!obj.has("repeatAmount") || obj.isNull("repeatAmount")) null else obj.getInt("repeatAmount"),
+                repeatUnit = if (!obj.has("repeatUnit") || obj.isNull("repeatUnit")) null else obj.getString("repeatUnit"),
+                tag = obj.optString("tag"),
+                tagEmoji = obj.optString("tagEmoji"),
+                isDone = obj.optBoolean("isDone", false),
+                createdAt = obj.getLong("createdAt")
+            )
+        }
+        reminderDao.insertAll(restoredReminders)
+
+        val storageItemsJson = data.optJSONArray("storageItems") ?: JSONArray()
+        val restoredStorageItems = (0 until storageItemsJson.length()).map { i ->
+            val obj = storageItemsJson.getJSONObject(i)
+            StorageItemEntity(
+                name = obj.getString("name"),
+                path = File(filesRoot, obj.getString("path")).absolutePath,
+                type = obj.getString("type"),
+                mimeType = obj.optString("mimeType"),
+                sizeBytes = obj.optLong("sizeBytes"),
+                createdAt = obj.getLong("createdAt")
+            )
+        }
+        storageItemDao.insertAll(restoredStorageItems)
+
         taskDao.getAllOnce().forEach { task ->
             if (task.dueAt != null) ReminderScheduler.schedule(context, task)
             if (task.waitingOnName.isNotBlank()) FollowUpScheduler.schedule(context, task)
         }
+        reminderDao.getAllOnce().forEach { reminder -> GeneralReminderScheduler.schedule(context, reminder) }
 
         return RestoreResult(credentialPasswordsRestored = passwordsRestored, credentialPasswordsFailed = passwordsFailed)
     }

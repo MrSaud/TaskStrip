@@ -15,9 +15,12 @@ class TaskStripWidgetProvider : AppWidgetProvider() {
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
-                val dao = AppDatabase.getInstance(context).taskDao()
-                val active = dao.observeTasks().first().filter { !it.isDone }
-                val views = WidgetUpdater.render(context, active)
+                val database = AppDatabase.getInstance(context)
+                val activeTasks = database.taskDao().observeTasks().first().filter { !it.isDone }
+                val activeReminders = database.reminderDao().observeAll().first()
+                    .filter { !it.isDone }
+                    .sortedBy { it.triggerAt }
+                val views = WidgetUpdater.render(context, activeTasks, activeReminders)
                 appWidgetIds.forEach { id -> appWidgetManager.updateAppWidget(id, views) }
             } finally {
                 pendingResult.finish()

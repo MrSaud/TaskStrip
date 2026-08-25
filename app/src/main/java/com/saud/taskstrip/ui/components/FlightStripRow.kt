@@ -31,6 +31,7 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.HourglassTop
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Replay
@@ -44,6 +45,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Surface
@@ -71,9 +73,9 @@ import com.saud.taskstrip.data.TaskEntity
 import com.saud.taskstrip.media.TextToSpeechHelper
 import com.saud.taskstrip.media.VoicePlayer
 import com.saud.taskstrip.ui.theme.AmberTab
-import com.saud.taskstrip.ui.theme.InkColor
+import com.saud.taskstrip.ui.theme.BaySurface
+import com.saud.taskstrip.ui.theme.BaySurfaceFaded
 import com.saud.taskstrip.ui.theme.Paper
-import com.saud.taskstrip.ui.theme.PaperFaded
 import com.saud.taskstrip.ui.theme.PriorityNormal
 import com.saud.taskstrip.ui.theme.PriorityUrgent
 import com.saud.taskstrip.ui.theme.tabColor
@@ -93,12 +95,15 @@ fun FlightStripRow(
     onDelete: () -> Unit,
     modifier: Modifier = Modifier,
     onToggleDone: (() -> Unit)? = null,
+    onQuickLog: ((String) -> Unit)? = null,
     dragModifier: Modifier? = null,
     trailingActions: @Composable () -> Unit = {},
     blockerTask: TaskEntity? = null
 ) {
     val context = LocalContext.current
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showQuickLogDialog by remember { mutableStateOf(false) }
+    var quickLogText by remember { mutableStateOf("") }
 
     val isBlocked = blockerTask != null && !blockerTask.isDone
     fun requestToggleDone() {
@@ -131,10 +136,14 @@ fun FlightStripRow(
     )
 
     val dueAt = task.dueAt
-    val isOverdue = !completed && dueAt != null && dueAt <= System.currentTimeMillis()
+    // dueAt is stored/displayed as a UTC-treated wall-clock value (see the comment on
+    // dueAtAsLocalInstant) so it round-trips through the picker correctly — re-anchor to the
+    // device's actual timezone before comparing against a real instant like "now".
+    val realDueAt = dueAt?.let { dueAtAsLocalInstant(it) }
+    val isOverdue = !completed && realDueAt != null && realDueAt <= System.currentTimeMillis()
     val dueColor = when {
-        dueAt == null -> InkColor
-        dueAt - System.currentTimeMillis() <= DUE_SOON_WINDOW_MILLIS -> PriorityUrgent
+        realDueAt == null -> Paper
+        realDueAt - System.currentTimeMillis() <= DUE_SOON_WINDOW_MILLIS -> PriorityUrgent
         else -> AmberTab
     }
     val player = remember { VoicePlayer() }
@@ -208,7 +217,7 @@ fun FlightStripRow(
                 .height(StripHeight)
                 .padding(horizontal = 10.dp, vertical = 4.dp)
                 .clip(StripShape),
-            color = if (completed) PaperFaded else Paper,
+            color = if (completed) BaySurfaceFaded else BaySurface,
             shadowElevation = if (completed) 0.dp else 3.dp
         ) {
             Box(Modifier.fillMaxSize()) {
@@ -238,7 +247,7 @@ fun FlightStripRow(
                                 Text(
                                     text = task.title.uppercase(),
                                     style = MaterialTheme.typography.titleMedium,
-                                    color = InkColor,
+                                    color = Paper,
                                     textDecoration = if (completed) TextDecoration.LineThrough else null,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
@@ -248,7 +257,7 @@ fun FlightStripRow(
                                 Text(
                                     text = "FILED ${formatTimestampShort(task.createdAt)}",
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = InkColor.copy(alpha = 0.45f),
+                                    color = Paper.copy(alpha = 0.45f),
                                     maxLines = 1
                                 )
                                 if (task.repeatIntervalDays != null) {
@@ -256,7 +265,7 @@ fun FlightStripRow(
                                     Icon(
                                         Icons.Default.Repeat,
                                         contentDescription = "Repeats every ${task.repeatIntervalDays} days",
-                                        tint = InkColor.copy(alpha = 0.45f),
+                                        tint = Paper.copy(alpha = 0.45f),
                                         modifier = Modifier.height(14.dp)
                                     )
                                 }
@@ -269,7 +278,7 @@ fun FlightStripRow(
                                 )
                             }
                             Spacer(Modifier.height(4.dp))
-                            HorizontalDivider(color = InkColor.copy(alpha = 0.15f))
+                            HorizontalDivider(color = Paper.copy(alpha = 0.15f))
                             Spacer(Modifier.height(4.dp))
                             Row(
                                 Modifier.fillMaxWidth(),
@@ -302,13 +311,13 @@ fun FlightStripRow(
                                             Icon(
                                                 Icons.Default.Image,
                                                 contentDescription = "${task.images.size} photos attached",
-                                                tint = InkColor.copy(alpha = 0.45f),
+                                                tint = Paper.copy(alpha = 0.45f),
                                                 modifier = Modifier.height(14.dp)
                                             )
                                             Text(
                                                 text = "${task.images.size}",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = InkColor.copy(alpha = 0.45f)
+                                                color = Paper.copy(alpha = 0.45f)
                                             )
                                             Spacer(Modifier.width(8.dp))
                                         }
@@ -316,13 +325,13 @@ fun FlightStripRow(
                                             Icon(
                                                 Icons.Default.Description,
                                                 contentDescription = "${task.documents.size} documents attached",
-                                                tint = InkColor.copy(alpha = 0.45f),
+                                                tint = Paper.copy(alpha = 0.45f),
                                                 modifier = Modifier.height(14.dp)
                                             )
                                             Text(
                                                 text = "${task.documents.size}",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = InkColor.copy(alpha = 0.45f)
+                                                color = Paper.copy(alpha = 0.45f)
                                             )
                                             Spacer(Modifier.width(8.dp))
                                         }
@@ -330,13 +339,13 @@ fun FlightStripRow(
                                             Icon(
                                                 Icons.Default.VideoLibrary,
                                                 contentDescription = "${task.videos.size} videos attached",
-                                                tint = InkColor.copy(alpha = 0.45f),
+                                                tint = Paper.copy(alpha = 0.45f),
                                                 modifier = Modifier.height(14.dp)
                                             )
                                             Text(
                                                 text = "${task.videos.size}",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = InkColor.copy(alpha = 0.45f)
+                                                color = Paper.copy(alpha = 0.45f)
                                             )
                                             Spacer(Modifier.width(8.dp))
                                         }
@@ -344,13 +353,13 @@ fun FlightStripRow(
                                             Icon(
                                                 Icons.Default.Person,
                                                 contentDescription = "${task.contacts.size} contacts attached",
-                                                tint = InkColor.copy(alpha = 0.45f),
+                                                tint = Paper.copy(alpha = 0.45f),
                                                 modifier = Modifier.height(14.dp)
                                             )
                                             Text(
                                                 text = "${task.contacts.size}",
                                                 style = MaterialTheme.typography.labelSmall,
-                                                color = InkColor.copy(alpha = 0.45f)
+                                                color = Paper.copy(alpha = 0.45f)
                                             )
                                             Spacer(Modifier.width(8.dp))
                                         }
@@ -373,13 +382,13 @@ fun FlightStripRow(
                                                     } else {
                                                         "Play ${task.voiceNotes.size} voice notes"
                                                     },
-                                                    tint = if (isPlayingAll) AmberTab else InkColor.copy(alpha = 0.45f),
+                                                    tint = if (isPlayingAll) AmberTab else Paper.copy(alpha = 0.45f),
                                                     modifier = Modifier.height(14.dp)
                                                 )
                                                 Text(
                                                     text = if (isPlayingAll) "${playIndex + 1}/${task.voiceNotes.size}" else "${task.voiceNotes.size}",
                                                     style = MaterialTheme.typography.labelSmall,
-                                                    color = if (isPlayingAll) AmberTab else InkColor.copy(alpha = 0.45f)
+                                                    color = if (isPlayingAll) AmberTab else Paper.copy(alpha = 0.45f)
                                                 )
                                             }
                                         }
@@ -418,7 +427,7 @@ fun FlightStripRow(
                                         Text(
                                             text = "WAITING ON ${task.waitingOnName.uppercase()}",
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = InkColor.copy(alpha = 0.6f),
+                                            color = Paper.copy(alpha = 0.6f),
                                             maxLines = 1,
                                             overflow = TextOverflow.Ellipsis
                                         )
@@ -426,26 +435,43 @@ fun FlightStripRow(
                                 }
                             }
                             if (task.notes.isNotBlank()) {
+                                val speakingTaskId by TextToSpeechHelper.speakingTaskId
+                                val isReadingThis = speakingTaskId == task.id
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(
-                                        Icons.AutoMirrored.Filled.VolumeUp,
-                                        contentDescription = "Read notes aloud",
-                                        tint = InkColor.copy(alpha = 0.5f),
+                                        imageVector = if (isReadingThis) Icons.Default.Stop else Icons.AutoMirrored.Filled.VolumeUp,
+                                        contentDescription = if (isReadingThis) "Stop reading notes" else "Read notes aloud",
+                                        tint = if (isReadingThis) AmberTab else Paper.copy(alpha = 0.5f),
                                         modifier = Modifier
                                             .height(14.dp)
-                                            .clickable { TextToSpeechHelper.speak(context, task.notes) }
+                                            .clickable {
+                                                if (isReadingThis) {
+                                                    TextToSpeechHelper.stop()
+                                                } else {
+                                                    TextToSpeechHelper.speak(context, task.id, task.notes)
+                                                }
+                                            }
                                     )
                                     Spacer(Modifier.width(4.dp))
                                     Text(
                                         text = task.notes,
                                         style = MaterialTheme.typography.bodyMedium,
-                                        color = InkColor.copy(alpha = 0.6f),
+                                        color = Paper.copy(alpha = 0.6f),
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f)
                                     )
                                 }
                             }
+                        }
+                    }
+                    if (onQuickLog != null) {
+                        IconButton(onClick = { showQuickLogDialog = true }) {
+                            Icon(
+                                Icons.Default.NoteAdd,
+                                contentDescription = "Log an action for \"${task.title}\"",
+                                tint = Paper.copy(alpha = 0.5f)
+                            )
                         }
                     }
                     trailingActions()
@@ -484,6 +510,41 @@ fun FlightStripRow(
         )
     }
 
+    if (showQuickLogDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                showQuickLogDialog = false
+                quickLogText = ""
+            },
+            title = { Text("LOG AN ACTION", style = MaterialTheme.typography.titleMedium) },
+            text = {
+                OutlinedTextField(
+                    value = quickLogText,
+                    onValueChange = { quickLogText = it },
+                    placeholder = { Text("What happened?") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onQuickLog?.invoke(quickLogText.trim())
+                        showQuickLogDialog = false
+                        quickLogText = ""
+                    },
+                    enabled = quickLogText.isNotBlank()
+                ) { Text("LOG") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showQuickLogDialog = false
+                    quickLogText = ""
+                }) { Text("CANCEL") }
+            }
+        )
+    }
+
     if (showPlayConfirm) {
         AlertDialog(
             onDismissRequest = { showPlayConfirm = false },
@@ -516,7 +577,7 @@ private fun ProgressTrack(progress: Int, color: Color) {
         Modifier
             .fillMaxWidth()
             .height(4.dp)
-            .background(InkColor.copy(alpha = 0.1f))
+            .background(Paper.copy(alpha = 0.1f))
     ) {
         Box(
             Modifier
@@ -528,9 +589,9 @@ private fun ProgressTrack(progress: Int, color: Color) {
 }
 
 @Composable
-private fun StripField(label: String, value: String, valueColor: Color = InkColor) {
+private fun StripField(label: String, value: String, valueColor: Color = Paper) {
     Column {
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = InkColor.copy(alpha = 0.5f))
+        Text(text = label, style = MaterialTheme.typography.labelSmall, color = Paper.copy(alpha = 0.5f))
         Text(text = value, style = MaterialTheme.typography.bodyMedium, color = valueColor, fontWeight = FontWeight.SemiBold)
     }
 }

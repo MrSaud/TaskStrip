@@ -76,6 +76,7 @@ fun BackupScreen(
     var pendingRestore by remember { mutableStateOf<DriveBackupFile?>(null) }
     var restorePassphraseInput by remember { mutableStateOf("") }
     var showPassphraseDialog by remember { mutableStateOf(false) }
+    var showSignOutConfirm by remember { mutableStateOf(false) }
 
     val signInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -124,7 +125,7 @@ fun BackupScreen(
                         color = Paper.copy(alpha = 0.8f),
                         modifier = Modifier.weight(1f)
                     )
-                    TextButton(onClick = { viewModel.signOut() }) {
+                    TextButton(onClick = { showSignOutConfirm = true }) {
                         Text("SIGN OUT", color = Paper.copy(alpha = 0.6f))
                     }
                 }
@@ -238,6 +239,36 @@ fun BackupScreen(
             text = { Text(message) },
             confirmButton = {
                 TextButton(onClick = { viewModel.dismissMessages() }) { Text("OK") }
+            }
+        )
+    }
+
+    if (showSignOutConfirm) {
+        AlertDialog(
+            onDismissRequest = { showSignOutConfirm = false },
+            title = { Text("SIGN OUT?", style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Column {
+                    Text(
+                        "Back up now so your strips, reminders, and credentials aren't lost if you don't sign back in on this device."
+                    )
+                    Spacer(Modifier.height(14.dp))
+                    TextButton(onClick = {
+                        showSignOutConfirm = false
+                        viewModel.signOut()
+                    }) {
+                        Text("SIGN OUT WITHOUT BACKING UP", color = PriorityUrgent)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showSignOutConfirm = false
+                    viewModel.backupThenSignOut()
+                }) { Text("BACKUP NOW, THEN SIGN OUT", color = AmberTab) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSignOutConfirm = false }) { Text("CANCEL") }
             }
         )
     }

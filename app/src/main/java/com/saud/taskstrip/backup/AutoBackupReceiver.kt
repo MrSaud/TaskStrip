@@ -29,6 +29,8 @@ class AutoBackupReceiver : BroadcastReceiver() {
                     database.taskDao(),
                     database.credentialDao(),
                     database.noteDao(),
+                    database.reminderDao(),
+                    database.storageItemDao(),
                     passphrase
                 )
                 DriveApi.uploadBackup(token, folderId, zip, BackupHelper.backupFileName())

@@ -183,6 +183,7 @@ private data class FormSnapshot(
 @Composable
 fun AddEditTaskScreen(
     viewModel: TaskViewModel,
+    storageViewModel: com.saud.taskstrip.StorageViewModel,
     taskId: Long,
     onDone: () -> Unit,
     onOpenSketch: (String) -> Unit = {}
@@ -713,6 +714,25 @@ fun AddEditTaskScreen(
                     .height(120.dp)
             )
             Spacer(Modifier.height(18.dp))
+            ActionLogSection(
+                actionLog = actionLog,
+                onAddAction = { text ->
+                    actionLog = actionLog + TaskActionLogEntry(text.trim(), System.currentTimeMillis())
+                },
+                onRemoveAction = { entry -> actionLog = actionLog - entry }
+            )
+            Spacer(Modifier.height(18.dp))
+            LinksSection(
+                links = links,
+                onAddLink = { url ->
+                    val normalized = url.trim()
+                    if (normalized.isNotEmpty() && links.none { it.url == normalized }) {
+                        links = links + TaskLink(url = normalized)
+                    }
+                },
+                onRemoveLink = { link -> links = links - link }
+            )
+            Spacer(Modifier.height(18.dp))
             AttachmentsSection(
                 images = images,
                 onImagesChange = { images = it },
@@ -721,7 +741,8 @@ fun AddEditTaskScreen(
                 documents = documents,
                 onDocumentsChange = { documents = it },
                 videos = videos,
-                onVideosChange = { videos = it }
+                onVideosChange = { videos = it },
+                storageViewModel = storageViewModel
             )
             Spacer(Modifier.height(18.dp))
             ContactsSection(
@@ -759,25 +780,6 @@ fun AddEditTaskScreen(
                     }
                 )
             }
-            Spacer(Modifier.height(18.dp))
-            ActionLogSection(
-                actionLog = actionLog,
-                onAddAction = { text ->
-                    actionLog = actionLog + TaskActionLogEntry(text.trim(), System.currentTimeMillis())
-                },
-                onRemoveAction = { entry -> actionLog = actionLog - entry }
-            )
-            Spacer(Modifier.height(18.dp))
-            LinksSection(
-                links = links,
-                onAddLink = { url ->
-                    val normalized = url.trim()
-                    if (normalized.isNotEmpty() && links.none { it.url == normalized }) {
-                        links = links + TaskLink(url = normalized)
-                    }
-                },
-                onRemoveLink = { link -> links = links - link }
-            )
             // Save/Delete live in the Scaffold's bottomBar (below) so they stay fixed at the
             // bottom of the screen instead of scrolling away with the form.
             Spacer(Modifier.height(20.dp))

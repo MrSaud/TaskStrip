@@ -6,6 +6,15 @@ import android.provider.OpenableColumns
 import java.io.File
 import java.util.UUID
 
+val DOCUMENT_MIME_TYPES = arrayOf(
+    "application/pdf",
+    "application/msword",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "text/csv",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
+
 object MediaStorage {
 
     private fun imagesDir(context: Context): File =
@@ -70,7 +79,37 @@ object MediaStorage {
         }
     }
 
-    private fun queryDisplayName(context: Context, uri: Uri): String? = try {
+    /** Copies a file already on local disk (e.g. a storage-library item) into a fresh
+     * images/videos/documents entry, independent of the source — used when a strip "takes" a copy
+     * of a library item, so deleting it from the strip (or the library) later never affects the
+     * other side. */
+    fun duplicateImage(context: Context, sourcePath: String): String? = try {
+        val destination = File(imagesDir(context), "${UUID.randomUUID()}.jpg")
+        File(sourcePath).copyTo(destination, overwrite = true)
+        destination.absolutePath
+    } catch (e: Exception) {
+        null
+    }
+
+    fun duplicateVideo(context: Context, sourcePath: String): String? = try {
+        val destination = File(videosDir(context), "${UUID.randomUUID()}.mp4")
+        File(sourcePath).copyTo(destination, overwrite = true)
+        destination.absolutePath
+    } catch (e: Exception) {
+        null
+    }
+
+    fun duplicateDocument(context: Context, sourcePath: String): String? = try {
+        val source = File(sourcePath)
+        val folder = File(documentsDir(context), UUID.randomUUID().toString()).apply { mkdirs() }
+        val destination = File(folder, source.name)
+        source.copyTo(destination, overwrite = true)
+        destination.absolutePath
+    } catch (e: Exception) {
+        null
+    }
+
+    fun queryDisplayName(context: Context, uri: Uri): String? = try {
         context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
             val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
             if (idx >= 0 && cursor.moveToFirst()) cursor.getString(idx) else null

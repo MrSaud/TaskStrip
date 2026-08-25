@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.AddAPhoto
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -88,8 +89,11 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
+import com.saud.taskstrip.data.StorageItemType
 import com.saud.taskstrip.media.AudioDuration
+import com.saud.taskstrip.media.DOCUMENT_MIME_TYPES
 import com.saud.taskstrip.media.DocumentOpener
 import com.saud.taskstrip.media.MediaStorage
 import com.saud.taskstrip.media.VideoThumbnail
@@ -103,15 +107,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import java.io.File
 
-private val DOCUMENT_MIME_TYPES = arrayOf(
-    "application/pdf",
-    "application/msword",
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    "text/csv",
-    "application/vnd.ms-excel",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
-
 @Composable
 fun AttachmentsSection(
     images: List<String>,
@@ -121,9 +116,12 @@ fun AttachmentsSection(
     documents: List<String>,
     onDocumentsChange: (List<String>) -> Unit,
     videos: List<String>,
-    onVideosChange: (List<String>) -> Unit
+    onVideosChange: (List<String>) -> Unit,
+    storageViewModel: com.saud.taskstrip.StorageViewModel
 ) {
     val context = LocalContext.current
+    val storageItems by storageViewModel.items.collectAsStateWithLifecycle()
+    var storagePickerType by remember { mutableStateOf<String?>(null) }
     var viewerIndex by remember { mutableStateOf<Int?>(null) }
     var videoViewerPath by remember { mutableStateOf<String?>(null) }
     // Saveable: the camera app backgrounds us during recording, which can get this process
@@ -219,6 +217,18 @@ fun AttachmentsSection(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(Icons.Default.AddAPhoto, contentDescription = "Add photo from gallery", tint = Paper.copy(alpha = 0.6f))
+            }
+        }
+        item {
+            Box(
+                Modifier
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Paper.copy(alpha = 0.08f))
+                    .clickable { storagePickerType = StorageItemType.IMAGE },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Folder, contentDescription = "Add photo from storage", tint = Paper.copy(alpha = 0.6f))
             }
         }
     }
@@ -323,6 +333,18 @@ fun AttachmentsSection(
                 Icon(Icons.Default.VideoLibrary, contentDescription = "Add video from gallery", tint = Paper.copy(alpha = 0.6f))
             }
         }
+        item {
+            Box(
+                Modifier
+                    .size(72.dp)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(Paper.copy(alpha = 0.08f))
+                    .clickable { storagePickerType = StorageItemType.VIDEO },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Folder, contentDescription = "Add video from storage", tint = Paper.copy(alpha = 0.6f))
+            }
+        }
     }
 
     Spacer(Modifier.height(18.dp))
@@ -371,16 +393,26 @@ fun AttachmentsSection(
                 }
             }
         }
-        OutlinedButton(
-            onClick = { documentPicker.launch(DOCUMENT_MIME_TYPES) },
-            modifier = Modifier.height(48.dp)
-        ) {
-            Icon(Icons.Default.UploadFile, contentDescription = null, tint = Paper.copy(alpha = 0.7f))
-            Spacer(Modifier.width(8.dp))
-            Text(
-                text = if (documents.isEmpty()) "ADD DOCUMENT" else "ADD ANOTHER DOCUMENT",
-                style = MaterialTheme.typography.bodyMedium
-            )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedButton(
+                onClick = { documentPicker.launch(DOCUMENT_MIME_TYPES) },
+                modifier = Modifier.height(48.dp)
+            ) {
+                Icon(Icons.Default.UploadFile, contentDescription = null, tint = Paper.copy(alpha = 0.7f))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = if (documents.isEmpty()) "ADD DOCUMENT" else "ADD ANOTHER",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            OutlinedButton(
+                onClick = { storagePickerType = StorageItemType.DOCUMENT },
+                modifier = Modifier.height(48.dp)
+            ) {
+                Icon(Icons.Default.Folder, contentDescription = null, tint = Paper.copy(alpha = 0.7f))
+                Spacer(Modifier.width(8.dp))
+                Text("FROM STORAGE", style = MaterialTheme.typography.bodyMedium)
+            }
         }
     }
 
@@ -540,10 +572,36 @@ fun AttachmentsSection(
             }
         )
     }
+
+    val pickerType = storagePickerType
+    if (pickerType != null) {
+        StoragePickerDialog(
+            items = storageItems,
+            typeFilter = pickerType,
+            onDismiss = { storagePickerType = null },
+            onConfirm = { picked ->
+                when (pickerType) {
+                    StorageItemType.IMAGE -> {
+                        val copied = picked.mapNotNull { MediaStorage.duplicateImage(context, it.path) }
+                        onImagesChange(images + copied)
+                    }
+                    StorageItemType.VIDEO -> {
+                        val copied = picked.mapNotNull { MediaStorage.duplicateVideo(context, it.path) }
+                        onVideosChange(videos + copied)
+                    }
+                    StorageItemType.DOCUMENT -> {
+                        val copied = picked.mapNotNull { MediaStorage.duplicateDocument(context, it.path) }
+                        onDocumentsChange(documents + copied)
+                    }
+                }
+                storagePickerType = null
+            }
+        )
+    }
 }
 
 @Composable
-private fun VideoViewerDialog(path: String, onDismiss: () -> Unit, onDelete: () -> Unit) {
+fun VideoViewerDialog(path: String, onDismiss: () -> Unit, onDelete: () -> Unit) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Box(
             Modifier
@@ -580,7 +638,7 @@ private fun VideoViewerDialog(path: String, onDismiss: () -> Unit, onDelete: () 
 
 @OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
-private fun ImageViewerDialog(
+fun ImageViewerDialog(
     images: List<String>,
     startIndex: Int,
     onDismiss: () -> Unit,

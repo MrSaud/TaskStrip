@@ -27,6 +27,8 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     private val taskDao = AppDatabase.getInstance(application).taskDao()
     private val credentialDao = AppDatabase.getInstance(application).credentialDao()
     private val noteDao = AppDatabase.getInstance(application).noteDao()
+    private val reminderDao = AppDatabase.getInstance(application).reminderDao()
+    private val storageItemDao = AppDatabase.getInstance(application).storageItemDao()
 
     private val _uiState = MutableStateFlow(BackupUiState())
     val uiState: StateFlow<BackupUiState> = _uiState.asStateFlow()
@@ -92,26 +94,37 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
         }
     }
 
+    /** Shared by [performBackup] and [backupThenSignOut] — uploads a fresh backup and reports
+     * success/failure into [_uiState], but leaves isBusy/refreshBackups to the caller since the
+     * two flows do different things after a successful upload. */
+    private suspend fun uploadBackup(account: GoogleSignInAccount): Boolean {
+        val context = getApplication<Application>()
+        val token = DriveAuthHelper.getAccessToken(context, account)
+        if (token == null) {
+            _uiState.value = _uiState.value.copy(errorMessage = "Couldn't reach Google Drive")
+            return false
+        }
+        val folderId = DriveApi.ensureBackupFolder(token)
+        if (folderId == null) {
+            _uiState.value = _uiState.value.copy(errorMessage = "Couldn't prepare the Drive backup folder")
+            return false
+        }
+        val passphrase = BackupPassphraseStore.get(context)
+        val zip = BackupHelper.createBackupZip(context, taskDao, credentialDao, noteDao, reminderDao, storageItemDao, passphrase)
+        val uploaded = DriveApi.uploadBackup(token, folderId, zip, BackupHelper.backupFileName())
+        zip.delete()
+        if (!uploaded) {
+            _uiState.value = _uiState.value.copy(errorMessage = "Backup upload failed")
+        }
+        return uploaded
+    }
+
     fun performBackup() {
         val account = _uiState.value.account ?: return
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(isBusy = true, busyMessage = "Backing up…", errorMessage = null, lastActionSucceeded = null)
-            val context = getApplication<Application>()
-            val token = DriveAuthHelper.getAccessToken(context, account)
-            if (token == null) {
-                _uiState.value = _uiState.value.copy(isBusy = false, errorMessage = "Couldn't reach Google Drive")
-                return@launch
-            }
-            val folderId = DriveApi.ensureBackupFolder(token)
-            if (folderId == null) {
-                _uiState.value = _uiState.value.copy(isBusy = false, errorMessage = "Couldn't prepare the Drive backup folder")
-                return@launch
-            }
-            val passphrase = BackupPassphraseStore.get(context)
-            val zip = BackupHelper.createBackupZip(context, taskDao, credentialDao, noteDao, passphrase)
-            val uploaded = DriveApi.uploadBackup(token, folderId, zip, BackupHelper.backupFileName())
-            zip.delete()
-            if (uploaded) {
+            if (uploadBackup(account)) {
+                val passphrase = BackupPassphraseStore.get(getApplication())
                 val note = if (credentialDao.getAllOnce().isNotEmpty() && passphrase == null) {
                     " (credential passwords skipped — set a backup passphrase to include them)"
                 } else {
@@ -120,7 +133,22 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
                 _uiState.value = _uiState.value.copy(isBusy = false, lastActionSucceeded = "Backup uploaded to Drive$note")
                 refreshBackups()
             } else {
-                _uiState.value = _uiState.value.copy(isBusy = false, errorMessage = "Backup upload failed")
+                _uiState.value = _uiState.value.copy(isBusy = false)
+            }
+        }
+    }
+
+    /** Backs up before signing out, so the user isn't left without a safety net if they don't
+     * sign back in on this device — only actually signs out once the upload succeeds; a failure
+     * leaves them signed in (with the error shown) so they can retry. */
+    fun backupThenSignOut() {
+        val account = _uiState.value.account ?: return
+        viewModelScope.launch {
+            _uiState.value = _uiState.value.copy(isBusy = true, busyMessage = "Backing up before sign out…", errorMessage = null, lastActionSucceeded = null)
+            if (uploadBackup(account)) {
+                signOut()
+            } else {
+                _uiState.value = _uiState.value.copy(isBusy = false)
             }
         }
     }
@@ -145,7 +173,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             }
             try {
                 val passphrase = restorePassphrase ?: BackupPassphraseStore.get(context)
-                val result = BackupHelper.restoreFromZip(context, zip, taskDao, credentialDao, noteDao, passphrase)
+                val result = BackupHelper.restoreFromZip(context, zip, taskDao, credentialDao, noteDao, reminderDao, storageItemDao, passphrase)
                 val message = if (result.credentialPasswordsFailed > 0) {
                     val restoredNote = if (result.credentialPasswordsRestored > 0) "${result.credentialPasswordsRestored} restored, " else ""
                     "Restored \"${file.name}\" — but $restoredNote${result.credentialPasswordsFailed} credential password(s) couldn't be decrypted (wrong or missing backup passphrase)"

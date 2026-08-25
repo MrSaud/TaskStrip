@@ -20,6 +20,7 @@ object NotificationHelper {
     const val DIGEST_CHANNEL_ID = "daily_digest"
     const val WEEKLY_DIGEST_CHANNEL_ID = "weekly_digest"
     const val FOLLOWUP_CHANNEL_ID = "follow_up"
+    const val GENERAL_REMINDER_CHANNEL_ID = "general_reminders"
     private const val BADGE_NOTIFICATION_ID = -1000
     private const val DIGEST_NOTIFICATION_ID = -3000
     private const val WEEKLY_DIGEST_NOTIFICATION_ID = -4000
@@ -65,12 +66,20 @@ object NotificationHelper {
             ).apply {
                 description = "Reminder to follow up on a strip you delegated"
             }
+            val generalReminderChannel = NotificationChannel(
+                GENERAL_REMINDER_CHANNEL_ID,
+                "Reminders",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Reminders you set directly, not tied to a strip"
+            }
             val manager = context.getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
             manager.createNotificationChannel(badgeChannel)
             manager.createNotificationChannel(digestChannel)
             manager.createNotificationChannel(weeklyDigestChannel)
             manager.createNotificationChannel(followUpChannel)
+            manager.createNotificationChannel(generalReminderChannel)
         }
     }
 
@@ -213,6 +222,36 @@ object NotificationHelper {
             .setContentIntent(pendingIntent)
             .build()
         NotificationManagerCompat.from(context).notify(BADGE_NOTIFICATION_ID, notification)
+    }
+
+    /** Shows a standalone reminder — one the user set directly, not tied to any strip. */
+    fun showReminder(context: Context, reminderId: Long, title: String, description: String) {
+        val hasPermission = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
+        if (!hasPermission) return
+
+        val openIntent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        val notificationId = (GeneralReminderScheduler.REQUEST_CODE_BASE + reminderId).toInt()
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            notificationId,
+            openIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        val notification = NotificationCompat.Builder(context, GENERAL_REMINDER_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_dialog_info)
+            .setContentTitle(title)
+            .setContentText(description.ifBlank { "Reminder" })
+            .apply { if (description.isNotBlank()) setStyle(NotificationCompat.BigTextStyle().bigText(description)) }
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+        NotificationManagerCompat.from(context).notify(notificationId, notification)
     }
 
     fun show(context: Context, taskId: Long, title: String, tags: String) {

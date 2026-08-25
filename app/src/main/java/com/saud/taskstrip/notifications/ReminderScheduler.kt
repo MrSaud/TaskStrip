@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import com.saud.taskstrip.data.TaskEntity
+import com.saud.taskstrip.ui.components.dueAtAsLocalInstant
 
 object ReminderScheduler {
     const val EXTRA_TASK_ID = "task_id"
@@ -35,7 +36,10 @@ object ReminderScheduler {
         val leadMinutes = task.reminderMinutesBefore
         if (task.isDone || task.isArchived || dueAt == null || leadMinutes == null) return
 
-        val triggerAt = dueAt - leadMinutes * 60_000L
+        // dueAt is stored/displayed as a UTC-treated wall-clock value (see the comment on
+        // dueAtAsLocalInstant) so it round-trips through the picker correctly — but AlarmManager
+        // needs a real instant, so re-anchor to the device's actual timezone before scheduling.
+        val triggerAt = dueAtAsLocalInstant(dueAt) - leadMinutes * 60_000L
         if (triggerAt <= System.currentTimeMillis()) return
 
         alarmManager.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)

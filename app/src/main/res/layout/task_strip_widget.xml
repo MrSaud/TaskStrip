@@ -233,4 +233,143 @@
             android:typeface="monospace" />
     </LinearLayout>
 
+    <ImageView
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="6dp"
+        android:layout_marginBottom="4dp"
+        android:background="#26F4EFE1" />
+
+    <TextView
+        android:id="@+id/widget_reminders_header"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="REMINDERS"
+        android:textColor="@color/widget_paper_faded"
+        android:textSize="11sp"
+        android:textStyle="bold"
+        android:typeface="monospace" />
+
+    <TextView
+        android:id="@+id/widget_reminders_empty_text"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:text="NO REMINDERS SET"
+        android:textColor="@color/widget_paper_faded"
+        android:textSize="12sp"
+        android:typeface="monospace"
+        android:visibility="gone" />
+
+    <LinearLayout
+        android:id="@+id/widget_reminder_row_1"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp">
+
+        <ImageView
+            android:id="@+id/widget_reminder_row_1_tag"
+            android:layout_width="4dp"
+            android:layout_height="18dp"
+            android:layout_marginEnd="10dp"
+            android:background="@color/widget_amber" />
+
+        <TextView
+            android:id="@+id/widget_reminder_row_1_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textColor="@color/widget_paper"
+            android:textSize="13sp"
+            android:typeface="monospace" />
+
+        <TextView
+            android:id="@+id/widget_reminder_row_1_due"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textColor="@color/widget_paper_faded"
+            android:textSize="11sp"
+            android:typeface="monospace" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_reminder_row_2"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp">
+
+        <ImageView
+            android:id="@+id/widget_reminder_row_2_tag"
+            android:layout_width="4dp"
+            android:layout_height="18dp"
+            android:layout_marginEnd="10dp"
+            android:background="@color/widget_amber" />
+
+        <TextView
+            android:id="@+id/widget_reminder_row_2_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textColor="@color/widget_paper"
+            android:textSize="13sp"
+            android:typeface="monospace" />
+
+        <TextView
+            android:id="@+id/widget_reminder_row_2_due"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textColor="@color/widget_paper_faded"
+            android:textSize="11sp"
+            android:typeface="monospace" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/widget_reminder_row_3"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp">
+
+        <ImageView
+            android:id="@+id/widget_reminder_row_3_tag"
+            android:layout_width="4dp"
+            android:layout_height="18dp"
+            android:layout_marginEnd="10dp"
+            android:background="@color/widget_amber" />
+
+        <TextView
+            android:id="@+id/widget_reminder_row_3_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:textColor="@color/widget_paper"
+            android:textSize="13sp"
+            android:typeface="monospace" />
+
+        <TextView
+            android:id="@+id/widget_reminder_row_3_due"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:textColor="@color/widget_paper_faded"
+            android:textSize="11sp"
+            android:typeface="monospace" />
+    </LinearLayout>
+
 </LinearLayout>

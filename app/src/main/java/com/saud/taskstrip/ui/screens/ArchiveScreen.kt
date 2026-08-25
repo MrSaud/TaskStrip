@@ -33,12 +33,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.saud.taskstrip.TaskViewModel
+import com.saud.taskstrip.data.TaskActionLogEntry
 import com.saud.taskstrip.ui.components.DateRange
 import com.saud.taskstrip.ui.components.DateRangeFilterDialog
 import com.saud.taskstrip.ui.components.FlightStripRow
 import com.saud.taskstrip.ui.theme.AmberTab
 import com.saud.taskstrip.ui.theme.BayBackground
-import com.saud.taskstrip.ui.theme.InkColor
 import com.saud.taskstrip.ui.theme.Paper
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -120,13 +120,16 @@ fun ArchiveScreen(
                             task = task,
                             completed = true,
                             onClick = { onTaskClick(task.id) },
+                            onQuickLog = { text ->
+                                viewModel.updateTask(task.copy(actionLog = task.actionLog + TaskActionLogEntry(text, System.currentTimeMillis())))
+                            },
                             onDelete = { viewModel.deleteTask(task) },
                             trailingActions = {
                                 IconButton(onClick = { viewModel.unarchiveTask(task) }) {
                                     Icon(
                                         Icons.Default.Unarchive,
                                         contentDescription = "Unarchive",
-                                        tint = InkColor.copy(alpha = 0.6f)
+                                        tint = Paper.copy(alpha = 0.6f)
                                     )
                                 }
                             }

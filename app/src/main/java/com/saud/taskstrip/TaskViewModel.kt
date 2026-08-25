@@ -42,7 +42,7 @@ class TaskViewModel(
             tasks.collect { list ->
                 val active = list.filter { !it.isDone }
                 NotificationHelper.updateBadge(getApplication(), active.size)
-                WidgetUpdater.updateAll(getApplication(), active)
+                WidgetUpdater.updateTasks(getApplication(), active)
             }
         }
         viewModelScope.launch {
