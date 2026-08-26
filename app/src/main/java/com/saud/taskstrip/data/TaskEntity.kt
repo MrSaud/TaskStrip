@@ -11,6 +11,9 @@ data class TaskEntity(
     // read or written by the UI.
     val route: String = "",
     val notes: String = "",
+    // Forces the NOTES field's layout direction regardless of the device locale — off (false)
+    // means left-to-right, matching every strip before this existed.
+    val notesRtl: Boolean = false,
     val priority: Priority = Priority.NORMAL,
     val dueAt: Long? = null,
     val orderIndex: Int,

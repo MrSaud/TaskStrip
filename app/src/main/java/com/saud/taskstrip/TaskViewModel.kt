@@ -100,12 +100,13 @@ class TaskViewModel(
         tags: List<String> = emptyList(),
         linkedSketchId: String? = null,
         actionLog: List<TaskActionLogEntry> = emptyList(),
-        links: List<TaskLink> = emptyList()
+        links: List<TaskLink> = emptyList(),
+        notesRtl: Boolean = false
     ) {
         viewModelScope.launch {
             val id = repository.addTask(
                 title, route, notes, priority, dueAt, progress, images, voiceNotes, documents, videos,
-                reminderMinutesBefore, repeatIntervalDays, contacts, tags, linkedSketchId, actionLog, links
+                reminderMinutesBefore, repeatIntervalDays, contacts, tags, linkedSketchId, actionLog, links, notesRtl
             )
             repository.getTask(id)?.let { ReminderScheduler.schedule(getApplication(), it) }
         }

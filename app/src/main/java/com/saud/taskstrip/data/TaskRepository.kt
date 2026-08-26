@@ -25,7 +25,8 @@ class TaskRepository(private val dao: TaskDao) {
         tags: List<String> = emptyList(),
         linkedSketchId: String? = null,
         actionLog: List<TaskActionLogEntry> = emptyList(),
-        links: List<TaskLink> = emptyList()
+        links: List<TaskLink> = emptyList(),
+        notesRtl: Boolean = false
     ): Long {
         val nextOrder = dao.maxOrderIndex() + 1
         return dao.insert(
@@ -33,6 +34,7 @@ class TaskRepository(private val dao: TaskDao) {
                 title = title,
                 route = route,
                 notes = notes,
+                notesRtl = notesRtl,
                 priority = priority,
                 dueAt = dueAt,
                 orderIndex = nextOrder,

@@ -41,6 +41,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.FormatTextdirectionLToR
+import androidx.compose.material.icons.automirrored.filled.FormatTextdirectionRToL
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddTask
 import androidx.compose.material.icons.filled.Block
@@ -96,7 +98,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -105,6 +109,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -160,6 +165,7 @@ private data class FormSnapshot(
     val title: String,
     val tags: List<String>,
     val notes: String,
+    val notesRtl: Boolean,
     val priority: Priority,
     val dueAt: Long?,
     val progress: Float,
@@ -202,6 +208,7 @@ fun AddEditTaskScreen(
     var tags by rememberSaveable { mutableStateOf<List<String>>(emptyList()) }
     var tagInput by rememberSaveable { mutableStateOf("") }
     var notes by rememberSaveable { mutableStateOf("") }
+    var notesRtl by rememberSaveable { mutableStateOf(false) }
     var priority by rememberSaveable { mutableStateOf(Priority.NORMAL) }
     var dueAt by rememberSaveable { mutableStateOf<Long?>(null) }
     var progress by rememberSaveable { mutableStateOf(0f) }
@@ -239,6 +246,7 @@ fun AddEditTaskScreen(
         title = title,
         tags = tags,
         notes = notes,
+        notesRtl = notesRtl,
         priority = priority,
         dueAt = dueAt,
         progress = progress,
@@ -286,6 +294,7 @@ fun AddEditTaskScreen(
                 title = t.title
                 tags = t.tags
                 notes = t.notes
+                notesRtl = t.notesRtl
                 priority = t.priority
                 dueAt = t.dueAt
                 progress = t.progress.toFloat()
@@ -356,6 +365,7 @@ fun AddEditTaskScreen(
             title = title.trim(),
             tags = tags,
             notes = notes.trim(),
+            notesRtl = notesRtl,
             priority = priority,
             dueAt = dueAt,
             progress = progress.roundToInt(),
@@ -380,6 +390,7 @@ fun AddEditTaskScreen(
                     title = title.trim(),
                     tags = tags,
                     notes = notes.trim(),
+                    notesRtl = notesRtl,
                     priority = priority,
                     dueAt = dueAt,
                     progress = progress.roundToInt(),
@@ -417,7 +428,8 @@ fun AddEditTaskScreen(
                 tags,
                 linkedSketchId,
                 actionLog,
-                links
+                links,
+                notesRtl
             )
         }
         return true
@@ -705,20 +717,32 @@ fun AddEditTaskScreen(
                 colors = SliderDefaults.colors(thumbColor = priority.tabColor(), activeTrackColor = priority.tabColor())
             )
             Spacer(Modifier.height(10.dp))
-            OutlinedTextField(
-                value = notes,
-                onValueChange = { notes = it },
-                label = { Text("NOTES") },
-                textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace),
-                trailingIcon = {
-                    IconButton(onClick = { showNotesEditor = true }) {
-                        Icon(Icons.Default.Fullscreen, contentDescription = "Expand notes")
-                    }
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(120.dp)
-            )
+            CompositionLocalProvider(
+                LocalLayoutDirection provides if (notesRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
+            ) {
+                OutlinedTextField(
+                    value = notes,
+                    onValueChange = { notes = it },
+                    label = { Text("NOTES") },
+                    textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace),
+                    leadingIcon = {
+                        IconButton(onClick = { notesRtl = !notesRtl }) {
+                            Icon(
+                                imageVector = if (notesRtl) Icons.AutoMirrored.Filled.FormatTextdirectionRToL else Icons.AutoMirrored.Filled.FormatTextdirectionLToR,
+                                contentDescription = if (notesRtl) "Switch notes to left-to-right" else "Switch notes to right-to-left"
+                            )
+                        }
+                    },
+                    trailingIcon = {
+                        IconButton(onClick = { showNotesEditor = true }) {
+                            Icon(Icons.Default.Fullscreen, contentDescription = "Expand notes")
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(120.dp)
+                )
+            }
             Spacer(Modifier.height(18.dp))
             ActionLogSection(
                 actionLog = actionLog,
@@ -837,6 +861,8 @@ fun AddEditTaskScreen(
         NotesEditorDialog(
             notes = notes,
             onNotesChange = { notes = it },
+            notesRtl = notesRtl,
+            onNotesRtlChange = { notesRtl = it },
             onDismiss = { showNotesEditor = false }
         )
     }
@@ -902,6 +928,8 @@ private fun toggleChecklistLine(notes: String, lineIndex: Int): String {
 private fun NotesEditorDialog(
     notes: String,
     onNotesChange: (String) -> Unit,
+    notesRtl: Boolean,
+    onNotesRtlChange: (Boolean) -> Unit,
     onDismiss: () -> Unit
 ) {
     var checklistViewMode by rememberSaveable { mutableStateOf(false) }
@@ -973,65 +1001,76 @@ private fun NotesEditorDialog(
                         tint = Paper
                     )
                 }
+                IconButton(onClick = { onNotesRtlChange(!notesRtl) }) {
+                    Icon(
+                        imageVector = if (notesRtl) Icons.AutoMirrored.Filled.FormatTextdirectionRToL else Icons.AutoMirrored.Filled.FormatTextdirectionLToR,
+                        contentDescription = if (notesRtl) "Switch notes to left-to-right" else "Switch notes to right-to-left",
+                        tint = Paper
+                    )
+                }
             }
-            if (checklistViewMode) {
-                Column(
-                    Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    notes.split("\n").forEachIndexed { index, line ->
-                        val match = checklistLineRegex.find(line)
-                        if (match != null) {
-                            val isChecked = match.groupValues[1] != " "
-                            val content = match.groupValues[2]
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { onNotesChange(toggleChecklistLine(notes, index)) }
-                            ) {
-                                Checkbox(
-                                    checked = isChecked,
-                                    onCheckedChange = { onNotesChange(toggleChecklistLine(notes, index)) },
-                                    colors = CheckboxDefaults.colors(checkedColor = AmberTab, uncheckedColor = Paper.copy(alpha = 0.6f))
-                                )
+            CompositionLocalProvider(
+                LocalLayoutDirection provides if (notesRtl) LayoutDirection.Rtl else LayoutDirection.Ltr
+            ) {
+                if (checklistViewMode) {
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .verticalScroll(rememberScrollState())
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                    ) {
+                        notes.split("\n").forEachIndexed { index, line ->
+                            val match = checklistLineRegex.find(line)
+                            if (match != null) {
+                                val isChecked = match.groupValues[1] != " "
+                                val content = match.groupValues[2]
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onNotesChange(toggleChecklistLine(notes, index)) }
+                                ) {
+                                    Checkbox(
+                                        checked = isChecked,
+                                        onCheckedChange = { onNotesChange(toggleChecklistLine(notes, index)) },
+                                        colors = CheckboxDefaults.colors(checkedColor = AmberTab, uncheckedColor = Paper.copy(alpha = 0.6f))
+                                    )
+                                    Text(
+                                        text = content,
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                            textDecoration = if (isChecked) TextDecoration.LineThrough else null
+                                        ),
+                                        color = if (isChecked) Paper.copy(alpha = 0.45f) else Paper
+                                    )
+                                }
+                            } else if (line.isNotBlank()) {
                                 Text(
-                                    text = content,
-                                    style = MaterialTheme.typography.bodyLarge.copy(
-                                        fontFamily = FontFamily.Monospace,
-                                        textDecoration = if (isChecked) TextDecoration.LineThrough else null
-                                    ),
-                                    color = if (isChecked) Paper.copy(alpha = 0.45f) else Paper
+                                    text = line,
+                                    style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
+                                    color = Paper,
+                                    modifier = Modifier.padding(vertical = 12.dp, horizontal = 12.dp)
                                 )
                             }
-                        } else if (line.isNotBlank()) {
-                            Text(
-                                text = line,
-                                style = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
-                                color = Paper,
-                                modifier = Modifier.padding(vertical = 12.dp, horizontal = 12.dp)
-                            )
                         }
                     }
+                } else {
+                    OutlinedTextField(
+                        value = fieldValue,
+                        onValueChange = { newValue ->
+                            fieldValue = newValue
+                            onNotesChange(newValue.text)
+                        },
+                        placeholder = { Text("Tip: start a line with [ ] to make it a checklist item") },
+                        textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .padding(horizontal = 16.dp, vertical = 8.dp)
+                            .focusRequester(focusRequester)
+                    )
                 }
-            } else {
-                OutlinedTextField(
-                    value = fieldValue,
-                    onValueChange = { newValue ->
-                        fieldValue = newValue
-                        onNotesChange(newValue.text)
-                    },
-                    placeholder = { Text("Tip: start a line with [ ] to make it a checklist item") },
-                    textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                        .focusRequester(focusRequester)
-                )
             }
         }
     }

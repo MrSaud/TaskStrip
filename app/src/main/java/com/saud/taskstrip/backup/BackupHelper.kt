@@ -68,6 +68,7 @@ object BackupHelper {
             obj.put("title", t.title)
             obj.put("route", t.route)
             obj.put("notes", t.notes)
+            obj.put("notesRtl", t.notesRtl)
             obj.put("priority", t.priority.name)
             obj.put("dueAt", t.dueAt ?: JSONObject.NULL)
             obj.put("orderIndex", t.orderIndex)
@@ -283,6 +284,7 @@ object BackupHelper {
                 title = obj.getString("title"),
                 route = obj.getString("route"),
                 notes = obj.getString("notes"),
+                notesRtl = obj.optBoolean("notesRtl", false),
                 priority = Priority.valueOf(obj.getString("priority")),
                 dueAt = if (obj.isNull("dueAt")) null else obj.getLong("dueAt"),
                 orderIndex = obj.getInt("orderIndex"),
