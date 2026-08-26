@@ -25,9 +25,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.relocation.BringIntoViewRequester
@@ -427,6 +430,9 @@ fun AddEditTaskScreen(
     BackHandler(onBack = ::handleBack)
 
     Scaffold(
+        // Shrinks the whole form (fixed save/delete bar included) by the keyboard's height, so a
+        // field low in the scroll — NOTES especially — isn't left sitting behind it.
+        modifier = Modifier.imePadding(),
         containerColor = BayBackground,
         topBar = {
             TopAppBar(
@@ -922,12 +928,18 @@ private fun NotesEditorDialog(
         }
     }
 
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    // decorFitsSystemWindows = false is what makes WindowInsets.ime report a real height in
+    // here: with the default (true) the dialog window neither resizes for the keyboard nor
+    // surfaces its inset, so the field kept full-screen height and the cursor sat behind it.
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
+    ) {
         Column(
             Modifier
                 .fillMaxSize()
                 .background(BayBackground)
-                .windowInsetsPadding(WindowInsets.systemBars)
+                .windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.ime))
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
