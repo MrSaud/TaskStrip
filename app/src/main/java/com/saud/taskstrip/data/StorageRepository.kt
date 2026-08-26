@@ -11,5 +11,8 @@ class StorageRepository(private val dao: StorageItemDao) {
         return entity.copy(id = id)
     }
 
+    suspend fun setTag(item: StorageItemEntity, tag: String, tagEmoji: String) =
+        dao.update(item.copy(tag = tag, tagEmoji = tagEmoji))
+
     suspend fun delete(item: StorageItemEntity) = dao.delete(item)
 }

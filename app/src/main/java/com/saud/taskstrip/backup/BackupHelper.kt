@@ -171,6 +171,8 @@ object BackupHelper {
             obj.put("type", s.type)
             obj.put("mimeType", s.mimeType)
             obj.put("sizeBytes", s.sizeBytes)
+            obj.put("tag", s.tag)
+            obj.put("tagEmoji", s.tagEmoji)
             obj.put("createdAt", s.createdAt)
             storageItemsJson.put(obj)
         }
@@ -398,6 +400,8 @@ object BackupHelper {
                 type = obj.getString("type"),
                 mimeType = obj.optString("mimeType"),
                 sizeBytes = obj.optLong("sizeBytes"),
+                tag = obj.optString("tag"),
+                tagEmoji = obj.optString("tagEmoji"),
                 createdAt = obj.getLong("createdAt")
             )
         }

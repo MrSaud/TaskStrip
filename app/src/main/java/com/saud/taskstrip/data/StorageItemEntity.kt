@@ -23,5 +23,11 @@ data class StorageItemEntity(
     val type: String,
     val mimeType: String = "",
     val sizeBytes: Long = 0,
+    // Free-text category (e.g. "Invoice", "Contract", "Manual") used to filter the documents
+    // list — blank means untagged. Deliberately not a fixed set, matching ReminderEntity.tag.
+    val tag: String = "",
+    // A large emoji shown beside the file name to make its tag recognisable at a glance, kept
+    // independent of `tag` itself exactly as ReminderEntity.tagEmoji is.
+    val tagEmoji: String = "",
     val createdAt: Long = System.currentTimeMillis()
 )

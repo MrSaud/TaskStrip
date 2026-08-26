@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.Query
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -19,6 +20,9 @@ interface StorageItemDao {
 
     @Insert
     suspend fun insertAll(items: List<StorageItemEntity>)
+
+    @Update
+    suspend fun update(item: StorageItemEntity)
 
     @Delete
     suspend fun delete(item: StorageItemEntity)

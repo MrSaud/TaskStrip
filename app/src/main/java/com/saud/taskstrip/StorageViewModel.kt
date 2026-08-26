@@ -43,6 +43,11 @@ class StorageViewModel(
         }
     }
 
+    /** Assigns (or with blank values clears) the tag used to group and filter documents. */
+    fun setTag(item: StorageItemEntity, tag: String, tagEmoji: String) {
+        viewModelScope.launch { repository.setTag(item, tag.trim(), tagEmoji.trim()) }
+    }
+
     fun delete(item: StorageItemEntity) {
         viewModelScope.launch {
             if (item.type == StorageItemType.DOCUMENT) {
