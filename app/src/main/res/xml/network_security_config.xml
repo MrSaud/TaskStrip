@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Only exists to permit the clipboard desktop-sync feature's plain HTTP POST to a LAN listener
+     (see macos/PROTOCOL.md) — Android blocks cleartext traffic by default from API 28 up. TLS
+     buys nothing there since the body is already AES-GCM encrypted end to end and the destination
+     is a device-local IP discovered fresh each send, not a fixed public host worth pinning. -->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

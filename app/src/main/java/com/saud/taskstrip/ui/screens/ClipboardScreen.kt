@@ -1,6 +1,11 @@
 package com.saud.taskstrip.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +29,7 @@ import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Laptop
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.SyncDisabled
@@ -36,11 +42,14 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -51,8 +60,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.saud.taskstrip.ClipboardViewModel
 import com.saud.taskstrip.data.ClipboardEntity
@@ -62,8 +73,10 @@ import com.saud.taskstrip.ui.theme.BaySurface
 import com.saud.taskstrip.ui.theme.Paper
 import com.saud.taskstrip.ui.theme.PriorityUrgent
 
-// Snippets parked for reuse. Everything here stays on the device — the sync toggle on each row
-// only records intent for the desktop transport that comes later, it doesn't send anything yet.
+// Snippets parked for reuse, and optionally pushed live to a Mac running the reference listener
+// in macos/ (see macos/PROTOCOL.md) — the per-row sync toggle marks an item local-only (e.g. one
+// holding a password), the top-bar laptop icon turns the whole feature on and sets the pairing
+// code both ends must share.
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ClipboardScreen(
@@ -76,6 +89,15 @@ fun ClipboardScreen(
     var editTarget by remember { mutableStateOf<ClipboardEntity?>(null) }
     var pendingDelete by remember { mutableStateOf<ClipboardEntity?>(null) }
     var confirmClear by remember { mutableStateOf(false) }
+    var showSyncSettings by remember { mutableStateOf(false) }
+
+    val syncMessage by viewModel.syncMessage.collectAsStateWithLifecycle()
+    LaunchedEffect(syncMessage) {
+        syncMessage?.let {
+            Toast.makeText(context, it, Toast.LENGTH_SHORT).show()
+            viewModel.dismissSyncMessage()
+        }
+    }
 
     Scaffold(
         modifier = Modifier.imePadding(),
@@ -89,6 +111,13 @@ fun ClipboardScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { showSyncSettings = true }) {
+                        Icon(
+                            Icons.Default.Laptop,
+                            contentDescription = "Desktop sync settings",
+                            tint = if (viewModel.syncEnabled) AmberTab else Paper
+                        )
+                    }
                     if (items.any { !it.isPinned }) {
                         IconButton(onClick = { confirmClear = true }) {
                             Icon(Icons.Default.DeleteSweep, contentDescription = "Clear unpinned", tint = Paper)
@@ -195,6 +224,93 @@ fun ClipboardScreen(
             dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("CANCEL") } }
         )
     }
+
+    if (showSyncSettings) {
+        DesktopSyncDialog(
+            viewModel = viewModel,
+            onDismiss = { showSyncSettings = false }
+        )
+    }
+}
+
+@Composable
+private fun DesktopSyncDialog(
+    viewModel: ClipboardViewModel,
+    onDismiss: () -> Unit
+) {
+    val context = LocalContext.current
+    var enabled by remember { mutableStateOf(viewModel.syncEnabled) }
+    var pairingCode by rememberSaveable { mutableStateOf("") }
+
+    // Wi-Fi service discovery (NsdManager) needs this on Android 13+ — requested here, right
+    // when the person is turning sync on, rather than buried in a manifest they never see.
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted -> enabled = granted }
+
+    fun onToggle(checked: Boolean) {
+        if (!checked) {
+            enabled = false
+            return
+        }
+        val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.NEARBY_WIFI_DEVICES) !=
+            PackageManager.PERMISSION_GRANTED
+        if (needsPermission) {
+            permissionLauncher.launch(Manifest.permission.NEARBY_WIFI_DEVICES)
+        } else {
+            enabled = true
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("DESKTOP SYNC", style = MaterialTheme.typography.titleMedium) },
+        text = {
+            Column {
+                Text(
+                    text = "Pushes new snippets to a Mac running the listener script in this " +
+                        "project's macos/ folder. Both ends need the same pairing code.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Paper.copy(alpha = 0.7f)
+                )
+                Spacer(Modifier.height(14.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    Text("SYNC ENABLED", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    Switch(
+                        checked = enabled,
+                        onCheckedChange = ::onToggle,
+                        colors = SwitchDefaults.colors(checkedThumbColor = AmberTab, checkedTrackColor = AmberTab.copy(alpha = 0.5f))
+                    )
+                }
+                if (viewModel.pairingCodeSet) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        text = "Pairing code is set. Enter a new one below to change it.",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Paper.copy(alpha = 0.5f)
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = pairingCode,
+                    onValueChange = { pairingCode = it },
+                    label = { Text(if (viewModel.pairingCodeSet) "NEW PAIRING CODE" else "PAIRING CODE") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                viewModel.setSyncSettings(enabled, pairingCode)
+                onDismiss()
+            }) { Text("SAVE", color = AmberTab) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("CANCEL") } }
+    )
 }
 
 @Composable
