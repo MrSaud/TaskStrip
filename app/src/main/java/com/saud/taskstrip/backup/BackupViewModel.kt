@@ -29,7 +29,6 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
     private val noteDao = AppDatabase.getInstance(application).noteDao()
     private val reminderDao = AppDatabase.getInstance(application).reminderDao()
     private val storageItemDao = AppDatabase.getInstance(application).storageItemDao()
-    private val clipboardDao = AppDatabase.getInstance(application).clipboardDao()
 
     private val _uiState = MutableStateFlow(BackupUiState())
     val uiState: StateFlow<BackupUiState> = _uiState.asStateFlow()
@@ -111,7 +110,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             return false
         }
         val passphrase = BackupPassphraseStore.get(context)
-        val zip = BackupHelper.createBackupZip(context, taskDao, credentialDao, noteDao, reminderDao, storageItemDao, clipboardDao, passphrase)
+        val zip = BackupHelper.createBackupZip(context, taskDao, credentialDao, noteDao, reminderDao, storageItemDao, passphrase)
         val uploaded = DriveApi.uploadBackup(token, folderId, zip, BackupHelper.backupFileName())
         zip.delete()
         if (!uploaded) {
@@ -174,7 +173,7 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
             }
             try {
                 val passphrase = restorePassphrase ?: BackupPassphraseStore.get(context)
-                val result = BackupHelper.restoreFromZip(context, zip, taskDao, credentialDao, noteDao, reminderDao, storageItemDao, clipboardDao, passphrase)
+                val result = BackupHelper.restoreFromZip(context, zip, taskDao, credentialDao, noteDao, reminderDao, storageItemDao, passphrase)
                 val message = if (result.credentialPasswordsFailed > 0) {
                     val restoredNote = if (result.credentialPasswordsRestored > 0) "${result.credentialPasswordsRestored} restored, " else ""
                     "Restored \"${file.name}\" — but $restoredNote${result.credentialPasswordsFailed} credential password(s) couldn't be decrypted (wrong or missing backup passphrase)"

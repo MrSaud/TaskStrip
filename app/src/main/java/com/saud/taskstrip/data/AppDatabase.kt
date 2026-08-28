@@ -176,9 +176,18 @@ val MIGRATION_21_22 = object : Migration(21, 22) {
     }
 }
 
+// The Clipboard feature (and its clipboard_items table from MIGRATION_21_22) was removed —
+// this only drops the table for any device that already reached v22, rather than falling back
+// to a destructive migration that would wipe everything else too.
+val MIGRATION_22_23 = object : Migration(22, 23) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("DROP TABLE IF EXISTS clipboard_items")
+    }
+}
+
 @Database(
-    entities = [TaskEntity::class, CredentialEntity::class, NoteEntity::class, ReminderEntity::class, StorageItemEntity::class, ClipboardEntity::class],
-    version = 22,
+    entities = [TaskEntity::class, CredentialEntity::class, NoteEntity::class, ReminderEntity::class, StorageItemEntity::class],
+    version = 23,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -188,7 +197,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
     abstract fun reminderDao(): ReminderDao
     abstract fun storageItemDao(): StorageItemDao
-    abstract fun clipboardDao(): ClipboardDao
 
     companion object {
         @Volatile
@@ -201,7 +209,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "taskstrip.db"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23)
                     // Only reached for version jumps with no real user data behind them
                     // (e.g. a stale pre-v3 dev install) — every jump from here on gets a
                     // real Migration above instead, so saved tasks are never silently wiped.

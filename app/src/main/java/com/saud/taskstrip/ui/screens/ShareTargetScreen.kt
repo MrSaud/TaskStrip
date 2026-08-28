@@ -16,12 +16,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -41,7 +39,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.saud.taskstrip.ClipboardViewModel
 import com.saud.taskstrip.TaskViewModel
 import com.saud.taskstrip.data.TaskContact
 import com.saud.taskstrip.ui.theme.AmberTab
@@ -56,7 +53,6 @@ import com.saud.taskstrip.voice.VoiceDraft
 fun ShareTargetScreen(
     content: VoiceDraft,
     viewModel: TaskViewModel,
-    clipboardViewModel: ClipboardViewModel,
     onCreateNew: (VoiceDraft) -> Unit,
     onDone: () -> Unit
 ) {
@@ -125,24 +121,6 @@ fun ShareTargetScreen(
                         style = MaterialTheme.typography.titleMedium,
                         color = InkColor
                     )
-                }
-            }
-
-            val isPlainTextShare = content.contactEmail == null && content.contactPhone == null
-            if (isPlainTextShare) {
-                Spacer(Modifier.height(10.dp))
-                OutlinedButton(
-                    onClick = {
-                        val text = content.notes.ifBlank { content.title }
-                        val label = if (content.notes.isNotBlank()) content.title else ""
-                        clipboardViewModel.add(text, label)
-                        onDone()
-                    },
-                    modifier = Modifier.fillMaxWidth().height(52.dp)
-                ) {
-                    Icon(Icons.Default.ContentPaste, contentDescription = null, tint = Paper.copy(alpha = 0.8f))
-                    Spacer(Modifier.width(8.dp))
-                    Text("SAVE TO CLIPBOARD", style = MaterialTheme.typography.titleMedium, color = Paper)
                 }
             }
 

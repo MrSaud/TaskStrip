@@ -1,8 +1,6 @@
 package com.saud.taskstrip.backup
 
 import android.content.Context
-import com.saud.taskstrip.data.ClipboardDao
-import com.saud.taskstrip.data.ClipboardEntity
 import com.saud.taskstrip.data.CredentialDao
 import com.saud.taskstrip.data.CredentialEntity
 import com.saud.taskstrip.data.NoteDao
@@ -50,7 +48,6 @@ object BackupHelper {
         noteDao: NoteDao,
         reminderDao: ReminderDao,
         storageItemDao: StorageItemDao,
-        clipboardDao: ClipboardDao,
         backupPassphrase: String?
     ): File {
         val tasks = taskDao.getAllOnce()
@@ -58,7 +55,6 @@ object BackupHelper {
         val notes = noteDao.getAllOnce()
         val reminders = reminderDao.getAllOnce()
         val storageItems = storageItemDao.getAllOnce()
-        val clipboardItems = clipboardDao.getAllOnce()
         val filesRoot = context.filesDir.absolutePath
 
         fun relative(path: String): String? {
@@ -182,19 +178,6 @@ object BackupHelper {
             storageItemsJson.put(obj)
         }
 
-        val clipboardJson = JSONArray()
-        clipboardItems.forEach { c ->
-            clipboardJson.put(
-                JSONObject().apply {
-                    put("text", c.text)
-                    put("label", c.label)
-                    put("isPinned", c.isPinned)
-                    put("isSyncable", c.isSyncable)
-                    put("createdAt", c.createdAt)
-                }
-            )
-        }
-
         val manifest = JSONObject().apply {
             put("version", 1)
             put("tasks", tasksJson)
@@ -202,7 +185,6 @@ object BackupHelper {
             put("notes", notesJson)
             put("reminders", remindersJson)
             put("storageItems", storageItemsJson)
-            put("clipboardItems", clipboardJson)
         }
 
         val zipFile = File(context.cacheDir, "backup_${UUID.randomUUID()}.zip")
@@ -256,7 +238,6 @@ object BackupHelper {
         noteDao: NoteDao,
         reminderDao: ReminderDao,
         storageItemDao: StorageItemDao,
-        clipboardDao: ClipboardDao,
         restorePassphrase: String?
     ): RestoreResult {
         val filesRoot = context.filesDir
@@ -285,7 +266,6 @@ object BackupHelper {
         noteDao.deleteAll()
         reminderDao.deleteAll()
         storageItemDao.deleteAll()
-        clipboardDao.deleteAll()
 
         val tasksJson = data.getJSONArray("tasks")
         // Index (within tasksJson) of the strip each restored task is blocked by, if any — see
@@ -428,21 +408,6 @@ object BackupHelper {
             )
         }
         storageItemDao.insertAll(restoredStorageItems)
-
-        // optJSONArray keeps a backup written before clipboard existed restoring cleanly, as an
-        // empty list rather than a failure.
-        val clipboardJsonIn = data.optJSONArray("clipboardItems") ?: JSONArray()
-        val restoredClipboard = (0 until clipboardJsonIn.length()).map { i ->
-            val obj = clipboardJsonIn.getJSONObject(i)
-            ClipboardEntity(
-                text = obj.getString("text"),
-                label = obj.optString("label"),
-                isPinned = obj.optBoolean("isPinned"),
-                isSyncable = obj.optBoolean("isSyncable", true),
-                createdAt = obj.getLong("createdAt")
-            )
-        }
-        clipboardDao.insertAll(restoredClipboard)
 
         taskDao.getAllOnce().forEach { task ->
             if (task.dueAt != null) ReminderScheduler.schedule(context, task)

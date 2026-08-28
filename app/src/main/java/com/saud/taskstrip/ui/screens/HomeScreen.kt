@@ -32,7 +32,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Archive
-import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
@@ -136,8 +135,7 @@ fun HomeScreen(
     onRemindersClick: () -> Unit,
     onNewReminderClick: () -> Unit,
     onNewReminderByVoice: (String) -> Unit,
-    onStorageClick: () -> Unit,
-    onClipboardClick: () -> Unit
+    onStorageClick: () -> Unit
 ) {
     val tasks by viewModel.tasks.collectAsStateWithLifecycle()
     val quote by viewModel.quote.collectAsStateWithLifecycle()
@@ -420,14 +418,6 @@ fun HomeScreen(
                                 onClick = {
                                     menuExpanded = false
                                     onStorageClick()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("CLIPBOARD") },
-                                leadingIcon = { Icon(Icons.Default.ContentPaste, contentDescription = null) },
-                                onClick = {
-                                    menuExpanded = false
-                                    onClipboardClick()
                                 }
                             )
                             DropdownMenuItem(
