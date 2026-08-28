@@ -9,3 +9,7 @@
 .cxx
 local.properties
 app/build/
+
+# Python bytecode from the macos/ listener
+__pycache__/
+*.pyc
