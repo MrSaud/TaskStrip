@@ -6,9 +6,11 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -111,27 +113,29 @@ fun StorageScreen(
 ) {
     val context = LocalContext.current
     val items by viewModel.items.collectAsStateWithLifecycle()
-    val images = remember(items) { items.filter { it.type == StorageItemType.IMAGE } }
-    val videos = remember(items) { items.filter { it.type == StorageItemType.VIDEO } }
-    val allDocuments = remember(items) { items.filter { it.type == StorageItemType.DOCUMENT } }
-
     var tagFilter by rememberSaveable { mutableStateOf<String?>(null) }
     var tagMenuExpanded by remember { mutableStateOf(false) }
     var tagEditTarget by remember { mutableStateOf<StorageItemEntity?>(null) }
 
-    // Tag -> emoji for the filter menu's labels; the last document using a tag wins if two that
-    // share a name were given different emoji (same rule RemindersScreen applies).
-    val documentTagEmojis = remember(allDocuments) {
-        allDocuments.filter { it.tag.isNotBlank() }.associate { it.tag to it.tagEmoji }
+    // Tag -> emoji for the filter menu's labels; the last item using a tag wins if two that share
+    // a name were given different emoji (same rule RemindersScreen applies).
+    val tagEmojis = remember(items) {
+        items.filter { it.tag.isNotBlank() }.associate { it.tag to it.tagEmoji }
     }
-    val availableTags = remember(documentTagEmojis) { documentTagEmojis.keys.sorted() }
-    // A tag whose last document was deleted or retagged stops applying, rather than leaving the
-    // list filtered down to nothing. Derived, not assigned back to tagFilter, so composition
-    // never writes state it is also reading.
+    val availableTags = remember(tagEmojis) { tagEmojis.keys.sorted() }
+    // A tag whose last item was deleted or retagged stops applying, rather than leaving the page
+    // filtered down to nothing. Derived, not assigned back to tagFilter, so composition never
+    // writes state it is also reading.
     val activeTag = tagFilter?.takeIf { it in availableTags }
-    val documents = remember(allDocuments, activeTag) {
-        activeTag?.let { t -> allDocuments.filter { it.tag == t } } ?: allDocuments
+    // One filter for the whole library: three separate dropdowns would be more chrome than the
+    // page can carry, and "show me everything tagged Trip" is the question actually being asked.
+    val visible = remember(items, activeTag) {
+        activeTag?.let { t -> items.filter { it.tag == t } } ?: items
     }
+    val images = remember(visible) { visible.filter { it.type == StorageItemType.IMAGE } }
+    val videos = remember(visible) { visible.filter { it.type == StorageItemType.VIDEO } }
+    val documents = remember(visible) { visible.filter { it.type == StorageItemType.DOCUMENT } }
+    val allDocuments = remember(items) { items.filter { it.type == StorageItemType.DOCUMENT } }
 
     var imageViewerIndex by remember { mutableStateOf<Int?>(null) }
     var videoViewerPath by remember { mutableStateOf<String?>(null) }
@@ -163,6 +167,41 @@ fun StorageScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Paper)
                     }
                 },
+                actions = {
+                    if (availableTags.isNotEmpty()) {
+                        IconButton(onClick = { tagMenuExpanded = true }) {
+                            Icon(
+                                Icons.Default.Label,
+                                contentDescription = "Filter by tag",
+                                tint = if (activeTag != null) AmberTab else Paper
+                            )
+                        }
+                        DropdownMenu(expanded = tagMenuExpanded, onDismissRequest = { tagMenuExpanded = false }) {
+                            DropdownMenuItem(
+                                text = { Text("ALL") },
+                                trailingIcon = {
+                                    if (activeTag == null) Icon(Icons.Default.Check, contentDescription = null, tint = AmberTab)
+                                },
+                                onClick = {
+                                    tagFilter = null
+                                    tagMenuExpanded = false
+                                }
+                            )
+                            availableTags.forEach { tag ->
+                                DropdownMenuItem(
+                                    text = { Text("${tagEmojis[tag].orEmpty()} ${tag.uppercase()}".trim()) },
+                                    trailingIcon = {
+                                        if (activeTag == tag) Icon(Icons.Default.Check, contentDescription = null, tint = AmberTab)
+                                    },
+                                    onClick = {
+                                        tagFilter = tag
+                                        tagMenuExpanded = false
+                                    }
+                                )
+                            }
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = BayBackground)
             )
         }
@@ -176,7 +215,7 @@ fun StorageScreen(
         ) {
             Text(
                 text = "Share a file to Task Strips from any app, or add one below — pick it from " +
-                    "here later when a strip needs it.",
+                    "here later when a strip needs it. Long-press a photo or video to tag it.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = Paper.copy(alpha = 0.6f)
             )
@@ -187,7 +226,10 @@ fun StorageScreen(
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 images.forEachIndexed { index, item ->
                     StorageTile(
+                        tag = item.tag,
+                        tagEmoji = item.tagEmoji,
                         onClick = { imageViewerIndex = index },
+                        onLongClick = { tagEditTarget = item },
                         onRemove = { pendingDelete = item }
                     ) {
                         AsyncImage(
@@ -217,7 +259,10 @@ fun StorageScreen(
                 videos.forEach { item ->
                     val thumb = remember(item.path) { VideoThumbnail.getFrame(item.path)?.asImageBitmap() }
                     StorageTile(
+                        tag = item.tag,
+                        tagEmoji = item.tagEmoji,
                         onClick = { videoViewerPath = item.path },
+                        onLongClick = { tagEditTarget = item },
                         onRemove = { pendingDelete = item }
                     ) {
                         Box(
@@ -244,51 +289,7 @@ fun StorageScreen(
             }
 
             Spacer(Modifier.height(20.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                Text("DOCUMENTS", style = MaterialTheme.typography.labelSmall, color = Paper.copy(alpha = 0.7f))
-                if (activeTag != null) {
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        text = "${documentTagEmojis[activeTag].orEmpty()} ${activeTag.uppercase()}".trim(),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = AmberTab
-                    )
-                }
-                Spacer(Modifier.weight(1f))
-                if (availableTags.isNotEmpty()) {
-                    IconButton(onClick = { tagMenuExpanded = true }) {
-                        Icon(
-                            Icons.Default.Label,
-                            contentDescription = "Filter documents by tag",
-                            tint = if (activeTag != null) AmberTab else Paper
-                        )
-                    }
-                    DropdownMenu(expanded = tagMenuExpanded, onDismissRequest = { tagMenuExpanded = false }) {
-                        DropdownMenuItem(
-                            text = { Text("ALL") },
-                            trailingIcon = {
-                                if (activeTag == null) Icon(Icons.Default.Check, contentDescription = null, tint = AmberTab)
-                            },
-                            onClick = {
-                                tagFilter = null
-                                tagMenuExpanded = false
-                            }
-                        )
-                        availableTags.forEach { tag ->
-                            DropdownMenuItem(
-                                text = { Text("${documentTagEmojis[tag].orEmpty()} ${tag.uppercase()}".trim()) },
-                                trailingIcon = {
-                                    if (activeTag == tag) Icon(Icons.Default.Check, contentDescription = null, tint = AmberTab)
-                                },
-                                onClick = {
-                                    tagFilter = tag
-                                    tagMenuExpanded = false
-                                }
-                            )
-                        }
-                    }
-                }
-            }
+            Text("DOCUMENTS", style = MaterialTheme.typography.labelSmall, color = Paper.copy(alpha = 0.7f))
             Spacer(Modifier.height(6.dp))
             Column {
                 documents.forEach { item ->
@@ -412,7 +413,7 @@ fun StorageScreen(
     }
 }
 
-/** Assigns a document's tag and emoji. Clearing both fields (or CLEAR) makes it untagged again,
+/** Assigns an item's tag and emoji. Clearing both fields (or CLEAR) makes it untagged again,
  * which also drops the tag from the filter menu once no document still uses it. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -426,7 +427,7 @@ private fun StorageTagDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("TAG DOCUMENT", style = MaterialTheme.typography.titleMedium) },
+        title = { Text("TAG ITEM", style = MaterialTheme.typography.titleMedium) },
         text = {
             Column {
                 Text(
@@ -481,15 +482,48 @@ private fun StorageTagDialog(
     )
 }
 
+/** A 72dp tile has no room for a tag label, so tagging hides behind a long-press and shows as a
+ * badge: the emoji when there is one, otherwise a small amber marker so a tag with no emoji still
+ * reads as tagged. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun StorageTile(
+    tag: String,
+    tagEmoji: String,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     onRemove: () -> Unit,
     content: @Composable () -> Unit
 ) {
     Box(Modifier.size(72.dp)) {
-        Box(Modifier.size(72.dp).clip(RoundedCornerShape(4.dp)).clickable(onClick = onClick)) {
+        Box(
+            Modifier
+                .size(72.dp)
+                .clip(RoundedCornerShape(4.dp))
+                .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+        ) {
             content()
+        }
+        if (tag.isNotBlank()) {
+            Box(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(2.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(InkColor.copy(alpha = 0.75f))
+                    .padding(horizontal = 3.dp, vertical = 1.dp)
+            ) {
+                if (tagEmoji.isNotBlank()) {
+                    Text(text = tagEmoji, fontSize = 12.sp)
+                } else {
+                    Icon(
+                        Icons.Default.Label,
+                        contentDescription = null,
+                        tint = AmberTab,
+                        modifier = Modifier.size(12.dp)
+                    )
+                }
+            }
         }
         IconButton(
             onClick = onRemove,
