@@ -25,6 +25,7 @@ import com.saud.taskstrip.backup.AutoBackupScheduler
 import com.saud.taskstrip.backup.BackupViewModel
 import com.saud.taskstrip.backup.BackupViewModelFactory
 import com.saud.taskstrip.data.AppDatabase
+import com.saud.taskstrip.data.ClipboardRepository
 import com.saud.taskstrip.data.CredentialRepository
 import com.saud.taskstrip.data.NoteRepository
 import com.saud.taskstrip.data.ReminderRepository
@@ -39,6 +40,7 @@ import com.saud.taskstrip.notifications.WeeklyDigestPrefs
 import com.saud.taskstrip.notifications.WeeklyDigestScheduler
 import com.saud.taskstrip.ui.screens.AddEditTaskScreen
 import com.saud.taskstrip.ui.screens.ArchiveScreen
+import com.saud.taskstrip.ui.screens.ClipboardScreen
 import com.saud.taskstrip.ui.screens.BackupScreen
 import com.saud.taskstrip.ui.screens.CredentialEditScreen
 import com.saud.taskstrip.ui.screens.CredentialsScreen
@@ -185,6 +187,8 @@ class MainActivity : FragmentActivity() {
         val reminderFactory = ReminderViewModelFactory(application, reminderRepository)
         val storageRepository = StorageRepository(database.storageItemDao())
         val storageFactory = StorageViewModelFactory(application, storageRepository)
+        val clipboardRepository = ClipboardRepository(database.clipboardDao())
+        val clipboardFactory = ClipboardViewModelFactory(application, clipboardRepository)
 
         // One-time correction for alarms scheduled by an older build that treated the picked
         // wall-clock time as a real UTC instant instead of re-anchoring it to this device's
@@ -207,6 +211,7 @@ class MainActivity : FragmentActivity() {
                 val noteViewModel: NoteViewModel = viewModel(factory = noteFactory)
                 val reminderViewModel: ReminderViewModel = viewModel(factory = reminderFactory)
                 val storageViewModel: StorageViewModel = viewModel(factory = storageFactory)
+                val clipboardViewModel: ClipboardViewModel = viewModel(factory = clipboardFactory)
                 val navController = rememberNavController()
                 var sharedContent by remember { mutableStateOf<VoiceDraft?>(null) }
 
@@ -269,12 +274,19 @@ class MainActivity : FragmentActivity() {
                                 reminderViewModel.setPendingText(spoken)
                                 navController.navigate("reminder-editor/-1")
                             },
-                            onStorageClick = { navController.navigate("storage") }
+                            onStorageClick = { navController.navigate("storage") },
+                            onClipboardClick = { navController.navigate("clipboard") }
                         )
                     }
                     composable("storage") {
                         StorageScreen(
                             viewModel = storageViewModel,
+                            onBack = { navController.popBackStack() }
+                        )
+                    }
+                    composable("clipboard") {
+                        ClipboardScreen(
+                            viewModel = clipboardViewModel,
                             onBack = { navController.popBackStack() }
                         )
                     }
