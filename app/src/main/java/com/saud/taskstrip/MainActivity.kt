@@ -400,6 +400,7 @@ class MainActivity : FragmentActivity() {
                         ShareTargetScreen(
                             content = sharedContent ?: VoiceDraft("", "", null),
                             viewModel = viewModel,
+                            clipboardViewModel = clipboardViewModel,
                             onCreateNew = { draft ->
                                 viewModel.setPendingDraft(draft)
                                 navController.navigate("home") { popUpTo("share-target") { inclusive = true } }
