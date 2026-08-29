@@ -5,10 +5,10 @@ import XCTest
 /// emits from BackupHelper.createBackupZip — deflated, general purpose bit 3 set, manifest first,
 /// a media entry behind it. Regenerate it with Fixtures/make_fixture.py.
 final class BackupArchiveTests: XCTestCase {
-    private func fixtureArchive() throws -> Data {
+    private func fixtureArchive(_ name: String = "android_backup") throws -> Data {
         let url = try XCTUnwrap(
-            Bundle(for: Self.self).url(forResource: "android_backup", withExtension: "zip"),
-            "android_backup.zip is missing from the test bundle"
+            Bundle(for: Self.self).url(forResource: name, withExtension: "zip"),
+            "\(name).zip is missing from the test bundle"
         )
         return try Data(contentsOf: url)
     }
@@ -70,5 +70,89 @@ final class BackupArchiveTests: XCTestCase {
         let manifest = try BackupArchive.manifestData(inArchive: slice)
         let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: manifest) as? [String: Any])
         XCTAssertEqual((root["tasks"] as? [Any])?.count, 3)
+    }
+
+    // MARK: - Every entry, not just the manifest
+
+    func testListsEveryEntryInOrder() throws {
+        let entries = try BackupArchive.entries(inArchive: fixtureArchive())
+        XCTAssertEqual(
+            entries.map(\.name),
+            ["backup.json", "media/images/passport.jpg", "media/images/form.jpg"]
+        )
+        XCTAssertTrue(entries.allSatisfy { $0.uncompressedSize > 0 })
+        XCTAssertTrue(entries.allSatisfy { !$0.isDirectory })
+    }
+
+    func testReadsAMediaEntryByName() throws {
+        let archive = try fixtureArchive()
+        let entries = try BackupArchive.entries(inArchive: archive)
+        let passport = try XCTUnwrap(entries.first { $0.name == "media/images/passport.jpg" })
+
+        let bytes = try BackupArchive.data(for: passport, inArchive: archive)
+        XCTAssertEqual(bytes.count, passport.uncompressedSize)
+        XCTAssertEqual(Array(bytes.prefix(4)), [0xFF, 0xD8, 0xFF, 0xE0])
+    }
+
+    /// The same manifest reached the long way round, which has to agree with the fast path.
+    func testTheManifestReadsTheSameThroughTheCentralDirectory() throws {
+        let archive = try fixtureArchive()
+        let entries = try BackupArchive.entries(inArchive: archive)
+        let manifest = try XCTUnwrap(entries.first { $0.name == "backup.json" })
+
+        XCTAssertEqual(
+            try BackupArchive.data(for: manifest, inArchive: archive),
+            try BackupArchive.manifestData(inArchive: archive)
+        )
+    }
+
+    // MARK: - zip64
+    //
+    // A backup with videos in it can pass the 4 GB that plain zip offsets hold, so the sizes and
+    // offsets move into zip64 extra fields behind sentinels. The fixture describes the same bytes
+    // that way without being four gigabytes.
+
+    func testReadsAZip64Archive() throws {
+        let archive = try fixtureArchive("android_backup_zip64")
+        let entries = try BackupArchive.entries(inArchive: archive)
+
+        XCTAssertEqual(
+            entries.map(\.name),
+            ["backup.json", "media/images/passport.jpg", "media/images/form.jpg"]
+        )
+        let passport = try XCTUnwrap(entries.first { $0.name == "media/images/passport.jpg" })
+        XCTAssertEqual(
+            try BackupArchive.data(for: passport, inArchive: archive),
+            try BackupArchive.data(
+                for: try XCTUnwrap(
+                    try BackupArchive.entries(inArchive: try fixtureArchive())
+                        .first { $0.name == "media/images/passport.jpg" }
+                ),
+                inArchive: try fixtureArchive()
+            ),
+            "zip64 and plain descriptions of the same file must yield the same bytes"
+        )
+    }
+
+    func testTheManifestFastPathStillWorksOnAZip64Archive() throws {
+        let manifest = try BackupArchive.manifestData(inArchive: fixtureArchive("android_backup_zip64"))
+        let root = try XCTUnwrap(try JSONSerialization.jsonObject(with: manifest) as? [String: Any])
+        XCTAssertEqual((root["tasks"] as? [Any])?.count, 3)
+    }
+
+    // MARK: - Refusals
+
+    func testEntriesRejectsSomethingWithNoEndRecord() {
+        XCTAssertThrowsError(
+            try BackupArchive.entries(inArchive: Data(repeating: 0x41, count: 512))
+        )
+    }
+
+    func testEntriesReadsFromASliceWithANonZeroStartIndex() throws {
+        var padded = Data([0xAA, 0xBB])
+        padded.append(try fixtureArchive())
+        let slice = padded.dropFirst(2)
+
+        XCTAssertEqual(try BackupArchive.entries(inArchive: slice).map(\.name).first, "backup.json")
     }
 }

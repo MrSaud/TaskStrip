@@ -1,5 +1,12 @@
 #!/usr/bin/env python3
-"""Regenerates android_backup.zip, the fixture BackupArchiveTests reads.
+"""Regenerates the fixture archives BackupArchiveTests reads.
+
+Two of them. android_backup.zip is an ordinary backup. android_backup_zip64.zip holds the same
+bytes but describes them the way a zip past 4 GB has to — every size and offset in the central
+directory replaced by the 0xFFFFFFFF sentinel with the real values in a zip64 extra field, and a
+zip64 end record behind a locator. That path matters because a backup with videos in it will take
+it, and it can be exercised here without producing four gigabytes of fixture.
+
 
 Hand-rolls the zip rather than using zipfile because the point of the fixture is to match what
 Java's ZipOutputStream actually emits from BackupHelper.createBackupZip: entries deflated with
@@ -125,7 +132,7 @@ MANIFEST = {
 }
 
 
-def streamed_entry(name, payload, offset):
+def streamed_entry(name, payload, offset, zip64=False):
     """One deflated entry written the way Java's ZipOutputStream writes it."""
     compressor = zlib.compressobj(-1, zlib.DEFLATED, -zlib.MAX_WBITS)
     compressed = compressor.compress(payload) + compressor.flush()
@@ -139,34 +146,67 @@ def streamed_entry(name, payload, offset):
         len(name), 0,
     ) + name + compressed + struct.pack("<IIII", 0x08074B50, crc, len(compressed), len(payload))
 
-    central = struct.pack(
-        "<IHHHHHHIIIHHHHHII",
-        0x02014B50, 20, 20, flags, 8, DOS_TIME, DOS_DATE,
-        crc, len(compressed), len(payload),
-        len(name), 0, 0, 0, 0, 0, offset,
-    ) + name
+    if zip64:
+        # Sizes and offset move into the extra field, exactly as they must past 4 GB.
+        extra = struct.pack("<HHQQQ", 0x0001, 24, len(payload), len(compressed), offset)
+        central = struct.pack(
+            "<IHHHHHHIIIHHHHHII",
+            0x02014B50, 45, 45, flags, 8, DOS_TIME, DOS_DATE,
+            crc, 0xFFFFFFFF, 0xFFFFFFFF,
+            len(name), len(extra), 0, 0, 0, 0, 0xFFFFFFFF,
+        ) + name + extra
+    else:
+        central = struct.pack(
+            "<IHHHHHHIIIHHHHHII",
+            0x02014B50, 20, 20, flags, 8, DOS_TIME, DOS_DATE,
+            crc, len(compressed), len(payload),
+            len(name), 0, 0, 0, 0, 0, offset,
+        ) + name
     return local, central
 
 
-def main():
-    manifest_bytes = json.dumps(MANIFEST, ensure_ascii=False).encode("utf-8")
-    # A second entry after the manifest, so the test proves the reader stops at the end of the
-    # deflate stream instead of running on into whatever follows.
-    entries = [(MANIFEST_NAME, manifest_bytes), (MEDIA_NAME, b"\xff\xd8\xff\xe0 not a real jpeg " * 64)]
-
+def build_zip(entries, zip64=False):
     body, directory, offset = b"", b"", 0
     for name, payload in entries:
-        local, central = streamed_entry(name, payload, offset)
+        local, central = streamed_entry(name, payload, offset, zip64=zip64)
         body += local
         directory += central
         offset += len(local)
 
-    eocd = struct.pack(
-        "<IHHHHIIH", 0x06054B50, 0, 0, len(entries), len(entries), len(directory), len(body), 0
+    if not zip64:
+        eocd = struct.pack(
+            "<IHHHHIIH", 0x06054B50, 0, 0, len(entries), len(entries), len(directory), len(body), 0
+        )
+        return body + directory + eocd
+
+    zip64_end = struct.pack(
+        "<IQHHIIQQQQ",
+        0x06064B50, 44, 45, 45, 0, 0,
+        len(entries), len(entries), len(directory), len(body),
     )
-    with open("android_backup.zip", "wb") as out:
-        out.write(body + directory + eocd)
-    print("wrote android_backup.zip ({} bytes)".format(len(body + directory + eocd)))
+    locator = struct.pack("<IIQI", 0x07064B50, 0, len(body) + len(directory), 1)
+    eocd = struct.pack(
+        "<IHHHHIIH", 0x06054B50, 0, 0, 0xFFFF, 0xFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0
+    )
+    return body + directory + zip64_end + locator + eocd
+
+
+def main():
+    manifest_bytes = json.dumps(MANIFEST, ensure_ascii=False).encode("utf-8")
+    # Two of the three files the manifest references are actually in the archive. The third,
+    # documents/checklist.pdf, is deliberately absent: a real backup can name a file whose bytes
+    # never made it in, and the import has to cope rather than trust the manifest.
+    entries = [
+        (MANIFEST_NAME, manifest_bytes),
+        (b"media/images/passport.jpg", b"\xff\xd8\xff\xe0 not a real jpeg " * 64),
+        (b"media/images/form.jpg", b"\xff\xd8\xff\xe0 also not a jpeg " * 32),
+    ]
+
+    for filename, zip64 in (("android_backup.zip", False), ("android_backup_zip64.zip", True)):
+        blob = build_zip(entries, zip64=zip64)
+        with open(filename, "wb") as out:
+            out.write(blob)
+        print("wrote {} ({} bytes)".format(filename, len(blob)))
 
 
 if __name__ == "__main__":
