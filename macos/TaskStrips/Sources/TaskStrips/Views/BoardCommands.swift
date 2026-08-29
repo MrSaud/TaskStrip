@@ -78,11 +78,18 @@ struct BoardCommandMenus: Commands {
         }
 
         CommandMenu("Strip") {
+            // Gated on the board rather than on the selection, and that difference is load-
+            // bearing: a menu item that starts disabled doesn't get its enabled state pushed into
+            // the real NSMenu until the menu is first opened, so its key equivalent is silently
+            // dropped until then. CI pinned that down exactly — the shortcut failed cold and
+            // passed once the menu had been opened and closed. These four are the ones people
+            // press without ever pulling the menu down, so they stay enabled and simply do
+            // nothing when no strip is selected.
             Button(board?.selection?.isDone == true ? "Reopen" : "Complete") {
                 board?.selection?.toggleDone()
             }
             .keyboardShortcut(.return, modifiers: .command)
-            .disabled(board?.selection == nil)
+            .disabled(board == nil)
 
             // Not cmd-E: `.searchable` on the board installs the standard Find group, whose
             // "Use Selection for Find" already owns cmd-E — and the Edit menu comes before this
@@ -91,10 +98,14 @@ struct BoardCommandMenus: Commands {
             // field for free.
             Button("Edit…") { board?.selection?.edit() }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
-                .disabled(board?.selection == nil)
+                .disabled(board == nil)
 
             Divider()
 
+            // Kept gated on the selection, unlike the four above: "this strip is already at the
+            // top" is worth showing, and it's only ever visible with the menu open — which is
+            // also what makes these shortcuts live. The cost is that cmd-arrow does nothing until
+            // the menu has been pulled down once.
             ForEach(BoardMove.allCases, id: \.self) { move in
                 Button(move.label) { board?.selection?.move(move) }
                     .keyboardShortcut(move.keyboardShortcut)
@@ -105,11 +116,11 @@ struct BoardCommandMenus: Commands {
 
             Button("Archive") { board?.selection?.archive() }
                 .keyboardShortcut("a", modifiers: [.command, .shift])
-                .disabled(board?.selection == nil)
+                .disabled(board == nil)
 
             Button("Delete") { board?.selection?.delete() }
                 .keyboardShortcut(.delete, modifiers: .command)
-                .disabled(board?.selection == nil)
+                .disabled(board == nil)
         }
 
         CommandGroup(after: .toolbar) {
