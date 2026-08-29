@@ -129,32 +129,57 @@ struct TaskListView: View {
 
     @ViewBuilder
     private func row(for task: TaskItem) -> some View {
-        TaskRowView(task: task, blocker: blocker(for: task))
-            .contentShape(Rectangle())
-            .onTapGesture { editingTask = task }
-            .swipeActions(edge: .leading) {
-                Button {
-                    toggleDone(task)
-                } label: {
-                    Label(task.isDone ? "Reopen" : "Complete", systemImage: task.isDone ? "arrow.uturn.backward" : "checkmark")
-                }
-                .tint(TaskStripTheme.normal)
+        Button {
+            editingTask = task
+        } label: {
+            TaskRowView(task: task, blocker: blocker(for: task))
+        }
+        .buttonStyle(.plain)
+        // Swipe gestures need an actual trackpad and expose no accessibility action, so a
+        // mouse-only user (or VoiceOver) would have no way to reach these at all — the context
+        // menu is the primary, always-reachable path; swipe is left as a trackpad-only shortcut
+        // on top of it, not the only way in.
+        .contextMenu {
+            Button {
+                toggleDone(task)
+            } label: {
+                Label(task.isDone ? "Reopen" : "Complete", systemImage: task.isDone ? "arrow.uturn.backward" : "checkmark")
             }
-            .swipeActions(edge: .trailing) {
-                Button(role: .destructive) {
-                    delete(task)
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-                Button {
-                    task.isArchived = true
-                } label: {
-                    Label("Archive", systemImage: "archivebox")
-                }
-                .tint(.gray)
+            Button {
+                task.isArchived = true
+            } label: {
+                Label("Archive", systemImage: "archivebox")
             }
-            .listRowBackground(Color.clear)
-            .listRowSeparator(.hidden)
+            Divider()
+            Button(role: .destructive) {
+                delete(task)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+        }
+        .swipeActions(edge: .leading) {
+            Button {
+                toggleDone(task)
+            } label: {
+                Label(task.isDone ? "Reopen" : "Complete", systemImage: task.isDone ? "arrow.uturn.backward" : "checkmark")
+            }
+            .tint(TaskStripTheme.normal)
+        }
+        .swipeActions(edge: .trailing) {
+            Button(role: .destructive) {
+                delete(task)
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            Button {
+                task.isArchived = true
+            } label: {
+                Label("Archive", systemImage: "archivebox")
+            }
+            .tint(.gray)
+        }
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
     }
 
     private var toolbarContent: some ToolbarContent {
