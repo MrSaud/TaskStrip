@@ -96,8 +96,13 @@ struct TaskEditView: View {
 
             Section("NOTES") {
                 Toggle("Right-to-left", isOn: $notesRtl)
+                // layoutDirection alone only affects SwiftUI's own layout (leading/trailing,
+                // stack order) — a TextEditor's underlying NSTextView doesn't infer its text
+                // alignment from it, so RTL mode looked like a no-op without also setting
+                // multilineTextAlignment explicitly.
                 TextEditor(text: $notes)
                     .frame(minHeight: 100)
+                    .multilineTextAlignment(notesRtl ? .trailing : .leading)
                     .environment(\.layoutDirection, notesRtl ? .rightToLeft : .leftToRight)
             }
 
