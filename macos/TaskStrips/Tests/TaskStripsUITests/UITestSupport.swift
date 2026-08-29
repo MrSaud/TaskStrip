@@ -30,6 +30,17 @@ extension XCUIApplication {
         menuBars.menuBarItems[menu].menus.menuItems[title]
     }
 
+    /// macOS mirrors alert buttons onto the Touch Bar, and an unscoped lookup will happily hand
+    /// back that copy — which then refuses to be clicked: "cannot be called with Touch Bar
+    /// elements". Scoped to whatever is actually presenting the dialog.
+    func confirmationButton(_ title: String) -> XCUIElement {
+        let inSheet = sheets.buttons[title].firstMatch
+        if inSheet.exists { return inSheet }
+        let inDialog = dialogs.buttons[title].firstMatch
+        if inDialog.exists { return inDialog }
+        return windows.buttons[title].firstMatch
+    }
+
     // MARK: - The board
 
     /// Rows show their title uppercased — see TaskRowView.

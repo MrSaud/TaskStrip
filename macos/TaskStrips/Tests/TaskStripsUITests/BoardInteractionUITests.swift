@@ -42,8 +42,13 @@ final class BoardInteractionUITests: XCTestCase {
         app.buttons["Cancel"].firstMatch.click()
     }
 
-    /// cmd-shift-E rather than cmd-E: the standard Find group that `.searchable` installs already
-    /// owns cmd-E for "Use Selection for Find", and the Edit menu outranks ours.
+    /// Paired with the test below to tell two explanations apart.
+    ///
+    /// cmd-E failed, so did cmd-shift-E, while cmd-N — the one command that isn't gated on a
+    /// selection — passes. That pattern points at the gating, not the key: a menu item that
+    /// starts `.disabled` and only becomes enabled through the focused value may not have that
+    /// state pushed into the real NSMenu until the menu is first opened, leaving its key
+    /// equivalent inert. If this one fails and the next passes, that's the answer.
     func testTheEditShortcutOpensTheEditorForTheSelectedStrip() {
         app.selectStrip(atRowTitled: UITestSupport.strips[0])
         app.typeKey("e", modifierFlags: [.command, .shift])
@@ -51,6 +56,32 @@ final class BoardInteractionUITests: XCTestCase {
         XCTAssertTrue(
             app.buttons["Update"].waitForExistence(timeout: UITestSupport.timeout),
             "the Edit shortcut didn't open the editor"
+        )
+        app.buttons["Cancel"].firstMatch.click()
+    }
+
+    func testTheEditShortcutWorksOnceTheStripMenuHasBeenOpened() {
+        app.selectStrip(atRowTitled: UITestSupport.strips[0])
+        app.openMenu("Strip")
+        app.closeMenu()
+        app.typeKey("e", modifierFlags: [.command, .shift])
+
+        XCTAssertTrue(
+            app.buttons["Update"].waitForExistence(timeout: UITestSupport.timeout),
+            "the Edit shortcut didn't work even after the menu had been realised"
+        )
+        app.buttons["Cancel"].firstMatch.click()
+    }
+
+    /// The menu item itself, independent of any key equivalent.
+    func testTheEditMenuItemOpensTheEditorForTheSelectedStrip() {
+        app.selectStrip(atRowTitled: UITestSupport.strips[0])
+        app.openMenu("Strip")
+        app.menuItem("Edit…", in: "Strip").click()
+
+        XCTAssertTrue(
+            app.buttons["Update"].waitForExistence(timeout: UITestSupport.timeout),
+            "Edit… in the Strip menu didn't open the editor"
         )
         app.buttons["Cancel"].firstMatch.click()
     }
@@ -73,7 +104,7 @@ final class BoardInteractionUITests: XCTestCase {
         app.openMenu("Strip")
         app.menuItem("Delete", in: "Strip").click()
 
-        let cancel = app.buttons["Cancel"].firstMatch
+        let cancel = app.confirmationButton("Cancel")
         XCTAssertTrue(
             cancel.waitForExistence(timeout: UITestSupport.timeout),
             "board delete went straight through without confirming"
