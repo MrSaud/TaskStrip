@@ -1,0 +1,31 @@
+name: TaskStrips
+options:
+  bundleIdPrefix: com.saud.taskstrip
+  deploymentTarget:
+    macOS: "14.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+targets:
+  TaskStrips:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/TaskStrips
+    info:
+      path: Sources/TaskStrips/Info.plist
+      properties:
+        CFBundleName: Task Strips
+        CFBundleDisplayName: Task Strips
+        LSApplicationCategoryType: public.app-category.productivity
+        NSHumanReadableCopyright: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.saud.taskstrip.mac
+        PRODUCT_NAME: TaskStrips
+        ENABLE_HARDENED_RUNTIME: true
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"

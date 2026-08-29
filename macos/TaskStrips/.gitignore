@@ -1,0 +1,10 @@
+# Xcode
+xcuserdata/
+*.xcuserstate
+DerivedData/
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+
+# XcodeGen regenerates this from project.yml — keep the yml as the source of truth
+TaskStrips.xcodeproj/
