@@ -39,18 +39,20 @@ final class BoardInteractionUITests: XCTestCase {
         // strip rather than a blank new one.
         XCTAssertTrue(app.buttons["DELETE STRIP"].exists)
 
-        app.buttons["Cancel"].click()
+        app.buttons["Cancel"].firstMatch.click()
     }
 
-    func testCommandEOpensTheEditorForTheSelectedStrip() {
+    /// cmd-shift-E rather than cmd-E: the standard Find group that `.searchable` installs already
+    /// owns cmd-E for "Use Selection for Find", and the Edit menu outranks ours.
+    func testTheEditShortcutOpensTheEditorForTheSelectedStrip() {
         app.selectStrip(atRowTitled: UITestSupport.strips[0])
-        app.typeKey("e", modifierFlags: .command)
+        app.typeKey("e", modifierFlags: [.command, .shift])
 
         XCTAssertTrue(
             app.buttons["Update"].waitForExistence(timeout: UITestSupport.timeout),
-            "cmd-E didn't open the editor — with double-click unproven this is the fallback path"
+            "the Edit shortcut didn't open the editor"
         )
-        app.buttons["Cancel"].click()
+        app.buttons["Cancel"].firstMatch.click()
     }
 
     func testCommandNOpensANewStripRatherThanASecondWindow() {
@@ -62,7 +64,7 @@ final class BoardInteractionUITests: XCTestCase {
             "cmd-N should open the new-strip sheet"
         )
         XCTAssertLessThanOrEqual(windowsBefore, app.windows.count)
-        app.buttons["Cancel"].click()
+        app.buttons["Cancel"].firstMatch.click()
     }
 
     /// Deleting from the board used to be instant and permanent; it should ask now.
@@ -71,7 +73,7 @@ final class BoardInteractionUITests: XCTestCase {
         app.openMenu("Strip")
         app.menuItem("Delete", in: "Strip").click()
 
-        let cancel = app.buttons["Cancel"]
+        let cancel = app.buttons["Cancel"].firstMatch
         XCTAssertTrue(
             cancel.waitForExistence(timeout: UITestSupport.timeout),
             "board delete went straight through without confirming"

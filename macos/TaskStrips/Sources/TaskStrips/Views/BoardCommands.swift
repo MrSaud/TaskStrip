@@ -84,8 +84,13 @@ struct BoardCommandMenus: Commands {
             .keyboardShortcut(.return, modifiers: .command)
             .disabled(board?.selection == nil)
 
+            // Not cmd-E: `.searchable` on the board installs the standard Find group, whose
+            // "Use Selection for Find" already owns cmd-E — and the Edit menu comes before this
+            // one, so it won. CI caught it as the menu item being enabled while the shortcut did
+            // nothing. Worth knowing that the same Find group means cmd-F reaches the search
+            // field for free.
             Button("Edit…") { board?.selection?.edit() }
-                .keyboardShortcut("e")
+                .keyboardShortcut("e", modifiers: [.command, .shift])
                 .disabled(board?.selection == nil)
 
             Divider()
