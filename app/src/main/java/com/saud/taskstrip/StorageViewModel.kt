@@ -25,7 +25,14 @@ class StorageViewModel(
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     /** Copies a picked image/video/document into the library. [mimeType] drives which category it
-     * lands in — anything not image/video is treated as a document.
+     * lands in — anything not image/video is treated as a document. Fire-and-forget wrapper
+     * around [saveFromUri] for callers that don't need a tag or to know when the copy finishes. */
+    fun addFromUri(uri: Uri, mimeType: String?, displayName: String?) {
+        viewModelScope.launch { saveFromUri(uri, mimeType, displayName) }
+    }
+
+    /** Same as [addFromUri], but suspends until the copy (and optional tag) are actually saved —
+     * for a caller like the share-save screen that needs to know when it's safe to navigate away.
      *
      * Some senders (share sheets in particular) report a useless MIME type — null, a wildcard, or
      * "application/octet-stream" — for a perfectly normal photo or video. Trusting that blindly
@@ -33,24 +40,36 @@ class StorageViewModel(
      * storage" picker is filtered to Photos or Videos, even though it's sitting right there in
      * the library. Falling back to the file extension when the reported type is unhelpful keeps
      * it in the category the user actually expects. */
-    fun addFromUri(uri: Uri, mimeType: String?, displayName: String?) {
-        viewModelScope.launch {
-            val context = getApplication<Application>()
-            val name = displayName ?: MediaStorage.queryDisplayName(context, uri)
-            val resolvedMimeType = resolveMimeType(mimeType, name)
-            val (type, path) = when {
-                resolvedMimeType?.startsWith("image/") == true ->
-                    StorageItemType.IMAGE to MediaStorage.copyImageToLocal(context, uri)
-                resolvedMimeType?.startsWith("video/") == true ->
-                    StorageItemType.VIDEO to MediaStorage.copyVideoToLocal(context, uri)
-                else ->
-                    StorageItemType.DOCUMENT to MediaStorage.copyDocumentToLocal(context, uri)
-            }
-            if (path == null) return@launch
-            val finalName = name ?: File(path).name
-            val size = runCatching { File(path).length() }.getOrDefault(0)
-            repository.add(name = finalName, path = path, type = type, mimeType = resolvedMimeType.orEmpty(), sizeBytes = size)
+    suspend fun saveFromUri(
+        uri: Uri,
+        mimeType: String?,
+        displayName: String?,
+        tag: String = "",
+        tagEmoji: String = ""
+    ) {
+        val context = getApplication<Application>()
+        val name = displayName ?: MediaStorage.queryDisplayName(context, uri)
+        val resolvedMimeType = resolveMimeType(mimeType, name)
+        val (type, path) = when {
+            resolvedMimeType?.startsWith("image/") == true ->
+                StorageItemType.IMAGE to MediaStorage.copyImageToLocal(context, uri)
+            resolvedMimeType?.startsWith("video/") == true ->
+                StorageItemType.VIDEO to MediaStorage.copyVideoToLocal(context, uri)
+            else ->
+                StorageItemType.DOCUMENT to MediaStorage.copyDocumentToLocal(context, uri)
         }
+        if (path == null) return
+        val finalName = name ?: File(path).name
+        val size = runCatching { File(path).length() }.getOrDefault(0)
+        repository.add(
+            name = finalName,
+            path = path,
+            type = type,
+            mimeType = resolvedMimeType.orEmpty(),
+            sizeBytes = size,
+            tag = tag.trim(),
+            tagEmoji = tagEmoji.trim()
+        )
     }
 
     private fun resolveMimeType(reported: String?, displayName: String?): String? {

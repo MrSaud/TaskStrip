@@ -46,6 +46,7 @@ import com.saud.taskstrip.ui.screens.HomeScreen
 import com.saud.taskstrip.ui.screens.NotesScreen
 import com.saud.taskstrip.ui.screens.ReminderEditScreen
 import com.saud.taskstrip.ui.screens.RemindersScreen
+import com.saud.taskstrip.ui.screens.ShareStorageScreen
 import com.saud.taskstrip.ui.screens.ShareTargetScreen
 import com.saud.taskstrip.ui.screens.SketchCanvasScreen
 import com.saud.taskstrip.ui.screens.SketchListScreen
@@ -209,6 +210,7 @@ class MainActivity : FragmentActivity() {
                 val storageViewModel: StorageViewModel = viewModel(factory = storageFactory)
                 val navController = rememberNavController()
                 var sharedContent by remember { mutableStateOf<VoiceDraft?>(null) }
+                var sharedFileUris by remember { mutableStateOf<List<Uri>?>(null) }
 
                 // Navigation-Compose doesn't reliably bind typed route arguments (like the
                 // taskId in "editor/{taskId}") when that route is used as the graph's
@@ -233,16 +235,8 @@ class MainActivity : FragmentActivity() {
                             navController.navigate("share-target")
                         }
                         !sharedFiles.isNullOrEmpty() -> {
-                            sharedFiles.forEach { uri ->
-                                val resolvedType = contentResolver.getType(uri) ?: current.type
-                                storageViewModel.addFromUri(uri, resolvedType, null)
-                            }
-                            android.widget.Toast.makeText(
-                                applicationContext,
-                                if (sharedFiles.size == 1) "Saved to Storage" else "Saved ${sharedFiles.size} files to Storage",
-                                android.widget.Toast.LENGTH_SHORT
-                            ).show()
-                            navController.navigate("storage")
+                            sharedFileUris = sharedFiles
+                            navController.navigate("share-storage")
                         }
                     }
                 }
@@ -276,6 +270,18 @@ class MainActivity : FragmentActivity() {
                         StorageScreen(
                             viewModel = storageViewModel,
                             onBack = { navController.popBackStack() }
+                        )
+                    }
+                    composable("share-storage") {
+                        ShareStorageScreen(
+                            uris = sharedFileUris.orEmpty(),
+                            storageViewModel = storageViewModel,
+                            onDone = {
+                                navController.navigate("home") { popUpTo("share-storage") { inclusive = true } }
+                            },
+                            onCancel = {
+                                navController.navigate("home") { popUpTo("share-storage") { inclusive = true } }
+                            }
                         )
                     }
                     composable("reminders") {

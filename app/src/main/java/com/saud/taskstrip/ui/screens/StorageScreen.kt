@@ -88,7 +88,7 @@ import java.io.File
 
 // Quick-pick starting points for a document's tag/emoji — same idea as ReminderEditScreen's
 // presets: one tap fills both fields, but any tag name and emoji can still be typed by hand.
-private val STORAGE_TAG_PRESETS = listOf(
+val STORAGE_TAG_PRESETS = listOf(
     "Invoice" to "🧾",
     "Contract" to "✍️",
     "Receipt" to "💳",
