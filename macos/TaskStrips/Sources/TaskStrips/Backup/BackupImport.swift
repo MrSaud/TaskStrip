@@ -1,10 +1,6 @@
 import Foundation
 import SwiftData
 
-extension Notification.Name {
-    static let importAndroidBackup = Notification.Name("com.saud.taskstrip.mac.importAndroidBackup")
-}
-
 enum BackupImportError: LocalizedError {
     case notJSON
     case noTasksSection

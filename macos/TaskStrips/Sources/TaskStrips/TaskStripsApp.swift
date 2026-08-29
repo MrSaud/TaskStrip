@@ -28,17 +28,12 @@ struct TaskStripsApp: App {
                 .preferredColorScheme(.dark)
         }
         .modelContainer(Self.sharedModelContainer)
-        .commands {
-            // The board's own toolbar carries this too; a File-menu entry is where a Mac user
-            // looks for "open a file from somewhere else", and it's the only way to reach the
-            // importer by keyboard. The window owns the picker, so this just pokes it.
-            CommandGroup(after: .newItem) {
-                Divider()
-                Button("Import Android Backup…") {
-                    NotificationCenter.default.post(name: .importAndroidBackup, object: nil)
-                }
-                .keyboardShortcut("i", modifiers: [.command, .shift])
-            }
+        .defaultSize(width: 860, height: 660)
+        .commands { BoardCommandMenus() }
+
+        Settings {
+            SettingsView()
+                .preferredColorScheme(.dark)
         }
     }
 }

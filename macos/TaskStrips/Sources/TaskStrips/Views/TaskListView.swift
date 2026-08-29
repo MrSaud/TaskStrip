@@ -1,5 +1,4 @@
 import AppKit
-import Combine
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
@@ -30,6 +29,12 @@ struct TaskListView: View {
     @State private var blockedAlertTask: TaskItem?
     @State private var importSummary: BackupImportSummary?
     @State private var importMessage: ImportMessage?
+    @State private var selectedTaskID: TaskItem.ID?
+    @State private var pendingDeletion: TaskItem?
+
+    @AppStorage(AppSettingsKey.defaultPriority) private var defaultPriority = Priority.normal
+    @AppStorage(AppSettingsKey.defaultNotesRtl) private var defaultNotesRtl = false
+    @AppStorage(AppSettingsKey.confirmBeforeDelete) private var confirmBeforeDelete = true
 
     private var activeTasks: [TaskItem] { allTasks.filter { !$0.isArchived } }
 
@@ -81,8 +86,12 @@ struct TaskListView: View {
         }
     }
 
+    private var selectedTask: TaskItem? {
+        filtered.first { $0.id == selectedTaskID }
+    }
+
     private var board: some View {
-        List {
+        List(selection: $selectedTaskID) {
             if canReorder {
                 ForEach(filtered) { task in
                     row(for: task)
@@ -117,6 +126,8 @@ struct TaskListView: View {
                         editingTask: nil,
                         allTasks: allTasks,
                         nextOrderIndex: nextOrderIndex(),
+                        defaultPriority: defaultPriority,
+                        defaultNotesRtl: defaultNotesRtl,
                         onSaved: {},
                         onDeleted: {}
                     )
@@ -157,9 +168,48 @@ struct TaskListView: View {
             .alert(item: $importMessage) { message in
                 Alert(title: Text(message.title), message: Text(message.body), dismissButton: .default(Text("OK")))
             }
-            .onReceive(NotificationCenter.default.publisher(for: .importAndroidBackup)) { _ in
-                chooseBackupFile()
+            .confirmationDialog(
+                "Delete \"\(pendingDeletion?.title ?? "")\"?",
+                isPresented: Binding(
+                    get: { pendingDeletion != nil },
+                    set: { if !$0 { pendingDeletion = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("Delete", role: .destructive) {
+                    if let task = pendingDeletion { delete(task) }
+                    pendingDeletion = nil
+                }
+                Button("Cancel", role: .cancel) { pendingDeletion = nil }
+            } message: {
+                Text("Deleting a strip is permanent. Archiving keeps it.")
             }
+            .focusedSceneValue(\.boardCommands, commandTarget)
+    }
+
+    /// Hands the menu bar everything it can act on. Rebuilt whenever the board changes, so the
+    /// closures always close over the current selection rather than a stale one.
+    private var commandTarget: BoardCommandTarget {
+        BoardCommandTarget(
+            newStrip: { isPresentingNewTask = true },
+            importBackup: chooseBackupFile,
+            showArchived: { showArchive = true },
+            clearFilters: clearFilters,
+            isFiltered: !canReorder,
+            sortMode: sortMode,
+            setSortMode: { sortMode = $0 },
+            selection: selectedTask.map { task in
+                SelectedStripCommands(
+                    isDone: task.isDone,
+                    edit: { editingTask = task },
+                    toggleDone: { toggleDone(task) },
+                    archive: { archive(task) },
+                    delete: { requestDelete(task) },
+                    canMove: { canReorder && BoardOrdering.canMove(task, $0, in: filtered) },
+                    move: { _ = BoardOrdering.move(task, $0, in: filtered) }
+                )
+            }
+        )
     }
 
     /// Says why drag-reorder went away, and offers the way back.
@@ -223,24 +273,32 @@ struct TaskListView: View {
 
     @ViewBuilder
     private func row(for task: TaskItem) -> some View {
-        Button {
-            editingTask = task
-        } label: {
-            TaskRowView(task: task, blocker: blocker(for: task))
-        }
-        .buttonStyle(.plain)
+        TaskRowView(task: task, blocker: blocker(for: task))
+            // Now that the List carries a selection, rows follow the Mac convention: one click
+            // picks the strip — which is what lights up the Strip menu — and two open it. 991191a
+            // wrapped the row in a Button because a bare .onTapGesture wouldn't reliably open the
+            // editor; if that still bites, Edit in the context menu and cmd-E both still do.
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) { editingTask = task }
+            .tag(task.id)
         // Swipe gestures need an actual trackpad and expose no accessibility action, so a
         // mouse-only user (or VoiceOver) would have no way to reach these at all — the context
         // menu is the primary, always-reachable path; swipe is left as a trackpad-only shortcut
         // on top of it, not the only way in.
         .contextMenu {
             Button {
+                editingTask = task
+            } label: {
+                Label("Edit…", systemImage: "square.and.pencil")
+            }
+            Divider()
+            Button {
                 toggleDone(task)
             } label: {
                 Label(task.isDone ? "Reopen" : "Complete", systemImage: task.isDone ? "arrow.uturn.backward" : "checkmark")
             }
             Button {
-                task.isArchived = true
+                archive(task)
             } label: {
                 Label("Archive", systemImage: "archivebox")
             }
@@ -249,7 +307,7 @@ struct TaskListView: View {
             // like the swipe actions did — so the menu carries the same moves as a reachable path.
             ForEach(BoardMove.allCases, id: \.self) { move in
                 Button {
-                    BoardOrdering.move(task, move, in: filtered)
+                    _ = BoardOrdering.move(task, move, in: filtered)
                 } label: {
                     Label(move.label, systemImage: move.systemImage)
                 }
@@ -260,7 +318,7 @@ struct TaskListView: View {
             }
             Divider()
             Button(role: .destructive) {
-                delete(task)
+                requestDelete(task)
             } label: {
                 Label("Delete", systemImage: "trash")
             }
@@ -275,18 +333,20 @@ struct TaskListView: View {
         }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
-                delete(task)
+                requestDelete(task)
             } label: {
                 Label("Delete", systemImage: "trash")
             }
             Button {
-                task.isArchived = true
+                archive(task)
             } label: {
                 Label("Archive", systemImage: "archivebox")
             }
             .tint(.gray)
         }
-        .listRowBackground(Color.clear)
+        .listRowBackground(
+            selectedTaskID == task.id ? TaskStripTheme.amber.opacity(0.18) : Color.clear
+        )
         .listRowSeparator(.hidden)
     }
 
@@ -364,8 +424,25 @@ struct TaskListView: View {
         task.completedAt = task.isDone ? .now : nil
     }
 
+    private func archive(_ task: TaskItem) {
+        task.isArchived = true
+        if selectedTaskID == task.id { selectedTaskID = nil }
+    }
+
+    /// Deleting a strip is permanent and there's no undo, so the board asks first unless the user
+    /// has turned that off — the edit sheet has always confirmed, and the board's own delete
+    /// (context menu, swipe, and now cmd-delete) shouldn't be the one quiet exception.
+    private func requestDelete(_ task: TaskItem) {
+        if confirmBeforeDelete {
+            pendingDeletion = task
+        } else {
+            delete(task)
+        }
+    }
+
     private func delete(_ task: TaskItem) {
         let id = task.id
+        if selectedTaskID == id { selectedTaskID = nil }
         modelContext.delete(task)
         cleanUpDanglingBlockers(deletedID: id)
     }

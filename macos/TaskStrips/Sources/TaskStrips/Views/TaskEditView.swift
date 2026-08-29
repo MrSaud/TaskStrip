@@ -36,7 +36,17 @@ struct TaskEditView: View {
     @State private var waitingOnFollowUpDays: Double
     @State private var showDeleteConfirm = false
 
-    init(editingTask: TaskItem?, allTasks: [TaskItem], nextOrderIndex: Int, onSaved: @escaping () -> Void, onDeleted: @escaping () -> Void) {
+    /// `defaultPriority`/`defaultNotesRtl` only apply to a brand-new strip — an existing one
+    /// always opens on its own values.
+    init(
+        editingTask: TaskItem?,
+        allTasks: [TaskItem],
+        nextOrderIndex: Int,
+        defaultPriority: Priority = .normal,
+        defaultNotesRtl: Bool = false,
+        onSaved: @escaping () -> Void,
+        onDeleted: @escaping () -> Void
+    ) {
         self.editingTask = editingTask
         self.allTasks = allTasks
         self.nextOrderIndex = nextOrderIndex
@@ -45,8 +55,8 @@ struct TaskEditView: View {
 
         _title = State(initialValue: editingTask?.title ?? "")
         _notes = State(initialValue: editingTask?.notes ?? "")
-        _notesRtl = State(initialValue: editingTask?.notesRtl ?? false)
-        _priority = State(initialValue: editingTask?.priority ?? .normal)
+        _notesRtl = State(initialValue: editingTask?.notesRtl ?? defaultNotesRtl)
+        _priority = State(initialValue: editingTask?.priority ?? defaultPriority)
         _hasDueDate = State(initialValue: editingTask?.dueAt != nil)
         _dueAt = State(initialValue: editingTask?.dueAt ?? .now)
         _progress = State(initialValue: Double(editingTask?.progress ?? 0))
