@@ -24,8 +24,10 @@ extension XCUIApplication {
         typeKey(.escape, modifierFlags: [])
     }
 
-    func menuItem(_ title: String) -> XCUIElement {
-        menuBars.menuItems[title]
+    /// Scoped to one menu on purpose: several titles (Delete, most obviously) appear in more than
+    /// one menu, and an app-wide lookup fails outright with "multiple matching elements".
+    func menuItem(_ title: String, in menu: String) -> XCUIElement {
+        menuBars.menuBarItems[menu].menus.menuItems[title]
     }
 
     // MARK: - The board
@@ -45,12 +47,20 @@ extension XCUIApplication {
     }
 
     /// The seeded strips currently on the board, top to bottom.
+    ///
+    /// Looks each title up by name rather than enumerating `staticTexts` — the enumeration came
+    /// back empty on CI even with the rows plainly on screen and clickable, while the by-name
+    /// lookup `stripRow(titled:)` uses resolved them fine.
     func boardTitles() -> [String] {
-        let known = Set(UITestSupport.strips.map { $0.uppercased() })
-        return staticTexts.allElementsBoundByIndex
-            .filter { known.contains($0.label) }
-            .sorted { $0.frame.minY < $1.frame.minY }
-            .map(\.label)
+        UITestSupport.strips
+            .map { $0.uppercased() }
+            .compactMap { title -> (title: String, top: CGFloat)? in
+                let element = staticTexts[title]
+                guard element.exists else { return nil }
+                return (title, element.frame.minY)
+            }
+            .sorted { $0.top < $1.top }
+            .map(\.title)
     }
 
     /// Polls rather than asserting once: a reorder repaints a frame or two after the click.
@@ -59,7 +69,7 @@ extension XCUIApplication {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
             if boardTitles() == expected { return true }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.2))
+            Thread.sleep(forTimeInterval: 0.25)
         }
         return false
     }

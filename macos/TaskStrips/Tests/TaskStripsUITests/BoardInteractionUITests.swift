@@ -69,7 +69,7 @@ final class BoardInteractionUITests: XCTestCase {
     func testDeletingFromTheMenuAsksFirst() {
         app.selectStrip(atRowTitled: UITestSupport.strips[1])
         app.openMenu("Strip")
-        app.menuItem("Delete").click()
+        app.menuItem("Delete", in: "Strip").click()
 
         let cancel = app.buttons["Cancel"]
         XCTAssertTrue(

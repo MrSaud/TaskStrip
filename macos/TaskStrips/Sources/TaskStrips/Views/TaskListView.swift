@@ -279,7 +279,13 @@ struct TaskListView: View {
             // wrapped the row in a Button because a bare .onTapGesture wouldn't reliably open the
             // editor; if that still bites, Edit in the context menu and cmd-E both still do.
             .contentShape(Rectangle())
+            // Both taps are explicit because CI proved the single click wasn't getting through:
+            // .onTapGesture(count: 2) alone swallows it while it waits to see whether a second
+            // click is coming, so the row never became selected, and everything hanging off
+            // selection — the whole Strip menu, cmd-E — stayed dead. Setting selection here
+            // rather than leaving it to the List is what makes the click land.
             .onTapGesture(count: 2) { editingTask = task }
+            .onTapGesture(count: 1) { selectedTaskID = task.id }
             .tag(task.id)
         // Swipe gestures need an actual trackpad and expose no accessibility action, so a
         // mouse-only user (or VoiceOver) would have no way to reach these at all — the context
