@@ -3,12 +3,30 @@ import XCTest
 @testable import TaskStrips
 
 final class BackupImportTests: XCTestCase {
-    private func fixtureSummary() throws -> BackupImportSummary {
-        let url = try XCTUnwrap(
-            Bundle(for: BackupArchiveTests.self).url(forResource: "android_backup", withExtension: "zip")
+    private var temporaryRoots: [URL] = []
+
+    override func tearDownWithError() throws {
+        for root in temporaryRoots { try? FileManager.default.removeItem(at: root) }
+        temporaryRoots = []
+    }
+
+    private func fixtureURL(_ name: String = "android_backup") throws -> URL {
+        try XCTUnwrap(
+            Bundle(for: BackupArchiveTests.self).url(forResource: name, withExtension: "zip")
         )
-        let manifest = try BackupArchive.manifestData(inArchive: Data(contentsOf: url))
+    }
+
+    private func fixtureSummary() throws -> BackupImportSummary {
+        let manifest = try BackupArchive.manifestData(inArchive: Data(contentsOf: try fixtureURL()))
         return try BackupImport.parse(manifest: manifest)
+    }
+
+    /// A store rooted in a temp directory, so nothing here can reach the real media folder.
+    private func makeStore() throws -> AttachmentStore {
+        let root = FileManager.default.temporaryDirectory
+            .appending(path: "import-media-\(UUID().uuidString)", directoryHint: .isDirectory)
+        temporaryRoots.append(root)
+        return AttachmentStore(root: root)
     }
 
     private func makeContext() throws -> ModelContext {
@@ -158,5 +176,123 @@ final class BackupImportTests: XCTestCase {
         XCTAssertTrue(expenses.isDone)
         XCTAssertEqual(expenses.completedAt, Date(timeIntervalSince1970: 1_787_900_000))
         XCTAssertEqual(expenses.priority, .low)
+    }
+
+    // MARK: - Attachments
+
+    func testCollectsTheFilesEachStripClaims() throws {
+        let passport = try XCTUnwrap(try fixtureSummary().tasks.first)
+        XCTAssertEqual(
+            passport.attachments,
+            [
+                ImportedAttachment(kind: .image, path: "images/passport.jpg"),
+                ImportedAttachment(kind: .image, path: "images/form.jpg"),
+                ImportedAttachment(kind: .document, path: "documents/checklist.pdf"),
+            ]
+        )
+        XCTAssertEqual(passport.attachmentCount, 3)
+    }
+
+    func testReferencedPathsAreWhatTheArchiveWillBeAskedFor() throws {
+        XCTAssertEqual(
+            try fixtureSummary().referencedAttachmentPaths,
+            ["images/passport.jpg", "images/form.jpg", "documents/checklist.pdf"]
+        )
+    }
+
+    func testRestoresTheFilesTheArchiveActuallyCarries() throws {
+        let store = try makeStore()
+        let summary = try fixtureSummary()
+
+        let restored = try BackupImport.restoreMedia(
+            fromArchiveAt: try fixtureURL(),
+            paths: summary.referencedAttachmentPaths,
+            into: store
+        )
+
+        XCTAssertEqual(restored, ["images/passport.jpg", "images/form.jpg"])
+        let written = store.root.appending(path: "images/passport.jpg")
+        XCTAssertEqual(Array(try Data(contentsOf: written).prefix(4)), [0xFF, 0xD8, 0xFF, 0xE0])
+    }
+
+    /// The manifest names documents/checklist.pdf and the archive doesn't carry it — which is a
+    /// state a real backup can be in, so it mustn't throw.
+    func testAFileTheArchiveDoesNotCarryIsSimplyNotRestored() throws {
+        let store = try makeStore()
+        let restored = try BackupImport.restoreMedia(
+            fromArchiveAt: try fixtureURL(),
+            paths: try fixtureSummary().referencedAttachmentPaths,
+            into: store
+        )
+        XCTAssertFalse(restored.contains("documents/checklist.pdf"))
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: store.root.appending(path: "documents/checklist.pdf").path
+            )
+        )
+    }
+
+    func testRestoresJustAsWellFromAZip64Archive() throws {
+        let store = try makeStore()
+        let restored = try BackupImport.restoreMedia(
+            fromArchiveAt: try fixtureURL("android_backup_zip64"),
+            paths: try fixtureSummary().referencedAttachmentPaths,
+            into: store
+        )
+        XCTAssertEqual(restored, ["images/passport.jpg", "images/form.jpg"])
+    }
+
+    /// Only what the strips point at: an Android backup also carries sketches and storage-library
+    /// files, and copying those in would grow the folder for nothing.
+    func testIgnoresMediaNothingPointsAt() throws {
+        let store = try makeStore()
+        let restored = try BackupImport.restoreMedia(
+            fromArchiveAt: try fixtureURL(),
+            paths: ["images/form.jpg"],
+            into: store
+        )
+        XCTAssertEqual(restored, ["images/form.jpg"])
+        XCTAssertFalse(
+            FileManager.default.fileExists(
+                atPath: store.root.appending(path: "images/passport.jpg").path
+            )
+        )
+    }
+
+    func testAppliedStripsCarryTheirAttachments() throws {
+        let context = try makeContext()
+        BackupImport.apply(try fixtureSummary().tasks, mode: .add, existing: [], context: context)
+
+        let passport = try XCTUnwrap(try board(context).first { $0.title == "Renew passport" })
+        XCTAssertEqual(passport.attachments.map(\.path), [
+            "images/passport.jpg", "images/form.jpg", "documents/checklist.pdf",
+        ])
+        XCTAssertEqual(passport.attachments.map(\.kind), [.image, .image, .document])
+    }
+
+    /// A document is the only kind whose stored name means anything, so it keeps it; the rest sit
+    /// under a uuid and get numbered per kind instead.
+    func testAttachmentNamesReadWell() throws {
+        let context = try makeContext()
+        BackupImport.apply(try fixtureSummary().tasks, mode: .add, existing: [], context: context)
+
+        let passport = try XCTUnwrap(try board(context).first { $0.title == "Renew passport" })
+        XCTAssertEqual(passport.attachments.map(\.name), ["Image 1", "Image 2", "checklist.pdf"])
+    }
+
+    func testAStripWithNoFilesGetsNone() throws {
+        let context = try makeContext()
+        BackupImport.apply(try fixtureSummary().tasks, mode: .add, existing: [], context: context)
+
+        let flights = try XCTUnwrap(try board(context).first { $0.title == "Book flights" })
+        XCTAssertTrue(flights.attachments.isEmpty)
+    }
+
+    func testRestoringNothingIsNotAnError() throws {
+        let store = try makeStore()
+        XCTAssertEqual(
+            try BackupImport.restoreMedia(fromArchiveAt: try fixtureURL(), paths: [], into: store),
+            []
+        )
     }
 }

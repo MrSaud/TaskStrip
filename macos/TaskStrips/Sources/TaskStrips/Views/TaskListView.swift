@@ -499,7 +499,11 @@ struct TaskListView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         do {
-            importSummary = try BackupImport.parse(manifest: BackupArchive.manifestData(at: url))
+            var summary = try BackupImport.parse(manifest: BackupArchive.manifestData(at: url))
+            // Kept so the files can be fetched if the user actually commits. Parsing shouldn't be
+            // writing anything to disk.
+            summary.sourceURL = url
+            importSummary = summary
         } catch {
             importMessage = ImportMessage(
                 title: "Couldn't read that backup",
@@ -510,6 +514,24 @@ struct TaskListView: View {
 
     private func performImport(_ summary: BackupImportSummary, mode: ImportMode) {
         let replaced = mode == .replace ? allTasks.count : 0
+        let referenced = summary.referencedAttachmentPaths
+
+        // Files first: a strip that ends up pointing at nothing is better than files on disk that
+        // nothing points at, and this is the step that can fail on its own.
+        var restored: Set<String> = []
+        var mediaProblem: String?
+        if let source = summary.sourceURL, !referenced.isEmpty {
+            do {
+                restored = try BackupImport.restoreMedia(
+                    fromArchiveAt: source,
+                    paths: referenced,
+                    into: .shared
+                )
+            } catch {
+                mediaProblem = error.localizedDescription
+            }
+        }
+
         let imported = BackupImport.apply(
             summary.tasks,
             mode: mode,
@@ -523,12 +545,20 @@ struct TaskListView: View {
         let result: ImportMessage
         do {
             try modelContext.save()
-            result = ImportMessage(
-                title: "Import complete",
-                body: mode == .replace
-                    ? "Replaced \(replaced) strip\(replaced == 1 ? "" : "s") with \(imported) from the backup."
-                    : "Added \(imported) strip\(imported == 1 ? "" : "s") to the board."
-            )
+            var body = mode == .replace
+                ? "Replaced \(replaced) strip\(replaced == 1 ? "" : "s") with \(imported) from the backup."
+                : "Added \(imported) strip\(imported == 1 ? "" : "s") to the board."
+            if !referenced.isEmpty {
+                body += " Restored \(restored.count) of \(referenced.count) file\(referenced.count == 1 ? "" : "s")."
+            }
+            let missing = referenced.count - restored.count
+            if missing > 0 {
+                body += " The \(missing) the archive didn't carry show as missing on their strips."
+            }
+            if let mediaProblem {
+                body += " Files couldn't be read: \(mediaProblem)"
+            }
+            result = ImportMessage(title: "Import complete", body: body)
         } catch {
             result = ImportMessage(
                 title: "Import failed",

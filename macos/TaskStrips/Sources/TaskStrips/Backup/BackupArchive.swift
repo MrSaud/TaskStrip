@@ -48,6 +48,8 @@ enum BackupArchiveError: LocalizedError {
 /// entries, central directory — is simply never read.
 enum BackupArchive {
     static let manifestEntryName = "backup.json"
+    /// Everything else in a backup lives behind this, at the path it had under filesDir.
+    static let mediaPrefix = "media/"
 
     /// Accepts either a backup `.zip` or a `backup.json` extracted from one by hand.
     static func manifestData(at url: URL) throws -> Data {

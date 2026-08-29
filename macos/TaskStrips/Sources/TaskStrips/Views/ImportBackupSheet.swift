@@ -25,6 +25,10 @@ struct ImportBackupSheet: View {
                      ? "This backup has no strips in it."
                      : "Found \(summary.tasks.count) strip\(summary.tasks.count == 1 ? "" : "s") — \(activeCount) on the board, \(archivedCount) archived.")
                     .foregroundStyle(.secondary)
+                if summary.attachmentCount > 0 {
+                    Text("\(summary.attachmentCount) attached file\(summary.attachmentCount == 1 ? "" : "s") will come across too.")
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if !notImported.isEmpty {
@@ -73,9 +77,6 @@ struct ImportBackupSheet: View {
     /// Everything in the file that this app has no home for yet, phrased for the sheet.
     private var notImported: [String] {
         var lines: [String] = []
-        if summary.attachmentCount > 0 {
-            lines.append("\(summary.attachmentCount) attachment\(summary.attachmentCount == 1 ? "" : "s") (images, voice notes, documents, videos)")
-        }
         if summary.reminderOnTaskCount > 0 {
             lines.append("reminders on \(summary.reminderOnTaskCount) strip\(summary.reminderOnTaskCount == 1 ? "" : "s")")
         }

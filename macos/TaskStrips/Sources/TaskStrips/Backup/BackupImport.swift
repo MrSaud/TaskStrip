@@ -40,22 +40,39 @@ struct ImportedTask {
     var actionLog: [TaskActionLogEntry] = []
     var createdAt: Date = .now
     var blockedByIndex: Int?
-    /// Images/voice notes/documents/videos on this strip. Counted only so the import sheet can
-    /// say what's being left behind — the Mac model carries no attachments yet.
-    var attachmentCount: Int = 0
+    /// The files this strip claims, as paths relative to the media root — which is also where
+    /// they sit inside the archive, behind a "media/" prefix.
+    var attachments: [ImportedAttachment] = []
     var hasReminder: Bool = false
+
+    var attachmentCount: Int { attachments.count }
+}
+
+/// A file a backup says belongs to a strip. Whether its bytes are actually in the archive is a
+/// separate question, answered by `restoreMedia`.
+struct ImportedAttachment: Hashable {
+    var kind: AttachmentKind
+    var path: String
 }
 
 /// What a backup holds, including the parts this app can't take yet, so the user is told rather
 /// than left to notice the gap themselves.
 struct BackupImportSummary: Identifiable {
     let id = UUID()
+    /// The archive this was parsed from, kept so the media can be fetched when the user actually
+    /// commits — parsing shouldn't be writing files to disk.
+    var sourceURL: URL?
     var version: Int = 0
     var tasks: [ImportedTask] = []
     var attachmentCount: Int = 0
     var reminderOnTaskCount: Int = 0
     /// Whole top-level sections of the backup with no Mac equivalent, e.g. "notes": 12.
     var skippedSections: [(name: String, count: Int)] = []
+
+    /// Every file path the strips reference, which is what `restoreMedia` goes looking for.
+    var referencedAttachmentPaths: Set<String> {
+        Set(tasks.flatMap { $0.attachments.map(\.path) })
+    }
 }
 
 enum ImportMode {
@@ -129,11 +146,41 @@ enum BackupImport {
             )
         }
 
-        task.attachmentCount = ["images", "voiceNotes", "documents", "videos"]
-            .reduce(0) { $0 + ((object[$1] as? [Any])?.count ?? 0) }
+        task.attachments = AttachmentKind.allCases.flatMap { kind in
+            (object[kind.backupKey] as? [Any] ?? [])
+                .compactMap { $0 as? String }
+                .filter { !$0.isEmpty }
+                .map { ImportedAttachment(kind: kind, path: $0) }
+        }
         task.hasReminder = intValue(object, "reminderMinutesBefore") != nil
 
         return task
+    }
+
+    /// Pulls the files the strips reference out of the archive and into the attachment store.
+    ///
+    /// Only the referenced ones: an Android backup also carries sketches and storage-library
+    /// files, and there's nowhere to put those yet, so copying them would just grow the folder.
+    /// Returns the paths actually written — a backup can name a file whose bytes never made it
+    /// into the zip, and the caller needs to know which.
+    @discardableResult
+    static func restoreMedia(
+        fromArchiveAt url: URL,
+        paths: Set<String>,
+        into store: AttachmentStore
+    ) throws -> Set<String> {
+        guard !paths.isEmpty, url.pathExtension.lowercased() != "json" else { return [] }
+
+        let archive = try Data(contentsOf: url, options: .mappedIfSafe)
+        var restored: Set<String> = []
+        for entry in try BackupArchive.entries(inArchive: archive) where !entry.isDirectory {
+            guard entry.name.hasPrefix(BackupArchive.mediaPrefix) else { continue }
+            let path = String(entry.name.dropFirst(BackupArchive.mediaPrefix.count))
+            guard paths.contains(path) else { continue }
+            try store.write(try BackupArchive.data(for: entry, inArchive: archive), toRelativePath: path)
+            restored.insert(path)
+        }
+        return restored
     }
 
     /// Inserts `tasks` into `context`, returning how many strips landed on the board.
@@ -186,6 +233,7 @@ enum BackupImport {
             item.contacts = imported.contacts
             item.links = imported.links
             item.actionLog = imported.actionLog
+            item.attachments = attachments(for: imported)
             context.insert(item)
             created.append(item)
         }
@@ -198,6 +246,26 @@ enum BackupImport {
         }
 
         return created.count
+    }
+
+    /// Turns the backup's paths into attachments.
+    ///
+    /// A path whose bytes weren't in the archive still becomes an attachment: the strip did have
+    /// a file, and saying so — the UI marks it "missing" — keeps more of the truth than dropping
+    /// it silently would.
+    ///
+    /// Only documents carry a name worth showing; everything else is stored under a uuid, so it
+    /// gets numbered per kind the way it would read on the strip.
+    private static func attachments(for imported: ImportedTask) -> [TaskAttachment] {
+        var countsByKind: [AttachmentKind: Int] = [:]
+        return imported.attachments.map { reference in
+            let index = (countsByKind[reference.kind] ?? 0) + 1
+            countsByKind[reference.kind] = index
+            let name = reference.kind == .document
+                ? (reference.path as NSString).lastPathComponent
+                : "\(reference.kind.label) \(index)"
+            return TaskAttachment(kind: reference.kind, path: reference.path, name: name)
+        }
     }
 
     // MARK: - JSON accessors
