@@ -1,0 +1,80 @@
+name: macOS app
+
+# The Mac port is developed from a Linux container with no Swift toolchain, so this is where the
+# code first gets compiled at all. Android's Gradle build is untouched by it.
+on:
+  push:
+    branches: ["claude/**"]
+    paths:
+      - "macos/**"
+      - ".github/workflows/macos.yml"
+  pull_request:
+    paths:
+      - "macos/**"
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: macos-14
+    defaults:
+      run:
+        working-directory: macos/TaskStrips
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen xcbeautify
+
+      - name: Generate the Xcode project
+        run: xcodegen generate
+
+      # Ad-hoc signing rather than none: the UI tests have to actually launch the app.
+      - name: Build
+        run: |
+          set -o pipefail
+          xcodebuild build-for-testing \
+            -project TaskStrips.xcodeproj \
+            -scheme TaskStrips \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY=- \
+            CODE_SIGNING_REQUIRED=NO \
+            ENABLE_HARDENED_RUNTIME=NO \
+            | xcbeautify
+
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project TaskStrips.xcodeproj \
+            -scheme TaskStrips \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -only-testing:TaskStripsTests \
+            | xcbeautify
+
+      # macOS UI tests drive the app through the Accessibility API, which a hosted runner may not
+      # grant. A failure here shouldn't be read as the app being broken until the log says which:
+      # a TCC/permission refusal, or a real assertion.
+      - name: UI tests
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          xcodebuild test-without-building \
+            -project TaskStrips.xcodeproj \
+            -scheme TaskStrips \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -only-testing:TaskStripsUITests \
+            -resultBundlePath UITestResults.xcresult \
+            | xcbeautify
+
+      - name: Upload UI test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-results
+          path: macos/TaskStrips/UITestResults.xcresult
+          if-no-files-found: ignore

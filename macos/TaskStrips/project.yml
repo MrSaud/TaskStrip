@@ -49,15 +49,29 @@ targets:
         GENERATE_INFOPLIST_FILE: true
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/TaskStrips.app/Contents/MacOS/TaskStrips"
         BUNDLE_LOADER: "$(TEST_HOST)"
+  TaskStripsUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: Tests/TaskStripsUITests
+    dependencies:
+      - target: TaskStrips
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.saud.taskstrip.mac.uitests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: TaskStrips
 schemes:
   TaskStrips:
     build:
       targets:
         TaskStrips: all
         TaskStripsTests: [test]
+        TaskStripsUITests: [test]
     run:
       config: Debug
     test:
       config: Debug
       targets:
         - TaskStripsTests
+        - TaskStripsUITests
