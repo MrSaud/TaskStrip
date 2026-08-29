@@ -57,6 +57,11 @@ struct TaskRowView: View {
                             .foregroundStyle(TaskStripTheme.urgent)
                             .font(.caption)
                     }
+                    if !task.attachments.isEmpty {
+                        Label("\(task.attachments.count)", systemImage: "paperclip")
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(TaskStripTheme.paper.opacity(0.6))
+                    }
                     Spacer()
                 }
 

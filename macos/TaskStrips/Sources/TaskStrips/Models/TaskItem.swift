@@ -37,7 +37,7 @@ struct TaskActionLogEntry: Codable, Hashable, Identifiable {
 
 // Mirrors the task-relevant fields of TaskEntity.kt (app/src/main/java/com/saud/taskstrip/data/TaskEntity.kt).
 // Deliberately omits `route` (dead field on Android, superseded by `tags`) and everything
-// attachment/reminder/sketch-related — out of v1 scope per the macOS plan.
+// reminder/sketch-related. Attachments arrived later — see TaskAttachment and AttachmentStore.
 //
 // `blockedByID` is a plain UUID lookup rather than a SwiftData relationship: a self-referencing
 // to-one relationship with no inverse risks a dangling reference if the blocker is deleted.
@@ -66,6 +66,9 @@ final class TaskItem: Identifiable {
     var contacts: [TaskContact]
     var links: [TaskLink]
     var actionLog: [TaskActionLogEntry]
+    /// Files on this strip. Added after Phase 1, so it carries a default for SwiftData's
+    /// lightweight migration to fill in on an existing store.
+    var attachments: [TaskAttachment] = []
     var createdAt: Date
 
     var priority: Priority {
@@ -99,6 +102,7 @@ final class TaskItem: Identifiable {
         self.contacts = []
         self.links = []
         self.actionLog = []
+        self.attachments = []
         self.createdAt = createdAt
     }
 }

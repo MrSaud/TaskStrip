@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 // Mirrors ui/screens/AddEditTaskScreen.kt's fields at the concept level (v1 core-task subset:
-// no attachments/reminders/sketch link). Holds local draft state and only writes into the
+// no reminders/sketch link). Holds local draft state and only writes into the
 // SwiftData model on Save, matching Android's "editing doesn't commit until you tap
 // Update/File Strip" behavior — Cancel discards everything.
 struct TaskEditView: View {
@@ -35,6 +35,13 @@ struct TaskEditView: View {
     @State private var hasFollowUp: Bool
     @State private var waitingOnFollowUpDays: Double
     @State private var showDeleteConfirm = false
+    @State private var attachments: [TaskAttachment]
+    /// Files copied in during this sitting, and files dropped from the strip. Only one of the two
+    /// gets deleted, depending on whether you save or cancel.
+    @State private var addedAttachments: [TaskAttachment] = []
+    @State private var removedAttachments: [TaskAttachment] = []
+
+    private let attachmentStore = AttachmentStore.shared
 
     /// `defaultPriority`/`defaultNotesRtl` only apply to a brand-new strip — an existing one
     /// always opens on its own values.
@@ -64,6 +71,7 @@ struct TaskEditView: View {
         _links = State(initialValue: editingTask?.links ?? [])
         _contacts = State(initialValue: editingTask?.contacts ?? [])
         _actionLog = State(initialValue: editingTask?.actionLog ?? [])
+        _attachments = State(initialValue: editingTask?.attachments ?? [])
         _blockedByID = State(initialValue: editingTask?.blockedByID)
         _waitingOnName = State(initialValue: editingTask?.waitingOnName ?? "")
         _hasFollowUp = State(initialValue: editingTask?.waitingOnFollowUpDays != nil)
@@ -120,6 +128,15 @@ struct TaskEditView: View {
                 actionLogEditor
             }
 
+            Section("ATTACHMENTS") {
+                AttachmentsSection(
+                    attachments: $attachments,
+                    store: attachmentStore,
+                    onAdded: { addedAttachments.append($0) },
+                    onRemoved: { removedAttachments.append($0) }
+                )
+            }
+
             Section("LINKS") {
                 linksEditor
             }
@@ -159,7 +176,7 @@ struct TaskEditView: View {
         .navigationTitle(isEditing ? "EDIT STRIP" : "NEW STRIP")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { dismiss() }
+                Button("Cancel") { cancel() }
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button(isEditing ? "Update" : "File Strip") { save() }
@@ -169,6 +186,7 @@ struct TaskEditView: View {
         .confirmationDialog("Delete this strip?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 if let task = editingTask {
+                    for attachment in task.attachments { attachmentStore.remove(attachment) }
                     modelContext.delete(task)
                 }
                 onDeleted()
@@ -178,6 +196,13 @@ struct TaskEditView: View {
         } message: {
             Text("\"\(title)\" will be permanently deleted. This can't be undone.")
         }
+    }
+
+    /// Cancel means cancel: files copied in during this sitting go back out, since nothing will
+    /// be pointing at them.
+    private func cancel() {
+        for attachment in addedAttachments { attachmentStore.remove(attachment) }
+        dismiss()
     }
 
     private func save() {
@@ -195,6 +220,7 @@ struct TaskEditView: View {
         task.links = links
         task.contacts = contacts
         task.actionLog = actionLog
+        task.attachments = attachments
         task.blockedByID = blockedByID
         task.waitingOnName = waitingOnName
         task.waitingOnFollowUpDays = hasFollowUp ? Int(waitingOnFollowUpDays) : nil
@@ -202,6 +228,7 @@ struct TaskEditView: View {
         if editingTask == nil {
             modelContext.insert(task)
         }
+        for attachment in removedAttachments { attachmentStore.remove(attachment) }
         onSaved()
         dismiss()
     }

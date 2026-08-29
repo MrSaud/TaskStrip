@@ -468,6 +468,9 @@ struct TaskListView: View {
     private func delete(_ task: TaskItem) {
         let id = task.id
         if selectedTaskID == id { selectedTaskID = nil }
+        // The strip's files go with it — nothing else points at them, and leaving them behind
+        // would grow the media folder forever.
+        for attachment in task.attachments { AttachmentStore.shared.remove(attachment) }
         modelContext.delete(task)
         cleanUpDanglingBlockers(deletedID: id)
     }
