@@ -40,15 +40,12 @@ final class MenuBarUITests: XCTestCase {
 
     // MARK: - The focused-value wiring
 
-    /// Enabled with nothing selected, deliberately. The NSMenu isn't refreshed when the focused
-    /// value changes — only when the menu is opened — so an item disabled at launch for want of a
-    /// selection would never honour its shortcut afterwards. These no-op without a selection.
-    func testStripActionsStayEnabledSoTheirShortcutsWorkCold() {
+    func testStripActionsAreDisabledWithNothingSelected() {
         app.openMenu("Strip")
         for title in ["Complete", "Edit…", "Archive", "Delete"] {
             let item = app.menuItem(title, in: "Strip")
             XCTAssertTrue(item.exists, "\(title) is missing from the Strip menu")
-            XCTAssertTrue(item.isEnabled, "\(title) should stay enabled so its shortcut works cold")
+            XCTAssertFalse(item.isEnabled, "\(title) should be disabled with no strip selected")
         }
         app.closeMenu()
     }
@@ -65,17 +62,17 @@ final class MenuBarUITests: XCTestCase {
         app.closeMenu()
     }
 
-    /// The load-bearing one. A middle strip can move in all four directions, and those items are
-    /// disabled until something is selected — so them lighting up can only have happened by way
-    /// of the focused scene value.
-    func testSelectingAStripEnablesTheMoveActions() {
+    /// The load-bearing one. Every item here is disabled until something is selected, so them
+    /// lighting up can only have happened by way of the focused scene value.
+    func testSelectingAStripEnablesTheStripMenu() {
         app.selectStrip(atRowTitled: UITestSupport.strips[1])
 
         app.openMenu("Strip")
-        for move in ["Move Up", "Move Down", "Move to Top", "Move to Bottom"] {
+        for title in ["Complete", "Edit…", "Archive", "Delete",
+                      "Move Up", "Move Down", "Move to Top", "Move to Bottom"] {
             XCTAssertTrue(
-                app.menuItem(move, in: "Strip").isEnabled,
-                "\(move) is still disabled after selecting a strip — the board's focusedSceneValue isn't reaching the menu bar"
+                app.menuItem(title, in: "Strip").isEnabled,
+                "\(title) is still disabled after selecting a strip — the board's focusedSceneValue isn't reaching the menu bar"
             )
         }
         app.closeMenu()
