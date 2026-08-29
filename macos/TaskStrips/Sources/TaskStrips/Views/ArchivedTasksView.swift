@@ -6,6 +6,9 @@ struct ArchivedTasksView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     let tasks: [TaskItem]
+    /// The board owns where an unarchived strip lands, since it's the only place that knows the
+    /// current manual order.
+    let onUnarchive: (TaskItem) -> Void
 
     var body: some View {
         List {
@@ -24,7 +27,7 @@ struct ArchivedTasksView: View {
                         }
                     }
                     Spacer()
-                    Button("Unarchive") { task.isArchived = false }
+                    Button("Unarchive") { onUnarchive(task) }
                     Button(role: .destructive) {
                         modelContext.delete(task)
                     } label: {

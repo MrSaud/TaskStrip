@@ -74,18 +74,26 @@ struct TaskListView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                if canReorder {
-                    ForEach(filtered) { task in
-                        row(for: task)
-                    }
-                    .onMove(perform: move)
-                } else {
-                    ForEach(filtered) { task in
-                        row(for: task)
-                    }
+            VStack(spacing: 0) {
+                reorderNotice
+                board
+            }
+        }
+    }
+
+    private var board: some View {
+        List {
+            if canReorder {
+                ForEach(filtered) { task in
+                    row(for: task)
+                }
+                .onMove(perform: move)
+            } else {
+                ForEach(filtered) { task in
+                    row(for: task)
                 }
             }
+        }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(TaskStripTheme.bayBackground)
@@ -116,7 +124,16 @@ struct TaskListView: View {
             }
             .sheet(isPresented: $showArchive) {
                 NavigationStack {
-                    ArchivedTasksView(tasks: allTasks.filter(\.isArchived))
+                    ArchivedTasksView(
+                        tasks: allTasks.filter(\.isArchived),
+                        onUnarchive: { task in
+                            // Renumbering only ever walks the strips on the board, so this one's
+                            // orderIndex is whatever it held before it was archived — it would
+                            // reappear at some arbitrary spot mid-board. Send it to the bottom.
+                            task.orderIndex = nextOrderIndex()
+                            task.isArchived = false
+                        }
+                    )
                 }
             }
             .popover(isPresented: $showDateFilter) {
@@ -143,7 +160,65 @@ struct TaskListView: View {
             .onReceive(NotificationCenter.default.publisher(for: .importAndroidBackup)) { _ in
                 chooseBackupFile()
             }
+    }
+
+    /// Says why drag-reorder went away, and offers the way back.
+    ///
+    /// `canReorder` silently switching off whenever the board is filtered or sorted reads as the
+    /// feature being broken rather than suspended — there's nothing on screen tying the two
+    /// together.
+    @ViewBuilder
+    private var reorderNotice: some View {
+        if !canReorder {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                    .foregroundStyle(TaskStripTheme.amber)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(reorderNoticeText)
+                        .font(.callout)
+                    Text("Reordering is off until the whole board is showing in manual order.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Button("Show All", action: clearFilters)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(TaskStripTheme.baySurface)
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(TaskStripTheme.bayBackground)
+                    .frame(height: 1)
+            }
         }
+    }
+
+    private var reorderNoticeText: String {
+        filtered.count < activeTasks.count
+            ? "Showing \(filtered.count) of \(activeTasks.count) strips — \(activeFilterSummary)."
+            : "This board is \(activeFilterSummary)."
+    }
+
+    /// Reads back what's actually narrowing the board, so "Show All" is an obvious undo rather
+    /// than a guess at which of four controls is the culprit.
+    private var activeFilterSummary: String {
+        var parts: [String] = []
+        let trimmedSearch = searchText.trimmingCharacters(in: .whitespaces)
+        if !trimmedSearch.isEmpty { parts.append("matching \"\(trimmedSearch)\"") }
+        if let tag = tagFilter { parts.append("tagged \(tag)") }
+        if dueFrom != nil || dueTo != nil { parts.append("filtered by due date") }
+        if sortMode != .manual { parts.append("sorted by \(sortMode.rawValue.lowercased())") }
+        return parts.isEmpty ? "filtered" : parts.formatted(.list(type: .and))
+    }
+
+    private func clearFilters() {
+        searchText = ""
+        tagFilter = nil
+        dueFrom = nil
+        dueTo = nil
+        sortMode = .manual
     }
 
     @ViewBuilder
@@ -168,6 +243,20 @@ struct TaskListView: View {
                 task.isArchived = true
             } label: {
                 Label("Archive", systemImage: "archivebox")
+            }
+            Divider()
+            // Drag-reorder needs a real trackpad gesture and offers nothing to VoiceOver, exactly
+            // like the swipe actions did — so the menu carries the same moves as a reachable path.
+            ForEach(BoardMove.allCases, id: \.self) { move in
+                Button {
+                    BoardOrdering.move(task, move, in: filtered)
+                } label: {
+                    Label(move.label, systemImage: move.systemImage)
+                }
+                .disabled(!canReorder || !BoardOrdering.canMove(task, move, in: filtered))
+            }
+            if !canReorder {
+                Text("Reordering is off while the board is filtered or sorted")
             }
             Divider()
             Button(role: .destructive) {
@@ -288,11 +377,7 @@ struct TaskListView: View {
     }
 
     private func move(from source: IndexSet, to destination: Int) {
-        var reordered = filtered
-        reordered.move(fromOffsets: source, toOffset: destination)
-        for (index, task) in reordered.enumerated() {
-            task.orderIndex = index
-        }
+        BoardOrdering.move(from: source, to: destination, in: filtered)
     }
 
     // MARK: - Android backup import
