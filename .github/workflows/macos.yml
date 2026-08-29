@@ -63,11 +63,10 @@ jobs:
             -only-testing:TaskStripsTests \
             | xcbeautify
 
-      # macOS UI tests drive the app through the Accessibility API, which a hosted runner may not
-      # grant. A failure here shouldn't be read as the app being broken until the log says which:
-      # a TCC/permission refusal, or a real assertion.
+      # No longer advisory: the runner grants Accessibility fine, the suite is green, and the one
+      # known SwiftUI limitation is recorded as an XCTExpectFailure rather than hidden here. A red
+      # UI step now means a real regression.
       - name: UI tests
-        continue-on-error: true
         run: |
           set -o pipefail
           xcodebuild test-without-building \
