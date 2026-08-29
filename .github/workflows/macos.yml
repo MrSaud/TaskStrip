@@ -15,7 +15,8 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: macos-14
+    # macos-14's Xcode is too old to open the project XcodeGen writes (object format 77).
+    runs-on: macos-15
     defaults:
       run:
         working-directory: macos/TaskStrips
@@ -25,6 +26,13 @@ jobs:
 
       - name: Install XcodeGen
         run: brew install xcodegen xcbeautify
+
+      # Logged because the first CI run died on exactly this pairing: a project format the
+      # runner's Xcode couldn't read.
+      - name: Toolchain versions
+        run: |
+          xcodebuild -version
+          xcodegen --version
 
       - name: Generate the Xcode project
         run: xcodegen generate
