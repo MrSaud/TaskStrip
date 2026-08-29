@@ -46,6 +46,7 @@ jobs:
             -scheme TaskStrips \
             -configuration Debug \
             -destination 'platform=macOS' \
+            -derivedDataPath .build \
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY=- \
             CODE_SIGNING_REQUIRED=NO \
@@ -60,6 +61,7 @@ jobs:
             -scheme TaskStrips \
             -configuration Debug \
             -destination 'platform=macOS' \
+            -derivedDataPath .build \
             -only-testing:TaskStripsTests \
             | xcbeautify
 
@@ -74,9 +76,28 @@ jobs:
             -scheme TaskStrips \
             -configuration Debug \
             -destination 'platform=macOS' \
+            -derivedDataPath .build \
             -only-testing:TaskStripsUITests \
             -resultBundlePath UITestResults.xcresult \
             | xcbeautify
+
+      # ditto rather than letting upload-artifact zip the bundle directly: a plain zip of a .app
+      # loses symlinks and the executable bit, and what comes out the other end won't launch.
+      - name: Package the app
+        if: always()
+        run: |
+          ditto -c -k --keepParent \
+            .build/Build/Products/Debug/TaskStrips.app \
+            TaskStrips-macOS.zip
+          ls -lh TaskStrips-macOS.zip
+
+      - name: Upload the app
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: TaskStrips-macOS
+          path: macos/TaskStrips/TaskStrips-macOS.zip
+          if-no-files-found: warn
 
       - name: Upload UI test results
         if: always()
