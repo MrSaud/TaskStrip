@@ -42,28 +42,10 @@ final class BoardInteractionUITests: XCTestCase {
         app.buttons["Cancel"].firstMatch.click()
     }
 
-    /// Known limitation, recorded rather than papered over — see the expectation below.
-    ///
-    /// Two explanations have been ruled out by CI. It isn't the key: cmd-E and cmd-shift-E fail
-    /// identically, and cmd-E's clash with "Use Selection for Find" is real but not the cause.
-    /// It isn't enablement either: this item is now enabled from launch and the keystroke is
-    /// still dropped, while the very same shortcut works the moment the Strip menu has been
-    /// opened once (`testTheEditShortcutWorksOnceTheStripMenuHasBeenOpened`), and the menu item
-    /// itself always works (`testTheEditMenuItemOpensTheEditorForTheSelectedStrip`).
-    ///
-    /// What's left is that SwiftUI doesn't push the Commands into the real NSMenu — action
-    /// closure and all — until the menu is realised. The likeliest reason is that the focused
-    /// value is a struct full of closures, which SwiftUI can't diff, so it skips the update. The
-    /// fix would be to carry plain Equatable data in the focused value and route the actions
-    /// through a separate live reference; that's a refactor, not a tweak.
-    ///
-    /// This is strict on purpose: if a future SwiftUI or a fix makes it pass, the expectation
-    /// itself fails and says so.
+    /// The one the refactor was for. Pressed cold, with the Strip menu never opened: this used to
+    /// fail because the focused value was a struct of closures SwiftUI couldn't diff, so the menu
+    /// was only ever rebuilt on open and the key equivalent went nowhere.
     func testTheEditShortcutOpensTheEditorForTheSelectedStrip() {
-        XCTExpectFailure(
-            "Strip menu shortcuts stay inert until that menu has been opened once in the launch"
-        )
-
         app.selectStrip(atRowTitled: UITestSupport.strips[0])
         app.typeKey("e", modifierFlags: [.command, .shift])
 
@@ -71,9 +53,7 @@ final class BoardInteractionUITests: XCTestCase {
             app.buttons["Update"].waitForExistence(timeout: UITestSupport.timeout),
             "the Edit shortcut didn't open the editor"
         )
-        if app.buttons["Update"].exists {
-            app.buttons["Cancel"].firstMatch.click()
-        }
+        app.buttons["Cancel"].firstMatch.click()
     }
 
     func testTheEditShortcutWorksOnceTheStripMenuHasBeenOpened() {

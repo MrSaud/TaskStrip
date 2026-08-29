@@ -184,32 +184,51 @@ struct TaskListView: View {
             } message: {
                 Text("Deleting a strip is permanent. Archiving keeps it.")
             }
-            .focusedSceneValue(\.boardCommands, commandTarget)
+            .focusedSceneValue(\.boardCommandState, commandState)
+            .onChange(of: commandState, initial: true) { publishCommandActions() }
     }
 
-    /// Hands the menu bar everything it can act on. Rebuilt whenever the board changes, so the
-    /// closures always close over the current selection rather than a stale one.
-    private var commandTarget: BoardCommandTarget {
-        BoardCommandTarget(
-            newStrip: { isPresentingNewTask = true },
-            importBackup: chooseBackupFile,
-            showArchived: { showArchive = true },
-            clearFilters: clearFilters,
+    /// What the menu bar reads. Plain data, so SwiftUI can tell one value from the next — see the
+    /// note on BoardCommandState for why that matters.
+    private var commandState: BoardCommandState {
+        BoardCommandState(
+            selectedID: selectedTaskID,
+            selectionIsDone: selectedTask?.isDone ?? false,
+            availableMoves: selectedTask.map { task in
+                Set(BoardMove.allCases.filter { canReorder && BoardOrdering.canMove(task, $0, in: filtered) })
+            } ?? [],
             isFiltered: !canReorder,
             sortMode: sortMode,
-            setSortMode: { sortMode = $0 },
-            selection: selectedTask.map { task in
-                SelectedStripCommands(
-                    isDone: task.isDone,
-                    edit: { editingTask = task },
-                    toggleDone: { toggleDone(task) },
-                    archive: { archive(task) },
-                    delete: { requestDelete(task) },
-                    canMove: { canReorder && BoardOrdering.canMove(task, $0, in: filtered) },
-                    move: { _ = BoardOrdering.move(task, $0, in: filtered) }
-                )
-            }
+            visibleIDs: filtered.map(\.id)
         )
+    }
+
+    /// What the menu bar runs. Republished whenever the state above changes, which covers a new
+    /// selection and a reordered board alike; the menu items hold a closure over BoardActions
+    /// rather than over any of this, so a menu item SwiftUI never refreshed still acts on what's
+    /// selected now.
+    private func publishCommandActions() {
+        let actions = BoardActions.shared
+        actions.newStrip = { isPresentingNewTask = true }
+        actions.importBackup = { chooseBackupFile() }
+        actions.showArchived = { showArchive = true }
+        actions.clearFilters = { clearFilters() }
+        actions.setSortMode = { sortMode = $0 }
+
+        guard let task = selectedTask else {
+            actions.clearSelectionActions()
+            return
+        }
+        let visible = filtered
+        let reorderable = canReorder
+        actions.editSelection = { editingTask = task }
+        actions.toggleSelectionDone = { toggleDone(task) }
+        actions.archiveSelection = { archive(task) }
+        actions.deleteSelection = { requestDelete(task) }
+        actions.moveSelection = { move in
+            guard reorderable else { return }
+            _ = BoardOrdering.move(task, move, in: visible)
+        }
     }
 
     /// Says why drag-reorder went away, and offers the way back.

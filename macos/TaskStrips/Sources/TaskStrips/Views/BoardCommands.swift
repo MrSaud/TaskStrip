@@ -1,40 +1,75 @@
 import SwiftUI
 
-/// What the menu bar can do to the strip the board has selected.
-struct SelectedStripCommands {
-    var isDone: Bool
-    var edit: () -> Void
-    var toggleDone: () -> Void
-    var archive: () -> Void
-    var delete: () -> Void
-    var canMove: (BoardMove) -> Bool
-    var move: (BoardMove) -> Void
+/// What the menu bar needs to *know*, as plain comparable data.
+///
+/// This used to be a struct of closures, and that was the bug: SwiftUI can't compare closures, so
+/// it couldn't tell one value of the focused scene value from the next and never pushed the
+/// Commands into the real NSMenu. The menu was only rebuilt when it was opened, which is why every
+/// Strip shortcut was inert until you'd pulled the menu down once. Everything here is Equatable so
+/// a change is a change.
+///
+/// `visibleIDs` earns its place: without it the state wouldn't change when the board reorders
+/// underneath an unchanged selection, and the republished actions below would keep working off a
+/// stale view of the board.
+struct BoardCommandState: Equatable {
+    var selectedID: TaskItem.ID?
+    var selectionIsDone: Bool = false
+    var availableMoves: Set<BoardMove> = []
+    var isFiltered: Bool = false
+    var sortMode: ProgressSort = .manual
+    var visibleIDs: [TaskItem.ID] = []
+
+    var hasSelection: Bool { selectedID != nil }
 }
 
-/// What the menu bar can do to the board itself. `selection` is nil when no strip is picked, and
-/// that's what greys out half the Strip menu.
-struct BoardCommandTarget {
-    var newStrip: () -> Void
-    var importBackup: () -> Void
-    var showArchived: () -> Void
-    var clearFilters: () -> Void
-    var isFiltered: Bool
-    var sortMode: ProgressSort
-    var setSortMode: (ProgressSort) -> Void
-    var selection: SelectedStripCommands?
+/// What the menu bar needs to *do*.
+///
+/// Deliberately not part of the focused value. A menu item captures its action closure once, and
+/// if the menu isn't rebuilt that closure goes stale — pointing at whatever was selected when it
+/// was captured, or at nothing. Every command below closes over this object instead, which never
+/// changes identity, and reads the current action out of it at the moment the key is pressed. So
+/// even an NSMenuItem SwiftUI never got round to refreshing still does the right thing.
+///
+/// A singleton because the app is one window onto one board. A second window would need this
+/// scoped per scene.
+final class BoardActions {
+    static let shared = BoardActions()
+    private init() {}
+
+    var newStrip: () -> Void = {}
+    var importBackup: () -> Void = {}
+    var showArchived: () -> Void = {}
+    var clearFilters: () -> Void = {}
+    var setSortMode: (ProgressSort) -> Void = { _ in }
+
+    var editSelection: () -> Void = {}
+    var toggleSelectionDone: () -> Void = {}
+    var archiveSelection: () -> Void = {}
+    var deleteSelection: () -> Void = {}
+    var moveSelection: (BoardMove) -> Void = { _ in }
+
+    /// Called when the board goes away or loses its selection, so a stale menu item can't act on
+    /// a strip that isn't there any more.
+    func clearSelectionActions() {
+        editSelection = {}
+        toggleSelectionDone = {}
+        archiveSelection = {}
+        deleteSelection = {}
+        moveSelection = { _ in }
+    }
 }
 
-private struct BoardCommandTargetKey: FocusedValueKey {
-    typealias Value = BoardCommandTarget
+private struct BoardCommandStateKey: FocusedValueKey {
+    typealias Value = BoardCommandState
 }
 
 extension FocusedValues {
     /// Published by the board window, read by the menu bar. A focused *scene* value rather than a
     /// focused value: the menus should follow the front window, not whichever control inside it
     /// happens to hold keyboard focus.
-    var boardCommands: BoardCommandTarget? {
-        get { self[BoardCommandTargetKey.self] }
-        set { self[BoardCommandTargetKey.self] = newValue }
+    var boardCommandState: BoardCommandState? {
+        get { self[BoardCommandStateKey.self] }
+        set { self[BoardCommandStateKey.self] = newValue }
     }
 }
 
@@ -55,12 +90,14 @@ extension BoardMove {
 /// point is that a Mac app's capabilities are supposed to be discoverable in its menus and
 /// reachable from the keyboard, not only by finding the right thing to right-click.
 struct BoardCommandMenus: Commands {
-    @FocusedValue(\.boardCommands) private var board
+    @FocusedValue(\.boardCommandState) private var state
+
+    private var actions: BoardActions { .shared }
 
     private var sortMode: Binding<ProgressSort> {
         Binding(
-            get: { board?.sortMode ?? .manual },
-            set: { board?.setSortMode($0) }
+            get: { state?.sortMode ?? .manual },
+            set: { actions.setSortMode($0) }
         )
     }
 
@@ -68,59 +105,45 @@ struct BoardCommandMenus: Commands {
         // Replacing rather than extending: cmd-N on a single-board app should file a strip, not
         // open a second window onto the same one.
         CommandGroup(replacing: .newItem) {
-            Button("New Strip") { board?.newStrip() }
+            Button("New Strip") { actions.newStrip() }
                 .keyboardShortcut("n")
-                .disabled(board == nil)
+                .disabled(state == nil)
             Divider()
-            Button("Import Android Backup…") { board?.importBackup() }
+            Button("Import Android Backup…") { actions.importBackup() }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
-                .disabled(board == nil)
+                .disabled(state == nil)
         }
 
         CommandMenu("Strip") {
-            // Gated on the board rather than on the selection, and that difference is load-
-            // bearing: a menu item that starts disabled doesn't get its enabled state pushed into
-            // the real NSMenu until the menu is first opened, so its key equivalent is silently
-            // dropped until then. CI pinned that down exactly — the shortcut failed cold and
-            // passed once the menu had been opened and closed. These four are the ones people
-            // press without ever pulling the menu down, so they stay enabled and simply do
-            // nothing when no strip is selected.
-            Button(board?.selection?.isDone == true ? "Reopen" : "Complete") {
-                board?.selection?.toggleDone()
+            Button(state?.selectionIsDone == true ? "Reopen" : "Complete") {
+                actions.toggleSelectionDone()
             }
             .keyboardShortcut(.return, modifiers: .command)
-            .disabled(board == nil)
+            .disabled(state?.hasSelection != true)
 
             // Not cmd-E: `.searchable` on the board installs the standard Find group, whose
-            // "Use Selection for Find" already owns cmd-E — and the Edit menu comes before this
-            // one, so it won. CI caught it as the menu item being enabled while the shortcut did
-            // nothing. Worth knowing that the same Find group means cmd-F reaches the search
-            // field for free.
-            Button("Edit…") { board?.selection?.edit() }
+            // "Use Selection for Find" already owns it, and the Edit menu comes first in the bar.
+            Button("Edit…") { actions.editSelection() }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
-                .disabled(board == nil)
+                .disabled(state?.hasSelection != true)
 
             Divider()
 
-            // Kept gated on the selection, unlike the four above: "this strip is already at the
-            // top" is worth showing, and it's only ever visible with the menu open — which is
-            // also what makes these shortcuts live. The cost is that cmd-arrow does nothing until
-            // the menu has been pulled down once.
             ForEach(BoardMove.allCases, id: \.self) { move in
-                Button(move.label) { board?.selection?.move(move) }
+                Button(move.label) { actions.moveSelection(move) }
                     .keyboardShortcut(move.keyboardShortcut)
-                    .disabled(board?.selection?.canMove(move) != true)
+                    .disabled(state?.availableMoves.contains(move) != true)
             }
 
             Divider()
 
-            Button("Archive") { board?.selection?.archive() }
+            Button("Archive") { actions.archiveSelection() }
                 .keyboardShortcut("a", modifiers: [.command, .shift])
-                .disabled(board == nil)
+                .disabled(state?.hasSelection != true)
 
-            Button("Delete") { board?.selection?.delete() }
+            Button("Delete") { actions.deleteSelection() }
                 .keyboardShortcut(.delete, modifiers: .command)
-                .disabled(board == nil)
+                .disabled(state?.hasSelection != true)
         }
 
         CommandGroup(after: .toolbar) {
@@ -130,15 +153,15 @@ struct BoardCommandMenus: Commands {
                     Text(mode.rawValue).tag(mode)
                 }
             }
-            .disabled(board == nil)
+            .disabled(state == nil)
 
-            Button("Show All Strips") { board?.clearFilters() }
+            Button("Show All Strips") { actions.clearFilters() }
                 .keyboardShortcut("k", modifiers: [.command, .shift])
-                .disabled(board?.isFiltered != true)
+                .disabled(state?.isFiltered != true)
 
-            Button("Archived Strips…") { board?.showArchived() }
+            Button("Archived Strips…") { actions.showArchived() }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
-                .disabled(board == nil)
+                .disabled(state == nil)
         }
     }
 }
