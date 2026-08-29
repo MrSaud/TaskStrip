@@ -29,3 +29,35 @@ targets:
         ENABLE_HARDENED_RUNTIME: true
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
+      configs:
+        # @testable import TaskStrips in the test target needs this.
+        Debug:
+          ENABLE_TESTABILITY: true
+  TaskStripsTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/TaskStripsTests
+        excludes:
+          # Generator for the fixture zip, not something to ship inside the test bundle.
+          - "Fixtures/make_fixture.py"
+    dependencies:
+      - target: TaskStrips
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.saud.taskstrip.mac.tests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/TaskStrips.app/Contents/MacOS/TaskStrips"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+schemes:
+  TaskStrips:
+    build:
+      targets:
+        TaskStrips: all
+        TaskStripsTests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - TaskStripsTests

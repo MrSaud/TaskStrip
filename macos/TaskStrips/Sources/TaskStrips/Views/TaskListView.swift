@@ -1,5 +1,8 @@
-import SwiftUI
+import AppKit
+import Combine
 import SwiftData
+import SwiftUI
+import UniformTypeIdentifiers
 
 // Mirrors ui/screens/HomeScreen.kt's "The Board" list at the concept level: search, tag filter,
 // due-date range filter, a progress sort toggle, and manual drag-reorder when no filter/sort
@@ -25,6 +28,8 @@ struct TaskListView: View {
     @State private var isPresentingNewTask = false
     @State private var showArchive = false
     @State private var blockedAlertTask: TaskItem?
+    @State private var importSummary: BackupImportSummary?
+    @State private var importMessage: ImportMessage?
 
     private var activeTasks: [TaskItem] { allTasks.filter { !$0.isArchived } }
 
@@ -123,6 +128,20 @@ struct TaskListView: View {
                     message: Text("Blocked by \"\(blocker(for: task)?.title ?? "")\""),
                     dismissButton: .default(Text("OK"))
                 )
+            }
+            .sheet(item: $importSummary) { summary in
+                ImportBackupSheet(
+                    summary: summary,
+                    existingCount: allTasks.count,
+                    onImport: { mode in performImport(summary, mode: mode) },
+                    onCancel: { importSummary = nil }
+                )
+            }
+            .alert(item: $importMessage) { message in
+                Alert(title: Text(message.title), message: Text(message.body), dismissButton: .default(Text("OK")))
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .importAndroidBackup)) { _ in
+                chooseBackupFile()
             }
         }
     }
@@ -228,6 +247,13 @@ struct TaskListView: View {
             }
             ToolbarItem {
                 Button {
+                    chooseBackupFile()
+                } label: {
+                    Label("Import Android backup", systemImage: "square.and.arrow.down")
+                }
+            }
+            ToolbarItem {
+                Button {
                     isPresentingNewTask = true
                 } label: {
                     Label("New strip", systemImage: "plus")
@@ -268,4 +294,67 @@ struct TaskListView: View {
             task.orderIndex = index
         }
     }
+
+    // MARK: - Android backup import
+
+    private func chooseBackupFile() {
+        guard importSummary == nil else { return }
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.zip, .json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.prompt = "Read Backup"
+        panel.message = "Choose a TaskStrip backup exported from Android (taskstrip_backup_*.zip), "
+            + "or a backup.json unzipped from one."
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            importSummary = try BackupImport.parse(manifest: BackupArchive.manifestData(at: url))
+        } catch {
+            importMessage = ImportMessage(
+                title: "Couldn't read that backup",
+                body: error.localizedDescription
+            )
+        }
+    }
+
+    private func performImport(_ summary: BackupImportSummary, mode: ImportMode) {
+        let replaced = mode == .replace ? allTasks.count : 0
+        let imported = BackupImport.apply(
+            summary.tasks,
+            mode: mode,
+            existing: allTasks,
+            context: modelContext
+        )
+        importSummary = nil
+
+        // SwiftData autosaves, but a failure here is exactly the silent-save class of bug that bit
+        // Phase 1 — an import that quietly wrote nothing would look identical to an empty backup.
+        let result: ImportMessage
+        do {
+            try modelContext.save()
+            result = ImportMessage(
+                title: "Import complete",
+                body: mode == .replace
+                    ? "Replaced \(replaced) strip\(replaced == 1 ? "" : "s") with \(imported) from the backup."
+                    : "Added \(imported) strip\(imported == 1 ? "" : "s") to the board."
+            )
+        } catch {
+            result = ImportMessage(
+                title: "Import failed",
+                body: "The strips couldn't be saved: \(error.localizedDescription)"
+            )
+        }
+
+        // Raising the alert in the same update that dismisses the sheet can swallow it — let the
+        // sheet finish going away first.
+        DispatchQueue.main.async { importMessage = result }
+    }
+}
+
+/// Alert payload — `.alert(item:)` needs something Identifiable, and a bare String isn't.
+struct ImportMessage: Identifiable {
+    let id = UUID()
+    let title: String
+    let body: String
 }
