@@ -115,20 +115,35 @@ struct BoardCommandMenus: Commands {
         }
 
         CommandMenu("Strip") {
+            // Gated on the board, never on the selection — and that's the half of this that took
+            // three CI rounds to isolate. The NSMenu is built once, while the focused value is
+            // already present (which is why cmd-N works cold), but it is *not* refreshed when
+            // that value later changes; it's only rebuilt when the menu is opened. So anything
+            // disabled at launch for want of a selection stays disabled to the key-equivalent
+            // lookup no matter what is selected afterwards.
+            //
+            // Enablement alone wasn't enough either: with these enabled but their action closure
+            // captured at launch, the keystroke fired into a closure that still saw no selection.
+            // It takes both — a gate that doesn't depend on the selection, and an action read
+            // live out of BoardActions at press time.
             Button(state?.selectionIsDone == true ? "Reopen" : "Complete") {
                 actions.toggleSelectionDone()
             }
             .keyboardShortcut(.return, modifiers: .command)
-            .disabled(state?.hasSelection != true)
+            .disabled(state == nil)
 
             // Not cmd-E: `.searchable` on the board installs the standard Find group, whose
             // "Use Selection for Find" already owns it, and the Edit menu comes first in the bar.
             Button("Edit…") { actions.editSelection() }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
-                .disabled(state?.hasSelection != true)
+                .disabled(state == nil)
 
             Divider()
 
+            // The moves keep selection-dependent greying, and pay for it the way described
+            // above: cmd-arrow is inert until the Strip menu has been opened once. "This strip is
+            // already at the top" is only ever read with the menu open anyway, which is the same
+            // act that makes the shortcut live.
             ForEach(BoardMove.allCases, id: \.self) { move in
                 Button(move.label) { actions.moveSelection(move) }
                     .keyboardShortcut(move.keyboardShortcut)
@@ -139,11 +154,11 @@ struct BoardCommandMenus: Commands {
 
             Button("Archive") { actions.archiveSelection() }
                 .keyboardShortcut("a", modifiers: [.command, .shift])
-                .disabled(state?.hasSelection != true)
+                .disabled(state == nil)
 
             Button("Delete") { actions.deleteSelection() }
                 .keyboardShortcut(.delete, modifiers: .command)
-                .disabled(state?.hasSelection != true)
+                .disabled(state == nil)
         }
 
         CommandGroup(after: .toolbar) {
