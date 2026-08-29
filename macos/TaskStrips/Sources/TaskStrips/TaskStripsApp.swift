@@ -5,7 +5,8 @@ import SwiftData
 struct TaskStripsApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            TaskListView()
+                .preferredColorScheme(.dark)
         }
         .modelContainer(for: TaskItem.self)
     }
