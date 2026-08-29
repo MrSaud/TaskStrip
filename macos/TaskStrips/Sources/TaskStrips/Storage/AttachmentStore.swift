@@ -25,7 +25,18 @@ enum AttachmentStoreError: LocalizedError {
 struct AttachmentStore {
     let root: URL
 
-    static let shared = AttachmentStore(root: AttachmentStore.defaultRoot())
+    /// Follows the same launch argument the model container does. Without this, a run started
+    /// for a throwaway board would still copy files into the real media folder — the store was
+    /// safe and the files weren't, which is worse than either being obviously unsafe.
+    static let shared: AttachmentStore = {
+        guard ProcessInfo.processInfo.arguments.contains(TaskStripsApp.uiTestingArgument) else {
+            return AttachmentStore(root: defaultRoot())
+        }
+        return AttachmentStore(
+            root: FileManager.default.temporaryDirectory
+                .appending(path: "TaskStrips-UITesting-Media", directoryHint: .isDirectory)
+        )
+    }()
 
     static func defaultRoot() -> URL {
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
