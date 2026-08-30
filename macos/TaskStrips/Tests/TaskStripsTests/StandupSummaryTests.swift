@@ -4,11 +4,17 @@ import XCTest
 /// A roll-up's answer depends on the clock, so every case here pins `now` rather than trusting
 /// the machine's.
 final class StandupSummaryTests: XCTestCase {
-    private let now = Date(timeIntervalSince1970: 1_780_000_000)
     private var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
         return calendar
+    }
+
+    /// Mid-morning, spelled out rather than written as an epoch number: "six hours from now" only
+    /// means "later today" if you know where in the day `now` sits, and a magic constant doesn't
+    /// tell you. 1_780_000_000 was 20:26 UTC, which quietly made that case tomorrow.
+    private var now: Date {
+        calendar.date(from: DateComponents(year: 2026, month: 6, day: 15, hour: 9))!
     }
 
     private func strip(_ title: String, orderIndex: Int = 0) -> TaskItem {
