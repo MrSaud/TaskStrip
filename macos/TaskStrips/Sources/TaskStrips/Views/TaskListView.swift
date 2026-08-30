@@ -142,6 +142,12 @@ struct TaskListView: View {
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
             .background(TaskStripTheme.bayBackground)
+            .dropDestination(for: URL.self) { urls, _ in
+                fileInStorage(BoardDrop.usableFiles(among: urls))
+            }
+            .dropDestination(for: String.self) { texts, _ in
+                fileAsStrips(texts)
+            }
             .searchable(text: $searchText, placement: .toolbar, prompt: "Search strips")
             .navigationTitle("THE BOARD")
             .toolbar { toolbarContent }
@@ -412,6 +418,11 @@ struct TaskListView: View {
             // rather than leaving it to the List is what makes the click land.
             .onTapGesture(count: 2) { editingTask = task }
             .onTapGesture(count: 1) { selectedTaskID = task.id }
+            // Dropped on a strip, a file joins that strip. The board behind it catches anything
+            // dropped between the rows — see the destination on the list itself.
+            .dropDestination(for: URL.self) { urls, _ in
+                attach(BoardDrop.usableFiles(among: urls), to: task)
+            }
             .tag(task.id)
         // Swipe gestures need an actual trackpad and expose no accessibility action, so a
         // mouse-only user (or VoiceOver) would have no way to reach these at all — the context
@@ -619,6 +630,70 @@ struct TaskListView: View {
         task.notesRtl = defaultNotesRtl
         modelContext.insert(task)
         selectedTaskID = task.id
+    }
+
+    // MARK: - Dropped things
+
+    /// Copied in, exactly as the editor's own Add Files does — the original is left where it is,
+    /// which is the only behaviour that's safe when the thing dragged might be someone's only
+    /// copy.
+    @discardableResult
+    private func attach(_ urls: [URL], to task: TaskItem) -> Bool {
+        guard !urls.isEmpty else { return false }
+        var attached = 0
+        for url in urls {
+            guard let attachment = try? AttachmentStore.shared.add(
+                contentsOf: url, kind: BoardDrop.attachmentKind(for: url)
+            ) else { continue }
+            task.attachments.append(attachment)
+            attached += 1
+        }
+        if attached > 0 { selectedTaskID = task.id }
+        return attached > 0
+    }
+
+    @discardableResult
+    private func fileInStorage(_ urls: [URL]) -> Bool {
+        guard !urls.isEmpty else { return false }
+        var filed = 0
+        for url in urls {
+            let type = BoardDrop.storageType(for: url)
+            guard let copy = try? AttachmentStore.shared.add(
+                contentsOf: url, kind: type.attachmentKind
+            ) else { continue }
+            modelContext.insert(
+                StorageItem(
+                    name: url.lastPathComponent,
+                    path: copy.path,
+                    type: type,
+                    mimeType: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType ?? "",
+                    sizeBytes: (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+                )
+            )
+            filed += 1
+        }
+        if filed > 0 {
+            importMessage = ImportMessage(
+                title: "Filed in storage",
+                body: "\(filed) file\(filed == 1 ? "" : "s") went to the storage library, where any "
+                    + "strip can take a copy."
+            )
+        }
+        return filed > 0
+    }
+
+    @discardableResult
+    private func fileAsStrips(_ texts: [String]) -> Bool {
+        var filed = false
+        for text in texts {
+            guard let strip = BoardDrop.strip(fromDroppedText: text, orderIndex: nextOrderIndex()) else {
+                continue
+            }
+            modelContext.insert(strip)
+            selectedTaskID = strip.id
+            filed = true
+        }
+        return filed
     }
 
     private func nextOrderIndex() -> Int {
