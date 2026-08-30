@@ -22,7 +22,8 @@ struct StorageLibraryView: View {
     /// Non-nil while the system Quick Look panel is up. Space puts a URL here and takes it away
     /// again; the panel follows.
     @State private var previewURL: URL?
-    @FocusState private var libraryHasFocus: Bool
+    /// The key monitor, held only while the library is on screen.
+    @State private var spaceMonitor: Any?
 
     private var store: AttachmentStore { .shared }
     private var availableTags: [String] { StorageLibrary.availableTags(in: items) }
@@ -83,6 +84,8 @@ struct StorageLibraryView: View {
         // The system panel, not a window of our own: it reads anything the Mac can read, which is
         // the whole point of asking for it by name.
         .quickLookPreview($previewURL)
+        .onAppear { startWatchingForSpace() }
+        .onDisappear { stopWatchingForSpace() }
     }
 
     private var empty: some View {
@@ -110,16 +113,16 @@ struct StorageLibraryView: View {
                 section(.image) { thumbnails(StorageLibrary.items(visible, ofType: .image)) }
                 section(.video) { thumbnails(StorageLibrary.items(visible, ofType: .video)) }
                 section(.document) { documents(StorageLibrary.items(visible, ofType: .document)) }
+
+                // Said out loud because a keyboard shortcut nobody knows about isn't a feature.
+                Text("Click a file, then press space to preview it.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .padding(.top, 4)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
         }
-        // Focusable so the space bar has somewhere to land. Clicking a file moves focus here, and
-        // the focus ring is suppressed because the selected tile already shows where you are.
-        .focusable()
-        .focusEffectDisabled()
-        .focused($libraryHasFocus)
-        .onKeyPress(.space, action: toggleQuickLook)
         // Clicking the background is how you stop having something selected.
         .onTapGesture { selection = nil }
     }
@@ -311,31 +314,62 @@ struct StorageLibraryView: View {
 
     private func select(_ item: StorageItem) {
         selection = item.id
-        libraryHasFocus = true
     }
 
-    private func toggleQuickLook() -> KeyPress.Result {
+    // MARK: - The space bar
+
+    /// Watches the app's own key events while the library is up, rather than SwiftUI's
+    /// `.onKeyPress`.
+    ///
+    /// `.onKeyPress` only fires on the *focused* view, and a scroll view inside a sheet doesn't
+    /// take keyboard focus from a click — so the key simply never arrived, which is exactly what
+    /// the first attempt at this did. A local monitor sees the key wherever focus happens to be,
+    /// which is the behaviour being asked for: click a file, press space.
+    private func startWatchingForSpace() {
+        guard spaceMonitor == nil else { return }
+        spaceMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            handleSpace(event) ? nil : event
+        }
+    }
+
+    private func stopWatchingForSpace() {
+        if let spaceMonitor { NSEvent.removeMonitor(spaceMonitor) }
+        spaceMonitor = nil
+        previewURL = nil
+        // Belt and braces: should this view ever go away without its monitor being torn down,
+        // an empty selection makes the handler pass every space straight through.
+        selection = nil
+    }
+
+    /// True when the event was ours to swallow.
+    private func handleSpace(_ event: NSEvent) -> Bool {
+        guard event.keyCode == 49 else { return false }
+        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask).isEmpty else { return false }
+        // A space typed into the tag field is a space. Anything else on top of the library — the
+        // tag sheet, a confirmation, an alert — owns the keyboard while it's there.
+        if NSApp.keyWindow?.firstResponder is NSText { return false }
+        guard taggingItem == nil, pendingDeletion == nil, problem == nil else { return false }
+
         switch StorageLibrary.quickLookAction(
             selection: selection, in: visible, isPreviewing: previewURL != nil
         ) {
         case .close:
             previewURL = nil
         case .open(let id):
-            guard let item = visible.first(where: { $0.id == id }) else { return .ignored }
+            guard let item = visible.first(where: { $0.id == id }) else { return false }
             quickLook(item)
         case .nothing:
             // Nothing selected: hand the key back rather than swallowing it, so space still
             // pages the list the way it does in every other scroll view on the Mac.
-            return .ignored
+            return false
         }
-        return .handled
+        return true
     }
 
     /// Opens the preview, and selects what it's previewing — so space closes it again and the
     /// next space reopens the same thing.
     private func quickLook(_ item: StorageItem) {
         selection = item.id
-        libraryHasFocus = true
         let url = store.url(forRelativePath: item.path)
         guard FileManager.default.fileExists(atPath: url.path) else {
             problem = StorageProblem(
