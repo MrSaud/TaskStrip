@@ -37,7 +37,10 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Section("Google Drive") {
+            // Written with an explicit header rather than Section("Google Drive") { } footer: { }:
+            // SwiftUI has a titled section and a section with a footer, but no initialiser that
+            // takes both.
+            Section {
                 // Kept in the keychain rather than the repository: it identifies a Cloud project,
                 // and it differs per install anyway.
                 TextField("OAuth client id", text: $clientID)
@@ -54,6 +57,8 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(TaskStripTheme.urgent)
                 }
+            } header: {
+                Text("Google Drive")
             } footer: {
                 Text("Create an OAuth client of type iOS in the same Google Cloud project as the "
                      + "phone app, with bundle id com.saud.taskstrip.mac. Only the drive.file "
