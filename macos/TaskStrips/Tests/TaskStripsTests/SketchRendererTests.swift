@@ -21,8 +21,11 @@ final class SketchRendererTests: XCTestCase {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         ))
         context.draw(image, in: CGRect(x: 0, y: 0, width: image.width, height: image.height))
-        // The context is y-up and the canvas is y-down, so a caller's y counts from the top.
-        let offset = ((image.height - 1 - y) * image.width + x) * 4
+        // A bitmap context's *coordinates* are y-up, but its buffer is top-row-first — which is
+        // why makeImage() hands back an upright CGImage over the same bytes. So a row index is
+        // already a distance from the top, the same way the canvas counts, and flipping here
+        // would undo the flip the renderer deliberately does.
+        let offset = (y * image.width + x) * 4
         return (Int(bytes[offset]), Int(bytes[offset + 1]), Int(bytes[offset + 2]))
     }
 
@@ -33,6 +36,40 @@ final class SketchRendererTests: XCTestCase {
         return abs(pixel.r - red) <= tolerance
             && abs(pixel.g - green) <= tolerance
             && abs(pixel.b - blue) <= tolerance
+    }
+
+    /// The anchor for every other test here. Both the renderer and the reader above have to agree
+    /// on which end of a buffer is the top, and each could be wrong in a way the other hides — so
+    /// this builds an image from raw bytes, whose first row *is* the top by definition, and checks
+    /// it comes out of the renderer still at the top.
+    func testTheTopOfAnImageIsTheTopOfThePage() throws {
+        var bytes: [UInt8] = []
+        for row in 0..<4 {
+            for _ in 0..<4 {
+                bytes += row == 0 ? [0xC0, 0x39, 0x2B, 0xFF] : [0xF4, 0xEF, 0xE1, 0xFF]
+            }
+        }
+        let provider = try XCTUnwrap(CGDataProvider(data: Data(bytes) as CFData))
+        let source = try XCTUnwrap(CGImage(
+            width: 4,
+            height: 4,
+            bitsPerComponent: 8,
+            bitsPerPixel: 32,
+            bytesPerRow: 16,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue),
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: false,
+            intent: .defaultIntent
+        ))
+
+        let page = try XCTUnwrap(
+            SketchRenderer.render(size: CGSize(width: 4, height: 4), background: source, strokes: [])
+        )
+
+        XCTAssertTrue(isNear(try pixel(page, x: 2, y: 0), 0xC0392B), "the red row must stay on top")
+        XCTAssertTrue(isNear(try pixel(page, x: 2, y: 3), 0xF4EFE1), "and the rest must stay paper")
     }
 
     func testAnUntouchedPageIsPaper() throws {
