@@ -77,6 +77,37 @@ struct DriveClient {
         return authorized(URLRequest(url: components.url!), accessToken: accessToken)
     }
 
+    /// One named file inside the folder. The sync document is addressed by name because both
+    /// apps have to find the same file without either having been told its Drive id.
+    static func fileLookupRequest(accessToken: String, folderID: String, name: String) -> URLRequest {
+        var components = URLComponents(string: "\(base)/files")!
+        components.queryItems = [
+            URLQueryItem(name: "q", value: "name='\(name)' and '\(folderID)' in parents and trashed=false"),
+            URLQueryItem(name: "spaces", value: "drive"),
+            URLQueryItem(name: "fields", value: "files(id,name,createdTime,size)"),
+        ]
+        return authorized(URLRequest(url: components.url!), accessToken: accessToken)
+    }
+
+    /// Replaces a file's contents, keeping its id. A delete-and-recreate would do the same job
+    /// until two devices did it at once, and then there would be two sync documents and no way to
+    /// say which is the real one.
+    static func updateRequest(
+        accessToken: String,
+        fileID: String,
+        contents: Data,
+        mimeType: String
+    ) -> URLRequest {
+        var request = authorized(
+            URLRequest(url: URL(string: "\(uploadBase)/files/\(fileID)?uploadType=media&fields=id")!),
+            accessToken: accessToken
+        )
+        request.httpMethod = "PATCH"
+        request.setValue(mimeType, forHTTPHeaderField: "Content-Type")
+        request.httpBody = contents
+        return request
+    }
+
     static func downloadRequest(accessToken: String, fileID: String) -> URLRequest {
         authorized(URLRequest(url: URL(string: "\(base)/files/\(fileID)?alt=media")!), accessToken: accessToken)
     }
@@ -88,6 +119,7 @@ struct DriveClient {
         folderID: String,
         fileName: String,
         archive: Data,
+        mimeType: String = "application/zip",
         boundary: String = "taskstrip-\(UUID().uuidString)"
     ) -> URLRequest {
         var request = authorized(
@@ -104,7 +136,7 @@ struct DriveClient {
         var body = Data()
         body.append(Data("--\(boundary)\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n".utf8))
         body.append(metadata)
-        body.append(Data("\r\n--\(boundary)\r\nContent-Type: application/zip\r\n\r\n".utf8))
+        body.append(Data("\r\n--\(boundary)\r\nContent-Type: \(mimeType)\r\n\r\n".utf8))
         body.append(archive)
         body.append(Data("\r\n--\(boundary)--\r\n".utf8))
         request.httpBody = body
@@ -189,11 +221,41 @@ struct DriveClient {
     }
 
     @discardableResult
-    func upload(_ archive: Data, named name: String, toFolder folderID: String) async throws -> String {
+    func upload(
+        _ archive: Data,
+        named name: String,
+        toFolder folderID: String,
+        mimeType: String = "application/zip"
+    ) async throws -> String {
         let data = try await perform(
-            Self.uploadRequest(accessToken: accessToken, folderID: folderID, fileName: name, archive: archive)
+            Self.uploadRequest(
+                accessToken: accessToken,
+                folderID: folderID,
+                fileName: name,
+                archive: archive,
+                mimeType: mimeType
+            )
         )
         guard let id = Self.folderID(from: data) else { throw DriveError.malformedResponse }
         return id
+    }
+
+    func file(named name: String, inFolder folderID: String) async throws -> DriveBackup? {
+        let data = try await perform(
+            Self.fileLookupRequest(accessToken: accessToken, folderID: folderID, name: name)
+        )
+        return Self.backups(from: data).first
+    }
+
+    func download(fileID: String) async throws -> Data {
+        try await perform(Self.downloadRequest(accessToken: accessToken, fileID: fileID))
+    }
+
+    func replace(fileID: String, with contents: Data, mimeType: String) async throws {
+        _ = try await perform(
+            Self.updateRequest(
+                accessToken: accessToken, fileID: fileID, contents: contents, mimeType: mimeType
+            )
+        )
     }
 }

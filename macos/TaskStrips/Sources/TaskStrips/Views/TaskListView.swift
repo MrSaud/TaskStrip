@@ -41,6 +41,7 @@ struct TaskListView: View {
     @State private var showReminders = false
     @State private var showCredentials = false
     @State private var showSketches = false
+    @State private var showSyncNotes = false
     @State private var rollUp: RollUp?
     @State private var blockedAlertTask: TaskItem?
     @State private var importSummary: BackupImportSummary?
@@ -216,6 +217,9 @@ struct TaskListView: View {
                     SketchListView()
                 }
             }
+            .sheet(isPresented: $showSyncNotes) {
+                SyncNotesView()
+            }
             .sheet(isPresented: $showReminders) {
                 NavigationStack {
                     RemindersView()
@@ -349,6 +353,7 @@ struct TaskListView: View {
         actions.showReminders = { showReminders = true }
         actions.showCredentials = { showCredentials = true }
         actions.showSketches = { showSketches = true }
+        actions.showSyncNotes = { showSyncNotes = true }
         actions.showRollUp = { rollUp = $0 }
         actions.clearFilters = { clearFilters() }
         actions.setSortMode = { sortMode = $0 }
@@ -596,6 +601,14 @@ struct TaskListView: View {
                     Label("Sketch Notes", systemImage: "scribble")
                 }
                 .help("Sketch Notes — draw or write freely (⇧⌘J)")
+            }
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    showSyncNotes = true
+                } label: {
+                    Label("Sync Notes", systemImage: "arrow.triangle.2.circlepath")
+                }
+                .help("Sync Notes — text shared with the phone through Drive (⇧⌘T)")
             }
             ToolbarItem(placement: .navigation) {
                 Menu {

@@ -39,7 +39,7 @@ struct TaskStripsApp: App {
         let configuration = ModelConfiguration(url: storeURL)
         do {
             return try ModelContainer(
-                for: TaskItem.self, Note.self, StorageItem.self, Reminder.self, Credential.self,
+                for: TaskItem.self, Note.self, StorageItem.self, Reminder.self, Credential.self, SyncNote.self,
                 configurations: configuration
             )
         } catch {
@@ -51,7 +51,7 @@ struct TaskStripsApp: App {
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         do {
             let container = try ModelContainer(
-                for: TaskItem.self, Note.self, StorageItem.self, Reminder.self, Credential.self,
+                for: TaskItem.self, Note.self, StorageItem.self, Reminder.self, Credential.self, SyncNote.self,
                 configurations: configuration
             )
             let context = ModelContext(container)
