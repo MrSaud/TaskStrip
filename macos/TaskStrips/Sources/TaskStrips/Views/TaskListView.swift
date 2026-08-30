@@ -16,6 +16,9 @@ enum ProgressSort: String, CaseIterable, Identifiable {
 struct TaskListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \TaskItem.orderIndex) private var allTasks: [TaskItem]
+    /// Only needed so a Replace import knows what it's clearing — the notes sheet runs its own
+    /// query.
+    @Query private var allNotes: [Note]
 
     @State private var searchText = ""
     @State private var tagFilter: String?
@@ -26,6 +29,7 @@ struct TaskListView: View {
     @State private var editingTask: TaskItem?
     @State private var isPresentingNewTask = false
     @State private var showArchive = false
+    @State private var showNotes = false
     @State private var blockedAlertTask: TaskItem?
     @State private var importSummary: BackupImportSummary?
     @State private var importMessage: ImportMessage?
@@ -147,6 +151,11 @@ struct TaskListView: View {
                     )
                 }
             }
+            .sheet(isPresented: $showNotes) {
+                NavigationStack {
+                    NotesView(nextOrderIndex: nextOrderIndex)
+                }
+            }
             .popover(isPresented: $showDateFilter) {
                 DateRangeFilterView(from: $dueFrom, to: $dueTo)
             }
@@ -213,6 +222,7 @@ struct TaskListView: View {
         actions.newStrip = { isPresentingNewTask = true }
         actions.importBackup = { chooseBackupFile() }
         actions.showArchived = { showArchive = true }
+        actions.showNotes = { showNotes = true }
         actions.clearFilters = { clearFilters() }
         actions.setSortMode = { sortMode = $0 }
 
@@ -385,6 +395,13 @@ struct TaskListView: View {
                     Label("Archived", systemImage: "archivebox")
                 }
             }
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    showNotes = true
+                } label: {
+                    Label("Quick notes", systemImage: "note.text")
+                }
+            }
             ToolbarItem {
                 Menu {
                     Button("All tags") { tagFilter = nil }
@@ -551,6 +568,12 @@ struct TaskListView: View {
             existing: allTasks,
             context: modelContext
         )
+        let importedNotes = BackupImport.apply(
+            notes: summary.notes,
+            mode: mode,
+            existing: allNotes,
+            context: modelContext
+        )
         importSummary = nil
         ReminderScheduler.shared.sync(allTasks)
 
@@ -562,6 +585,9 @@ struct TaskListView: View {
             var body = mode == .replace
                 ? "Replaced \(replaced) strip\(replaced == 1 ? "" : "s") with \(imported) from the backup."
                 : "Added \(imported) strip\(imported == 1 ? "" : "s") to the board."
+            if importedNotes > 0 {
+                body += " \(importedNotes) quick note\(importedNotes == 1 ? "" : "s") came across too."
+            }
             if !referenced.isEmpty {
                 body += " Restored \(restored.count) of \(referenced.count) file\(referenced.count == 1 ? "" : "s")."
             }

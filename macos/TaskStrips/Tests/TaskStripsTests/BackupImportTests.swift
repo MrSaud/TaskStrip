@@ -31,7 +31,7 @@ final class BackupImportTests: XCTestCase {
 
     private func makeContext() throws -> ModelContext {
         let container = try ModelContainer(
-            for: TaskItem.self,
+            for: TaskItem.self, Note.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         return ModelContext(container)
@@ -39,6 +39,10 @@ final class BackupImportTests: XCTestCase {
 
     private func board(_ context: ModelContext) throws -> [TaskItem] {
         try context.fetch(FetchDescriptor<TaskItem>(sortBy: [SortDescriptor(\TaskItem.orderIndex)]))
+    }
+
+    private func scratchpad(_ context: ModelContext) throws -> [Note] {
+        try context.fetch(FetchDescriptor<Note>(sortBy: [SortDescriptor(\Note.createdAt)]))
     }
 
     // MARK: - Parsing
@@ -86,7 +90,8 @@ final class BackupImportTests: XCTestCase {
         XCTAssertEqual(summary.reminderOnTaskCount, 1)
 
         let sections = Dictionary(uniqueKeysWithValues: summary.skippedSections.map { ($0.name, $0.count) })
-        XCTAssertEqual(sections["notes"], 2)
+        // Quick notes do come across now, so they're no longer on this list.
+        XCTAssertNil(sections["notes"])
         XCTAssertEqual(sections["standalone reminders"], 1)
         XCTAssertEqual(sections["storage items"], 3)
         // Empty sections aren't worth telling the user about.
@@ -372,5 +377,52 @@ final class BackupImportTests: XCTestCase {
         )
         // Everything else stays a straight instant.
         XCTAssertEqual(passport.createdAt, Date(timeIntervalSince1970: 1_786_000_000))
+    }
+
+    // MARK: - Quick notes
+
+    func testReadsTheQuickNotesSection() throws {
+        let summary = try fixtureSummary()
+        XCTAssertEqual(summary.notes.count, 2)
+        let packing = try XCTUnwrap(summary.notes.first)
+        XCTAssertEqual(packing.text, "Packing list\n[ ] socks\n[x] adapter")
+        // A note's createdAt is a real System.currentTimeMillis(), unlike a strip's dueAt.
+        XCTAssertEqual(packing.createdAt, Date(timeIntervalSince1970: 1_787_500_000))
+    }
+
+    func testABackupWithNoNotesSectionImportsNone() throws {
+        let summary = try BackupImport.parse(manifest: Data(#"{"tasks":[{"title":"Bare"}]}"#.utf8))
+        XCTAssertTrue(summary.notes.isEmpty)
+    }
+
+    func testAddingNotesKeepsTheOnesAlreadyOnTheScratchpad() throws {
+        let context = try makeContext()
+        let existing = Note(text: "Mine", createdAt: Date(timeIntervalSince1970: 1_000_000))
+        context.insert(existing)
+
+        BackupImport.apply(
+            notes: try fixtureSummary().notes,
+            mode: .add,
+            existing: [existing],
+            context: context
+        )
+
+        XCTAssertEqual(try scratchpad(context).map(\.text).first, "Mine")
+        XCTAssertEqual(try scratchpad(context).count, 3)
+    }
+
+    func testReplacingClearsTheScratchpadFirst() throws {
+        let context = try makeContext()
+        let existing = Note(text: "Mine")
+        context.insert(existing)
+
+        BackupImport.apply(
+            notes: try fixtureSummary().notes,
+            mode: .replace,
+            existing: [existing],
+            context: context
+        )
+
+        XCTAssertEqual(try scratchpad(context).map(\.text), ["Packing list\n[ ] socks\n[x] adapter", "Ideas"])
     }
 }

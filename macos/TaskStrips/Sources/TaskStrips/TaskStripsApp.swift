@@ -30,7 +30,7 @@ struct TaskStripsApp: App {
         let storeURL = storeDirectory.appending(path: "TaskStrips.store")
         let configuration = ModelConfiguration(url: storeURL)
         do {
-            return try ModelContainer(for: TaskItem.self, configurations: configuration)
+            return try ModelContainer(for: TaskItem.self, Note.self, configurations: configuration)
         } catch {
             fatalError("Failed to create ModelContainer at \(storeURL): \(error)")
         }
@@ -39,7 +39,7 @@ struct TaskStripsApp: App {
     private static func uiTestingContainer() -> ModelContainer {
         let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
         do {
-            let container = try ModelContainer(for: TaskItem.self, configurations: configuration)
+            let container = try ModelContainer(for: TaskItem.self, Note.self, configurations: configuration)
             let context = ModelContext(container)
             for (index, title) in uiTestingStrips.enumerated() {
                 context.insert(TaskItem(title: title, orderIndex: index))

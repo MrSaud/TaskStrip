@@ -29,6 +29,10 @@ struct ImportBackupSheet: View {
                     Text("\(summary.attachmentCount) attached file\(summary.attachmentCount == 1 ? "" : "s") will come across too.")
                         .foregroundStyle(.secondary)
                 }
+                if !summary.notes.isEmpty {
+                    Text("\(summary.notes.count) quick note\(summary.notes.count == 1 ? "" : "s") will come across too.")
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if !notImported.isEmpty {
@@ -60,7 +64,8 @@ struct ImportBackupSheet: View {
                     .disabled(existingCount == 0)
                 Button("Add to Board") { onImport(.add) }
                     .keyboardShortcut(.defaultAction)
-                    .disabled(summary.tasks.isEmpty)
+                    // A backup carrying only quick notes is still worth taking.
+                    .disabled(summary.tasks.isEmpty && summary.notes.isEmpty)
             }
         }
         .padding(20)
@@ -70,7 +75,7 @@ struct ImportBackupSheet: View {
             Button("Cancel", role: .cancel) {}
             Button("Replace", role: .destructive) { onImport(.replace) }
         } message: {
-            Text("This deletes the \(existingCount) strip\(existingCount == 1 ? "" : "s") already on this Mac, archived ones included, and puts the backup's \(summary.tasks.count) in their place. It can't be undone.")
+            Text("This deletes the \(existingCount) strip\(existingCount == 1 ? "" : "s") already on this Mac, archived ones included\(summary.notes.isEmpty ? "" : ", along with every quick note"), and puts the backup's \(summary.tasks.count) in their place. It can't be undone.")
         }
     }
 

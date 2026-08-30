@@ -122,7 +122,12 @@ MANIFEST = {
         },
     ],
     "credentials": [],
-    "notes": [{"title": "Packing list", "body": "socks"}, {"title": "Ideas", "body": ""}],
+    # Real NoteEntity shape: text and when it was written, nothing else. The first is multi-line
+    # with checkbox prefixes, which is what "split into strips" is for.
+    "notes": [
+        {"text": "Packing list\n[ ] socks\n[x] adapter", "createdAt": 1787500000000},
+        {"text": "Ideas", "createdAt": 1787600000000},
+    ],
     "reminders": [{"label": "Standup", "at": 1788000000000}],
     "storageItems": [
         {"path": "media/images/passport.jpg", "tags": ["travel"]},

@@ -39,6 +39,7 @@ final class BoardActions {
     var newStrip: () -> Void = {}
     var importBackup: () -> Void = {}
     var showArchived: () -> Void = {}
+    var showNotes: () -> Void = {}
     var clearFilters: () -> Void = {}
     var setSortMode: (ProgressSort) -> Void = { _ in }
 
@@ -164,6 +165,10 @@ struct BoardCommandMenus: Commands {
 
             Button("Archived Strips…") { actions.showArchived() }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
+                .disabled(state == nil)
+
+            Button("Quick Notes…") { actions.showNotes() }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
                 .disabled(state == nil)
         }
     }

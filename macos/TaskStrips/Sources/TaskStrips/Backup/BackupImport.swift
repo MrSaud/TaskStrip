@@ -57,6 +57,13 @@ struct ImportedAttachment: Hashable {
     var path: String
 }
 
+/// One quick note out of the backup. As small as NoteEntity itself — the whole point of the
+/// scratchpad is that a note carries nothing but its text and when it was written.
+struct ImportedNote {
+    var text: String = ""
+    var createdAt: Date = .now
+}
+
 /// What a backup holds, including the parts this app can't take yet, so the user is told rather
 /// than left to notice the gap themselves.
 struct BackupImportSummary: Identifiable {
@@ -66,6 +73,7 @@ struct BackupImportSummary: Identifiable {
     var sourceURL: URL?
     var version: Int = 0
     var tasks: [ImportedTask] = []
+    var notes: [ImportedNote] = []
     var attachmentCount: Int = 0
     var reminderOnTaskCount: Int = 0
     /// Whole top-level sections of the backup with no Mac equivalent, e.g. "notes": 12.
@@ -86,7 +94,6 @@ enum BackupImport {
     /// Section name in backup.json -> what to call it in the UI. Everything here is a feature the
     /// Android app has and the Mac port doesn't, so it's reported and dropped.
     private static let skippableSections: [(key: String, label: String)] = [
-        ("notes", "notes"),
         ("reminders", "standalone reminders"),
         ("credentials", "credentials"),
         ("storageItems", "storage items"),
@@ -106,6 +113,9 @@ enum BackupImport {
         summary.version = intValue(root, "version") ?? 0
         summary.tasks = rawTasks.compactMap { $0 as? [String: Any] }
             .map { task(from: $0, timeZone: timeZone) }
+        summary.notes = (root["notes"] as? [Any] ?? [])
+            .compactMap { $0 as? [String: Any] }
+            .map { ImportedNote(text: stringValue($0, "text"), createdAt: dateValue($0, "createdAt") ?? .now) }
         summary.attachmentCount = summary.tasks.reduce(0) { $0 + $1.attachmentCount }
         summary.reminderOnTaskCount = summary.tasks.filter(\.hasReminder).count
         summary.skippedSections = skippableSections.compactMap { section -> (name: String, count: Int)? in
@@ -260,6 +270,28 @@ enum BackupImport {
         }
 
         return created.count
+    }
+
+    /// Inserts the backup's quick notes, returning how many landed on the scratchpad.
+    ///
+    /// Separate from `apply` because notes and strips are independent: a backup can carry either
+    /// without the other, and nothing in a note points at a task. `.replace` clears the existing
+    /// notes for the same reason it clears the board — the user asked for the backup's state, not
+    /// a merge of the two.
+    @discardableResult
+    static func apply(
+        notes: [ImportedNote],
+        mode: ImportMode,
+        existing: [Note],
+        context: ModelContext
+    ) -> Int {
+        if mode == .replace {
+            for note in existing { context.delete(note) }
+        }
+        for imported in notes {
+            context.insert(Note(text: imported.text, createdAt: imported.createdAt))
+        }
+        return notes.count
     }
 
     /// Turns the backup's paths into attachments.
