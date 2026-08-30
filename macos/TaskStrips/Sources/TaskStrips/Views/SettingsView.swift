@@ -8,6 +8,7 @@ enum AppSettingsKey {
     static let weeklyReview = "weeklyReview"
     static let autoBackup = "autoBackup"
     static let showQuote = "showQuoteOfTheDay"
+    static let showMenuBar = "showMenuBarGlance"
     /// When the last automatic backup went up, so the next one knows whether a day has passed.
     static let lastAutoBackup = "lastAutoBackupAt"
 }
@@ -22,6 +23,7 @@ struct SettingsView: View {
     @AppStorage(AppSettingsKey.weeklyReview) private var weeklyReview = false
     @AppStorage(AppSettingsKey.autoBackup) private var autoBackup = false
     @AppStorage(AppSettingsKey.showQuote) private var showQuote = true
+    @AppStorage(AppSettingsKey.showMenuBar) private var showMenuBar = true
     @ObservedObject private var drive = DriveSession.shared
     @State private var clientID = GoogleOAuth.clientID() ?? ""
     @State private var clientIDProblem: String?
@@ -43,6 +45,14 @@ struct SettingsView: View {
                 Toggle("Ask before deleting a strip", isOn: $confirmBeforeDelete)
             } footer: {
                 Text("Deleting a strip is permanent — archiving keeps it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("Show in the menu bar", isOn: $showMenuBar)
+            } footer: {
+                Text("Five open strips and three reminders, without opening the board.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

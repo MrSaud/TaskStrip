@@ -3,6 +3,8 @@ import SwiftData
 
 @main
 struct TaskStripsApp: App {
+    @AppStorage(AppSettingsKey.showMenuBar) private var showMenuBar = true
+
     /// UI tests launch the app with this argument. It swaps the on-disk store for an in-memory
     /// one seeded with known strips, so a test run can never see — or scribble on — the real
     /// board in ~/Library/Application Support.
@@ -82,14 +84,27 @@ struct TaskStripsApp: App {
         )
     }
 
+    /// Named so the menu bar glance can bring the board back after its window has been closed.
+    static let boardWindowID = "board"
+
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: Self.boardWindowID) {
             TaskListView()
                 .preferredColorScheme(.dark)
         }
         .modelContainer(Self.sharedModelContainer)
         .defaultSize(width: 860, height: 660)
         .commands { BoardCommandMenus() }
+
+        // Android puts this on the home screen as a widget. A Mac's nearest equivalent is the
+        // menu bar: always there, one click, no window — and unlike a WidgetKit extension it
+        // needs no app group, so it reads the same store the board does rather than a copy.
+        MenuBarExtra("Task Strips", systemImage: "list.bullet.rectangle", isInserted: $showMenuBar) {
+            GlanceView()
+                .preferredColorScheme(.dark)
+                .modelContainer(Self.sharedModelContainer)
+        }
+        .menuBarExtraStyle(.window)
 
         Settings {
             SettingsView()
