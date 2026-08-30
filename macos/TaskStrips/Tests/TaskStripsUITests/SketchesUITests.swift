@@ -31,7 +31,7 @@ final class SketchesUITests: XCTestCase {
     }
 
     func testTheToolbarOpensTheSketchesToo() {
-        let button = app.windowButton("Sketches")
+        let button = app.windowButton("Sketch Notes")
         XCTAssertTrue(button.waitForExistence(timeout: UITestSupport.timeout), "no sketches button on the toolbar")
         button.click()
 
@@ -45,7 +45,7 @@ final class SketchesUITests: XCTestCase {
     /// A new sketch is a blank page and nothing on disk until something is drawn — so opening one
     /// and closing it should leave the list exactly as empty as it was.
     func testANewSketchBackedOutOfLeavesNothingBehind() {
-        app.windowButton("Sketches").click()
+        app.windowButton("Sketch Notes").click()
         let newSketch = app.windowButton("New sketch")
         XCTAssertTrue(newSketch.waitForExistence(timeout: UITestSupport.timeout), "no way to start a sketch")
         newSketch.click()

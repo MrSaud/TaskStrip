@@ -31,7 +31,7 @@ final class StorageLibraryUITests: XCTestCase {
     }
 
     func testTheToolbarOpensTheLibraryToo() {
-        let button = app.windowButton("Storage library")
+        let button = app.windowButton("Storage Library")
         XCTAssertTrue(button.waitForExistence(timeout: UITestSupport.timeout), "no storage button on the toolbar")
         button.click()
 
@@ -47,7 +47,7 @@ final class StorageLibraryUITests: XCTestCase {
     /// it. So what's checked is the one part that holds still: the library tells you the shortcut
     /// exists. If that line is on screen, the preview code shipped with it.
     func testTheLibrarySaysHowToPreviewAFile() {
-        app.windowButton("Storage library").click()
+        app.windowButton("Storage Library").click()
 
         XCTAssertTrue(
             app.staticTexts["Click a file, then press space to preview it."]

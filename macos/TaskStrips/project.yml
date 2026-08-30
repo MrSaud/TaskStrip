@@ -20,16 +20,25 @@ targets:
           - "Assets.xcassets/make_icon.py"
           # Signed in, not copied in.
           - "TaskStrips.entitlements"
+    # The one source of truth for the app's Info.plist, which XcodeGen writes from this on every
+    # generate. It used to be checked in as well, and the two drifted in both directions at once:
+    # CFBundleIconName was here but not in the file, so a build from the file had no Dock icon;
+    # NSMicrophoneUsageDescription was in the file but not here, so a build after a generate
+    # couldn't record. Whichever copy won, one feature was broken — and the file showing up as a
+    # local modification after every generate was the same drift, wearing a different hat.
     info:
       path: Sources/TaskStrips/Info.plist
       properties:
         CFBundleName: Task Strips
         CFBundleDisplayName: Task Strips
-        # Set by hand because the Info.plist is checked in rather than generated, so Xcode won't
-        # inject it from ASSETCATALOG_COMPILER_APPICON_NAME on its own.
+        # The asset catalog compiles the artwork; this key is how the Dock finds it. Without it
+        # you get the generic application icon and no error anywhere.
         CFBundleIconName: AppIcon
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSApplicationCategoryType: public.app-category.productivity
         NSHumanReadableCopyright: ""
+        NSMicrophoneUsageDescription: "Task Strips records voice notes onto a strip. Nothing is recorded until you press Record, and the audio stays on this Mac."
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.saud.taskstrip.mac

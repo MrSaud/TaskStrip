@@ -539,28 +539,39 @@ struct TaskListView: View {
     }
 
     /// The other places the app keeps things, none of which are the board.
+    ///
+    /// Every one of these carries a `.help`, because a row of seven monochrome glyphs tells a
+    /// first-time user nothing — hovering is how a Mac toolbar explains itself, and the tooltip
+    /// names the keyboard shortcut too, so the toolbar is also where the shortcuts are learned.
+    /// The names match the View menu's exactly for the same reason: two names for one thing makes
+    /// the user do the matching.
     private var placesToolbarItems: some ToolbarContent {
         Group {
             ToolbarItem(placement: .navigation) {
                 Button {
                     showArchive = true
                 } label: {
-                    Label("Archived", systemImage: "archivebox")
+                    Label("Archived Strips", systemImage: "archivebox")
                 }
+                .help("Archived Strips (⇧⌘R)")
             }
             ToolbarItem(placement: .navigation) {
                 Button {
                     showNotes = true
                 } label: {
-                    Label("Quick notes", systemImage: "note.text")
+                    Label("Quick Notes", systemImage: "note.text")
                 }
+                .help("Quick Notes — a scratchpad that isn't a strip yet (⇧⌘N)")
             }
             ToolbarItem(placement: .navigation) {
                 Button {
                     showStorage = true
                 } label: {
-                    Label("Storage library", systemImage: "tray.full")
+                    // A folder, not a tray: this is where files are kept, and "tray" reads as
+                    // an inbox — something arriving rather than something stored.
+                    Label("Storage Library", systemImage: "folder")
                 }
+                .help("Storage Library — files any strip can take a copy of (⇧⌘L)")
             }
             ToolbarItem(placement: .navigation) {
                 Button {
@@ -568,6 +579,7 @@ struct TaskListView: View {
                 } label: {
                     Label("Reminders", systemImage: "bell")
                 }
+                .help("Reminders — the ones that belong to no strip (⇧⌘Y)")
             }
             ToolbarItem(placement: .navigation) {
                 Button {
@@ -575,13 +587,15 @@ struct TaskListView: View {
                 } label: {
                     Label("Credentials", systemImage: "key")
                 }
+                .help("Credentials — passwords kept in the Keychain (⇧⌘P)")
             }
             ToolbarItem(placement: .navigation) {
                 Button {
                     showSketches = true
                 } label: {
-                    Label("Sketches", systemImage: "scribble")
+                    Label("Sketch Notes", systemImage: "scribble")
                 }
+                .help("Sketch Notes — draw or write freely (⇧⌘J)")
             }
             ToolbarItem(placement: .navigation) {
                 Menu {
@@ -589,8 +603,9 @@ struct TaskListView: View {
                         Button(item.rawValue) { rollUp = item }
                     }
                 } label: {
-                    Label("Roll-ups", systemImage: "chart.bar.doc.horizontal")
+                    Label("Roll-Ups", systemImage: "chart.bar")
                 }
+                .help("Roll-Ups — standup summary and tag progress (⇧⌘S)")
             }
         }
     }
@@ -605,16 +620,27 @@ struct TaskListView: View {
                         Button(tag) { tagFilter = tag }
                     }
                 } label: {
-                    Label("Tag filter", systemImage: tagFilter == nil ? "tag" : "tag.fill")
+                    Label("Tag", systemImage: tagFilter == nil ? "tag" : "tag.fill")
                 }
                 .disabled(availableTags.isEmpty)
+                // Says which state it's in, since a filled tag and an outlined one are a small
+                // difference to notice on a strip of icons.
+                .help(tagFilter == nil ? "Filter by tag" : "Filtered to \(tagFilter ?? "") — ⇧⌘K shows all")
             }
             ToolbarItem {
                 Button {
                     showDateFilter = true
                 } label: {
-                    Label("Due date filter", systemImage: (dueFrom != nil || dueTo != nil) ? "calendar.badge.checkmark" : "calendar")
+                    Label(
+                        "Due Date",
+                        systemImage: (dueFrom != nil || dueTo != nil) ? "calendar.badge.checkmark" : "calendar"
+                    )
                 }
+                .help(
+                    (dueFrom != nil || dueTo != nil)
+                        ? "Filtered by due date — ⇧⌘K shows all"
+                        : "Filter by due date"
+                )
             }
             ToolbarItem {
                 Menu {
@@ -632,20 +658,23 @@ struct TaskListView: View {
                 } label: {
                     Label("Sort", systemImage: "arrow.up.arrow.down")
                 }
+                .help("Sorted by \(sortMode.rawValue)")
             }
             ToolbarItem {
                 Button {
                     chooseBackupFile()
                 } label: {
-                    Label("Import Android backup", systemImage: "square.and.arrow.down")
+                    Label("Import Backup", systemImage: "square.and.arrow.down")
                 }
+                .help("Import a backup from the phone (⇧⌘I) — export is ⌥⇧⌘E")
             }
             ToolbarItem {
                 Button {
                     isPresentingNewTask = true
                 } label: {
-                    Label("New strip", systemImage: "plus")
+                    Label("New Strip", systemImage: "plus")
                 }
+                .help("New Strip (⌘N) — or ⌥⌘N to dictate one")
             }
         }
     }

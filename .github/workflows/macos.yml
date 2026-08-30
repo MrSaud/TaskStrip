@@ -53,6 +53,27 @@ jobs:
             ENABLE_HARDENED_RUNTIME=NO \
             | xcbeautify
 
+      # Checks the bundle, not the source. Every bug this workflow has missed lived in the gap
+      # between "the code is right" and "the app that ships is right" — a Dock icon that needed a
+      # plist key nobody wrote, a microphone string a regenerate would have wiped. These are
+      # cheap, and they fail loudly instead of silently producing a generic icon.
+      - name: The built app is actually an app
+        run: |
+          set -euo pipefail
+          APP=.build/Build/Products/Debug/TaskStrips.app
+          PLIST="$APP/Contents/Info.plist"
+
+          icon=$(/usr/libexec/PlistBuddy -c "Print :CFBundleIconName" "$PLIST")
+          test "$icon" = "AppIcon"
+
+          /usr/libexec/PlistBuddy -c "Print :NSMicrophoneUsageDescription" "$PLIST" > /dev/null
+
+          # The name in the plist is worthless if the artwork never compiled in beside it.
+          test -f "$APP/Contents/Resources/Assets.car"
+          test -s "$APP/Contents/Resources/Assets.car"
+
+          echo "icon=$icon, Assets.car $(stat -f%z "$APP/Contents/Resources/Assets.car") bytes"
+
       - name: Unit tests
         run: |
           set -o pipefail
