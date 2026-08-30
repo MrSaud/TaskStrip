@@ -69,12 +69,12 @@ final class BackupImportTests: XCTestCase {
     /// these dates in the year 58,000-odd without ever failing loudly.
     func testConvertsMillisecondTimestamps() throws {
         let passport = try XCTUnwrap(try fixtureSummary().tasks.first)
-        XCTAssertEqual(passport.dueAt, Date(timeIntervalSince1970: 1_789_000_000))
         XCTAssertEqual(passport.createdAt, Date(timeIntervalSince1970: 1_786_000_000))
         XCTAssertEqual(passport.actionLog.first?.timestamp, Date(timeIntervalSince1970: 1_787_000_000))
 
         let flights = try XCTUnwrap(try fixtureSummary().tasks.dropFirst().first)
         XCTAssertEqual(flights.waitingOnSince, Date(timeIntervalSince1970: 1_787_200_000))
+        // dueAt has its own convention and its own tests below.
         XCTAssertEqual(flights.waitingOnName, "Travel desk")
         XCTAssertEqual(flights.waitingOnFollowUpDays, 3)
         XCTAssertNil(flights.dueAt)
@@ -294,5 +294,69 @@ final class BackupImportTests: XCTestCase {
             try BackupImport.restoreMedia(fromArchiveAt: try fixtureURL(), paths: [], into: store),
             []
         )
+    }
+
+    // MARK: - Due dates
+    //
+    // The one field Android doesn't store as an instant. It's a wall clock pinned to UTC, shown
+    // in UTC everywhere on the phone, so reading it as a real instant lands it on the Mac shifted
+    // by the local offset — three hours late at UTC+3, which is where this backup came from.
+
+    /// 1789000000000 ms is 2026-09-09 07:06:40 UTC. Whatever zone you're in, that wall clock is
+    /// what the phone showed, so that's the wall clock the Mac has to show.
+    func testADueDateKeepsTheWallClockThePhoneShowed() throws {
+        let millis = 1_789_000_000_000.0
+
+        for identifier in ["Asia/Riyadh", "America/Los_Angeles", "UTC", "Asia/Kolkata"] {
+            let zone = try XCTUnwrap(TimeZone(identifier: identifier))
+            let converted = BackupImport.dueDate(fromAndroidWallClock: millis, in: zone)
+
+            var calendar = Calendar(identifier: .gregorian)
+            calendar.timeZone = zone
+            let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: converted)
+
+            XCTAssertEqual(parts.year, 2026, identifier)
+            XCTAssertEqual(parts.month, 9, identifier)
+            XCTAssertEqual(parts.day, 9, identifier)
+            XCTAssertEqual(parts.hour, 7, identifier)
+            XCTAssertEqual(parts.minute, 6, identifier)
+        }
+    }
+
+    /// The bug this replaced: read as a plain instant, the due date is off by the local offset.
+    func testADueDateIsNotJustTheRawInstant() throws {
+        let millis = 1_789_000_000_000.0
+        let riyadh = try XCTUnwrap(TimeZone(identifier: "Asia/Riyadh"))
+
+        let converted = BackupImport.dueDate(fromAndroidWallClock: millis, in: riyadh)
+        let raw = Date(timeIntervalSince1970: millis / 1000)
+
+        XCTAssertEqual(
+            converted.timeIntervalSince(raw), -3 * 3600, accuracy: 1,
+            "UTC+3 means the real instant is three hours earlier than the naive reading"
+        )
+    }
+
+    func testInUTCTheTwoReadingsAgree() throws {
+        let millis = 1_789_000_000_000.0
+        let utc = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        XCTAssertEqual(
+            BackupImport.dueDate(fromAndroidWallClock: millis, in: utc),
+            Date(timeIntervalSince1970: millis / 1000)
+        )
+    }
+
+    func testParsingAppliesTheConventionToTheFixture() throws {
+        let riyadh = try XCTUnwrap(TimeZone(identifier: "Asia/Riyadh"))
+        let manifest = try BackupArchive.manifestData(inArchive: Data(contentsOf: try fixtureURL()))
+        let summary = try BackupImport.parse(manifest: manifest, timeZone: riyadh)
+
+        let passport = try XCTUnwrap(summary.tasks.first)
+        XCTAssertEqual(
+            passport.dueAt,
+            BackupImport.dueDate(fromAndroidWallClock: 1_789_000_000_000, in: riyadh)
+        )
+        // Everything else stays a straight instant.
+        XCTAssertEqual(passport.createdAt, Date(timeIntervalSince1970: 1_786_000_000))
     }
 }

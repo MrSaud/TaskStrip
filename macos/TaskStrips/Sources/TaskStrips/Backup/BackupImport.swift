@@ -90,7 +90,9 @@ enum BackupImport {
         ("storageItems", "storage items"),
     ]
 
-    static func parse(manifest data: Data) throws -> BackupImportSummary {
+    /// `timeZone` is only used for due dates — see `dueDate(fromAndroidWallClock:in:)` — and is a
+    /// parameter so tests can pin it rather than depending on the machine's.
+    static func parse(manifest data: Data, timeZone: TimeZone = .current) throws -> BackupImportSummary {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw BackupImportError.notJSON
         }
@@ -100,7 +102,8 @@ enum BackupImport {
 
         var summary = BackupImportSummary()
         summary.version = intValue(root, "version") ?? 0
-        summary.tasks = rawTasks.compactMap { $0 as? [String: Any] }.map(task(from:))
+        summary.tasks = rawTasks.compactMap { $0 as? [String: Any] }
+            .map { task(from: $0, timeZone: timeZone) }
         summary.attachmentCount = summary.tasks.reduce(0) { $0 + $1.attachmentCount }
         summary.reminderOnTaskCount = summary.tasks.filter(\.hasReminder).count
         summary.skippedSections = skippableSections.compactMap { section -> (name: String, count: Int)? in
@@ -110,13 +113,18 @@ enum BackupImport {
         return summary
     }
 
-    private static func task(from object: [String: Any]) -> ImportedTask {
+    private static func task(from object: [String: Any], timeZone: TimeZone) -> ImportedTask {
         var task = ImportedTask()
         task.title = stringValue(object, "title")
         task.notes = stringValue(object, "notes")
         task.notesRtl = boolValue(object, "notesRtl")
         task.priority = Priority(rawValue: stringValue(object, "priority")) ?? .normal
-        task.dueAt = dateValue(object, "dueAt")
+        // The one field that isn't a real instant. Everything else here — createdAt,
+        // completedAt, waitingOnSince, the action log — is a genuine System.currentTimeMillis()
+        // and converts straight across.
+        task.dueAt = numberValue(object, "dueAt").map {
+            dueDate(fromAndroidWallClock: $0, in: timeZone)
+        }
         task.orderIndex = intValue(object, "orderIndex") ?? 0
         task.isDone = boolValue(object, "isDone")
         task.isArchived = boolValue(object, "isArchived")
@@ -289,7 +297,34 @@ enum BackupImport {
 
     /// Android writes every timestamp as epoch milliseconds.
     private static func dateValue(_ object: [String: Any], _ key: String) -> Date? {
-        guard let number = object[key] as? NSNumber else { return nil }
-        return Date(timeIntervalSince1970: number.doubleValue / 1000)
+        numberValue(object, key).map { Date(timeIntervalSince1970: $0 / 1000) }
+    }
+
+    private static func numberValue(_ object: [String: Any], _ key: String) -> Double? {
+        (object[key] as? NSNumber)?.doubleValue
+    }
+
+    /// Re-anchors a due date from Android's convention to a real instant.
+    ///
+    /// dueAt is the one timestamp Android doesn't store as an instant. It holds a wall-clock
+    /// value pinned to UTC — 14:00 on the phone is stored as 14:00Z wherever you are — and every
+    /// display formats it in UTC to match, which is why Formatting.kt has dueAtAsLocalInstant and
+    /// only the alarm scheduler calls it. Read as a true instant, a due date would land on the
+    /// Mac shifted by the local offset: three hours late at UTC+3.
+    ///
+    /// So: read the wall clock in UTC, then rebuild it in the local zone. 14:00 on the phone
+    /// becomes 14:00 here.
+    static func dueDate(fromAndroidWallClock milliseconds: Double, in timeZone: TimeZone) -> Date {
+        let instant = Date(timeIntervalSince1970: milliseconds / 1000)
+
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC") ?? .gmt
+        let wallClock = utc.dateComponents(
+            [.year, .month, .day, .hour, .minute, .second], from: instant
+        )
+
+        var local = Calendar(identifier: .gregorian)
+        local.timeZone = timeZone
+        return local.date(from: wallClock) ?? instant
     }
 }
