@@ -34,6 +34,7 @@ enum BackupExport {
         var passwordsIncluded: Int
     }
 
+
     /// Builds the whole archive.
     ///
     /// `passphrase` empty means no passwords travel — the same choice Android makes, and for the
@@ -45,7 +46,8 @@ enum BackupExport {
         store: AttachmentStore,
         credentialStore: CredentialStore,
         timeZone: TimeZone = .current,
-        now: Date = .now
+        now: Date = .now,
+        progress: ProgressHandler? = nil
     ) throws -> Result {
         var passwordsIncluded = 0
         let manifest = try manifestData(
@@ -55,27 +57,57 @@ enum BackupExport {
             timeZone: timeZone,
             passwordsIncluded: &passwordsIncluded
         )
+        var result = archive(
+            manifest: manifest,
+            mediaPaths: mediaPaths(contents),
+            store: store,
+            progress: progress
+        )
+        result.passwordsIncluded = passwordsIncluded
+        return result
+    }
 
+    /// Reported as each file is packed: how many are done, and how many there are.
+    ///
+    /// A backup with a phone's worth of photos in it is not instant, and a window that simply
+    /// stops responding is indistinguishable from one that has crashed.
+    typealias ProgressHandler = (Int, Int) -> Void
+
+    /// The half that touches the disk, split out from the half that reads the model.
+    ///
+    /// SwiftData objects belong to the thread that made them, so the manifest has to be built
+    /// wherever the board lives; this part is nothing but paths and bytes, so it can run
+    /// somewhere else while the window stays alive.
+    static func archive(
+        manifest: Data,
+        mediaPaths: Set<String>,
+        store: AttachmentStore,
+        progress: ProgressHandler? = nil
+    ) -> Result {
         var entries = [ZipWriter.Entry(name: BackupArchive.manifestEntryName, data: manifest)]
         var missing = 0
-        for path in mediaPaths(contents).sorted() {
+
+        let paths = mediaPaths.sorted()
+        progress?(0, paths.count)
+        for (index, path) in paths.enumerated() {
             let url = store.url(forRelativePath: path)
-            guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else {
+            if let data = try? Data(contentsOf: url, options: .mappedIfSafe) {
+                entries.append(
+                    ZipWriter.Entry(name: BackupArchive.mediaPrefix + path, data: data, compress: false)
+                )
+            } else {
                 // A strip can name a file that isn't there — an import that couldn't fetch it, or
                 // a store moved out from under the app. The row still travels; the bytes can't.
                 missing += 1
-                continue
             }
-            entries.append(
-                ZipWriter.Entry(name: BackupArchive.mediaPrefix + path, data: data, compress: false)
-            )
+            progress?(index + 1, paths.count)
         }
 
         return Result(
             archive: ZipWriter.archive(entries),
             fileCount: entries.count - 1,
             filesMissing: missing,
-            passwordsIncluded: passwordsIncluded
+            passwordsIncluded: 0
         )
     }
 

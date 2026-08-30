@@ -435,18 +435,23 @@ enum BackupImport {
     static func restoreMedia(
         fromArchiveAt url: URL,
         paths: Set<String>,
-        into store: AttachmentStore
+        into store: AttachmentStore,
+        progress: BackupExport.ProgressHandler? = nil
     ) throws -> Set<String> {
         guard !paths.isEmpty, url.pathExtension.lowercased() != "json" else { return [] }
 
         let archive = try Data(contentsOf: url, options: .mappedIfSafe)
         var restored: Set<String> = []
+        // Counted against what the backup said it holds rather than what the archive turns out to
+        // carry, so the number on screen doesn't jump when a file is missing.
+        progress?(0, paths.count)
         for entry in try BackupArchive.entries(inArchive: archive) where !entry.isDirectory {
             guard entry.name.hasPrefix(BackupArchive.mediaPrefix) else { continue }
             let path = String(entry.name.dropFirst(BackupArchive.mediaPrefix.count))
             guard paths.contains(path) else { continue }
             try store.write(try BackupArchive.data(for: entry, inArchive: archive), toRelativePath: path)
             restored.insert(path)
+            progress?(restored.count, paths.count)
         }
         return restored
     }

@@ -17,10 +17,12 @@ struct DriveBackupsView: View {
     @State private var backups: [DriveBackup] = []
     @State private var status: String?
     @State private var problem: String?
-    @State private var isWorking = false
+    @State private var progress: BackupProgress?
     @State private var hasLoaded = false
     @State private var passphrase = ""
     @State private var includePasswords = false
+
+    private var isWorking: Bool { progress != nil }
 
     private var credentialsWithPasswords: Int {
         contents.credentials.filter { CredentialStore.shared.hasPassword(for: $0.id) }.count
@@ -41,8 +43,16 @@ struct DriveBackupsView: View {
 
             Spacer(minLength: 0)
 
+            if let progress {
+                // Inline rather than a sheet on top of a sheet — this window is already the one
+                // doing the work, so it says so in place.
+                BackupProgressView(progress: progress)
+                    .padding(0)
+                    .frame(maxWidth: .infinity)
+            }
+
             HStack {
-                if let status {
+                if let status, progress == nil {
                     Text(status)
                         .font(.callout)
                         .foregroundStyle(.secondary)
@@ -50,6 +60,7 @@ struct DriveBackupsView: View {
                 Spacer()
                 Button("Done") { dismiss() }
                     .keyboardShortcut(.defaultAction)
+                    .disabled(isWorking)
             }
         }
         .padding(20)
@@ -90,7 +101,10 @@ struct DriveBackupsView: View {
                 .font(.caption)
                 .foregroundStyle(.tertiary)
             Button("Sign In with Google") {
-                Task { await run { try await session.signIn(); await refresh() } }
+                Task {
+                    await run("Google Drive", "Waiting for Google") { try await session.signIn() }
+                    await refresh()
+                }
             }
             .disabled(isWorking)
         }
@@ -158,9 +172,9 @@ struct DriveBackupsView: View {
 
     // MARK: - Work
 
-    private func run(_ work: @escaping () async throws -> Void) async {
-        isWorking = true
-        defer { isWorking = false }
+    private func run(_ title: String, _ step: String, _ work: @escaping () async throws -> Void) async {
+        progress = BackupProgress(title: title, step: step)
+        defer { progress = nil }
         do {
             try await work()
         } catch let error as DriveError {
@@ -171,7 +185,7 @@ struct DriveBackupsView: View {
     }
 
     private func refresh() async {
-        await run {
+        await run("Google Drive", "Reading the folder") {
             let client = try await session.client()
             let folder = try await client.ensureBackupFolder()
             backups = try await client.backups(inFolder: folder)
@@ -180,17 +194,46 @@ struct DriveBackupsView: View {
     }
 
     private func backUp() async {
-        await run {
-            let result = try BackupExport.archive(
+        await run("Backing up to Drive", "Building the backup") {
+            // Same split as the board's own export: the manifest reads the model here, the files
+            // are packed off the main thread with a count on screen.
+            var passwordsIncluded = 0
+            let manifest = try BackupExport.manifestData(
                 contents,
                 passphrase: includePasswords ? passphrase : "",
-                store: .shared,
-                credentialStore: .shared
+                credentialStore: .shared,
+                passwordsIncluded: &passwordsIncluded
             )
+            let paths = BackupExport.mediaPaths(contents)
+            progress = BackupProgress(
+                title: "Backing up to Drive",
+                step: "Packing files",
+                completed: 0,
+                total: paths.count
+            )
+            let result = await Task.detached {
+                BackupExport.archive(
+                    manifest: manifest,
+                    mediaPaths: paths,
+                    store: .shared,
+                    progress: { done, total in
+                        DispatchQueue.main.async {
+                            progress?.completed = done
+                            progress?.total = total
+                        }
+                    }
+                )
+            }.value
+
+            let name = BackupExport.suggestedFileName()
+            // Upload has no count of its own: one request, and URLSession doesn't report its
+            // way through the body without a delegate this doesn't otherwise need.
+            progress = BackupProgress(title: "Backing up to Drive", step: "Uploading \(name)")
             let client = try await session.client()
             let folder = try await client.ensureBackupFolder()
-            let name = BackupExport.suggestedFileName()
             try await client.upload(result.archive, named: name, toFolder: folder)
+
+            progress = BackupProgress(title: "Backing up to Drive", step: "Reading the folder")
             status = "Uploaded \(name)."
             backups = try await client.backups(inFolder: folder)
         }
@@ -199,7 +242,7 @@ struct DriveBackupsView: View {
     /// Hands the archive back to the board, which runs it through the same confirmation sheet a
     /// file picked off disk goes through — including the choice between adding and replacing.
     private func restore(_ backup: DriveBackup) async {
-        await run {
+        await run("Reading from Drive", "Downloading \(backup.name)") {
             let client = try await session.client()
             let data = try await client.download(backup)
             status = "Read \(backup.name)."

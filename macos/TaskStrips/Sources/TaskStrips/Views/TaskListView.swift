@@ -45,6 +45,7 @@ struct TaskListView: View {
     @State private var importMessage: ImportMessage?
     @State private var isExporting = false
     @State private var showDrive = false
+    @State private var progress: BackupProgress?
     @State private var selectedTaskID: TaskItem.ID?
     @State private var pendingDeletion: TaskItem?
 
@@ -199,6 +200,12 @@ struct TaskListView: View {
                     message: Text("Blocked by \"\(blocker(for: task)?.title ?? "")\""),
                     dismissButton: .default(Text("OK"))
                 )
+            }
+            .sheet(isPresented: Binding(
+                get: { progress != nil },
+                set: { if !$0 { progress = nil } }
+            )) {
+                if let progress { BackupProgressView(progress: progress) }
             }
             .sheet(isPresented: $showDrive) {
                 DriveBackupsView(contents: exportContents, onRestore: readDriveArchive)
@@ -662,16 +669,57 @@ struct TaskListView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         do {
-            let result = try BackupExport.archive(
+            // The manifest reads the board, so it has to be built here; packing the files is
+            // nothing but paths and bytes, so that part goes elsewhere and the window stays alive.
+            var passwordsIncluded = 0
+            let manifest = try BackupExport.manifestData(
                 exportContents,
                 passphrase: passphrase,
-                store: .shared,
-                credentialStore: .shared
+                credentialStore: .shared,
+                passwordsIncluded: &passwordsIncluded
             )
+            let paths = BackupExport.mediaPaths(exportContents)
+            let strips = exportContents.tasks.count
+            progress = BackupProgress(
+                title: "Writing the backup",
+                step: paths.isEmpty ? "Packing" : "Packing files",
+                completed: 0,
+                total: paths.count
+            )
+
+            Task {
+                var result = await Task.detached {
+                    BackupExport.archive(
+                        manifest: manifest,
+                        mediaPaths: paths,
+                        store: .shared,
+                        progress: { done, total in
+                            DispatchQueue.main.async {
+                                progress?.completed = done
+                                progress?.total = total
+                            }
+                        }
+                    )
+                }.value
+                result.passwordsIncluded = passwordsIncluded
+                progress = nil
+                finishExport(result, to: url, strips: strips)
+            }
+        } catch {
+            progress = nil
+            importMessage = ImportMessage(
+                title: "Couldn't write the backup",
+                body: error.localizedDescription
+            )
+        }
+    }
+
+    private func finishExport(_ result: BackupExport.Result, to url: URL, strips: Int) {
+        do {
             try result.archive.write(to: url)
 
-            var body = "Wrote \(exportContents.tasks.count) strip"
-                + "\(exportContents.tasks.count == 1 ? "" : "s") and \(result.fileCount) file"
+            var body = "Wrote \(strips) strip"
+                + "\(strips == 1 ? "" : "s") and \(result.fileCount) file"
                 + "\(result.fileCount == 1 ? "" : "s") to \(url.lastPathComponent)."
             if result.passwordsIncluded > 0 {
                 body += " \(result.passwordsIncluded) password"
@@ -718,24 +766,66 @@ struct TaskListView: View {
     }
 
     private func performImport(_ summary: BackupImportSummary, mode: ImportMode, passphrase: String) {
-        let replaced = mode == .replace ? allTasks.count : 0
         let referenced = summary.referencedMediaPaths
 
         // Files first: a strip that ends up pointing at nothing is better than files on disk that
-        // nothing points at, and this is the step that can fail on its own.
-        var restored: Set<String> = []
-        var mediaProblem: String?
-        if let source = summary.sourceURL, !referenced.isEmpty {
-            do {
-                restored = try BackupImport.restoreMedia(
-                    fromArchiveAt: source,
-                    paths: referenced,
-                    into: .shared
-                )
-            } catch {
-                mediaProblem = error.localizedDescription
-            }
+        // nothing points at, and this is the step that can fail on its own. It's also the slow
+        // one, so it happens off the main thread with the count on screen.
+        guard let source = summary.sourceURL, !referenced.isEmpty else {
+            finishImport(summary, mode: mode, passphrase: passphrase, restored: [], mediaProblem: nil)
+            return
         }
+
+        importSummary = nil
+        progress = BackupProgress(
+            title: "Reading the backup",
+            step: "Restoring files",
+            completed: 0,
+            total: referenced.count
+        )
+
+        Task {
+            let outcome = await Task.detached { () -> (Set<String>, String?) in
+                do {
+                    let restored = try BackupImport.restoreMedia(
+                        fromArchiveAt: source,
+                        paths: referenced,
+                        into: .shared,
+                        progress: { done, total in
+                            DispatchQueue.main.async {
+                                progress?.completed = done
+                                progress?.total = total
+                            }
+                        }
+                    )
+                    return (restored, nil)
+                } catch {
+                    return ([], error.localizedDescription)
+                }
+            }.value
+
+            progress = nil
+            finishImport(
+                summary,
+                mode: mode,
+                passphrase: passphrase,
+                restored: outcome.0,
+                mediaProblem: outcome.1
+            )
+        }
+    }
+
+    /// Everything that touches the store, which has to be here rather than on a background task:
+    /// SwiftData objects belong to the thread that made them.
+    private func finishImport(
+        _ summary: BackupImportSummary,
+        mode: ImportMode,
+        passphrase: String,
+        restored: Set<String>,
+        mediaProblem: String?
+    ) {
+        let replaced = mode == .replace ? allTasks.count : 0
+        let referenced = summary.referencedMediaPaths
 
         let imported = BackupImport.apply(
             summary.tasks,
