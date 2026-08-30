@@ -21,6 +21,12 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    # Job level, not step level: a step's own `env` is not in scope for that step's own `if`, so
+    # guarding on it there would evaluate an empty string every time and skip the upload always.
+    env:
+      DRIVE_CLIENT_ID: ${{ secrets.DRIVE_CLIENT_ID }}
+      DRIVE_REFRESH_TOKEN: ${{ secrets.DRIVE_REFRESH_TOKEN }}
+
     steps:
       - uses: actions/checkout@v4
 
@@ -43,3 +49,15 @@ jobs:
           name: TaskStrip-debug-apk
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: warn
+
+      # Puts the build in the same Drive folder the apps already use, so the phone can install it
+      # without going through GitHub. Skipped entirely when the secrets aren't set, so a fork or a
+      # contributor's push doesn't fail on credentials it was never going to have.
+      #
+      # The client is the app's own OAuth client, which is a desktop/installed client and so has
+      # no secret — a refresh token alone is enough to mint an access token. The drive.file scope
+      # limits what this can touch to files this project's apps created, which is why it can write
+      # the folder at all and why it cannot read the rest of the Drive.
+      - name: Put the APK in Google Drive
+        if: ${{ env.DRIVE_CLIENT_ID != '' && env.DRIVE_REFRESH_TOKEN != '' }}
+        run: python3 .github/scripts/upload_to_drive.py app/build/outputs/apk/debug/app-debug.apk
