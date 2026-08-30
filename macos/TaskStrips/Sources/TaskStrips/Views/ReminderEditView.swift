@@ -27,7 +27,15 @@ struct ReminderEditView: View {
 
     private let isEditing: Bool
 
-    init(reminder: Reminder?, onSave: @escaping (ReminderDraft) -> Void, onCancel: @escaping () -> Void) {
+    /// `spokenText` prefills the title for a new reminder dictated rather than typed — Android's
+    /// NEW REMINDER BY VOICE hands the sentence straight over without parsing it, since a
+    /// reminder is mostly its one line.
+    init(
+        reminder: Reminder?,
+        spokenText: String = "",
+        onSave: @escaping (ReminderDraft) -> Void,
+        onCancel: @escaping () -> Void
+    ) {
         self.onSave = onSave
         self.onCancel = onCancel
         isEditing = reminder != nil
@@ -43,6 +51,7 @@ struct ReminderEditView: View {
             // A reminder for a moment that has already passed would never fire, so a new one
             // starts an hour out rather than at this instant.
             draft.triggerAt = Date.now.addingTimeInterval(3600)
+            draft.text = spokenText
         }
         _draft = State(initialValue: draft)
         _hasLead = State(initialValue: reminder?.leadMinutesBefore != nil)

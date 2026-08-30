@@ -47,6 +47,7 @@ struct TaskListView: View {
     @State private var isExporting = false
     @State private var showDrive = false
     @State private var progress: BackupProgress?
+    @ObservedObject private var reader = SpeechReader.shared
     @State private var selectedTaskID: TaskItem.ID?
     @State private var pendingDeletion: TaskItem?
 
@@ -287,6 +288,7 @@ struct TaskListView: View {
         BoardCommandState(
             selectedID: selectedTaskID,
             selectionIsDone: selectedTask?.isDone ?? false,
+            selectionHasNotes: selectedTask.flatMap(SpeechReader.speech(for:)) != nil,
             availableMoves: selectedTask.map { task in
                 Set(BoardMove.allCases.filter { canReorder && BoardOrdering.canMove(task, $0, in: filtered) })
             } ?? [],
@@ -304,6 +306,10 @@ struct TaskListView: View {
         let actions = BoardActions.shared
         actions.newStrip = { isPresentingNewTask = true }
         actions.newStripByVoice = { isCapturingVoice = true }
+        actions.readSelectionAloud = {
+            guard let task = selectedTask, let speech = SpeechReader.speech(for: task) else { return }
+            SpeechReader.shared.toggle(speech, id: task.id)
+        }
         actions.importBackup = { chooseBackupFile() }
         actions.exportBackup = { isExporting = true }
         actions.showDrive = { showDrive = true }
@@ -427,6 +433,16 @@ struct TaskListView: View {
                 archive(task)
             } label: {
                 Label("Archive", systemImage: "archivebox")
+            }
+            if let speech = SpeechReader.speech(for: task) {
+                Button {
+                    reader.toggle(speech, id: task.id)
+                } label: {
+                    Label(
+                        reader.isSpeaking(task.id) ? "Stop Reading" : "Read Notes Aloud",
+                        systemImage: reader.isSpeaking(task.id) ? "stop.circle" : "speaker.wave.2"
+                    )
+                }
             }
             Divider()
             // Drag-reorder needs a real trackpad gesture and offers nothing to VoiceOver, exactly

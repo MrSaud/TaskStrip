@@ -16,6 +16,9 @@ struct RemindersView: View {
     @State private var newestFirst = false
     @State private var editing: Reminder?
     @State private var isCreating = false
+    @State private var isDictating = false
+    @State private var spokenText = ""
+    @ObservedObject private var reader = SpeechReader.shared
     @State private var pendingDeletion: Reminder?
     @State private var notificationsDenied = false
 
@@ -49,7 +52,26 @@ struct RemindersView: View {
         .searchable(text: $search, placement: .toolbar, prompt: "Search reminders")
         .toolbar { toolbarContent }
         .sheet(isPresented: $isCreating) {
-            ReminderEditView(reminder: nil, onSave: insert, onCancel: { isCreating = false })
+            ReminderEditView(
+                reminder: nil,
+                spokenText: spokenText,
+                onSave: insert,
+                onCancel: { isCreating = false; spokenText = "" }
+            )
+        }
+        .sheet(isPresented: $isDictating) {
+            SpokenTextSheet(
+                title: "New reminder by voice",
+                prompt: "Press the dictation key (fn twice) and say it, or type it. "
+                    + "The editor opens next for the time and the rest.",
+                example: "\"Renew the car registration\"",
+                onUse: { text in
+                    isDictating = false
+                    spokenText = text
+                    isCreating = true
+                },
+                onCancel: { isDictating = false }
+            )
         }
         .sheet(item: $editing) { reminder in
             ReminderEditView(reminder: reminder, onSave: { update(reminder, with: $0) }, onCancel: { editing = nil })
@@ -88,7 +110,7 @@ struct RemindersView: View {
             Text("For the things that are only a moment in time, with no strip behind them.")
                 .font(.callout)
                 .foregroundStyle(.tertiary)
-            Button("New Reminder") { isCreating = true }
+            Button("New Reminder") { spokenText = ""; isCreating = true }
             Spacer()
         }
         .frame(maxWidth: .infinity)
@@ -169,6 +191,9 @@ struct RemindersView: View {
         .contextMenu {
             Button(reminder.isDone ? "Reopen" : "Mark Done") { toggleDone(reminder) }
             Button("Edit…") { editing = reminder }
+            Button(reader.isSpeaking(reminder.id) ? "Stop Reading" : "Read Aloud") {
+                reader.toggle(SpeechReader.speech(for: reminder), id: reminder.id)
+            }
             Divider()
             Button("Delete…", role: .destructive) { pendingDeletion = reminder }
         }
@@ -201,6 +226,14 @@ struct RemindersView: View {
             }
             ToolbarItem {
                 Button {
+                    isDictating = true
+                } label: {
+                    Label("New reminder by voice", systemImage: "mic")
+                }
+            }
+            ToolbarItem {
+                Button {
+                    spokenText = ""
                     isCreating = true
                 } label: {
                     Label("New reminder", systemImage: "plus")
@@ -226,6 +259,7 @@ struct RemindersView: View {
         modelContext.insert(reminder)
         ReminderScheduler.shared.schedule(for: reminder)
         isCreating = false
+        spokenText = ""
     }
 
     private func update(_ reminder: Reminder, with draft: ReminderDraft) {

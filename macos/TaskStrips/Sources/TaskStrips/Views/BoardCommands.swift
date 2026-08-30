@@ -14,6 +14,8 @@ import SwiftUI
 struct BoardCommandState: Equatable {
     var selectedID: TaskItem.ID?
     var selectionIsDone: Bool = false
+    /// Whether the selected strip has anything worth reading out.
+    var selectionHasNotes: Bool = false
     var availableMoves: Set<BoardMove> = []
     var isFiltered: Bool = false
     var sortMode: ProgressSort = .manual
@@ -38,6 +40,7 @@ final class BoardActions {
 
     var newStrip: () -> Void = {}
     var newStripByVoice: () -> Void = {}
+    var readSelectionAloud: () -> Void = {}
     var importBackup: () -> Void = {}
     var exportBackup: () -> Void = {}
     var showDrive: () -> Void = {}
@@ -59,6 +62,7 @@ final class BoardActions {
     /// Called when the board goes away or loses its selection, so a stale menu item can't act on
     /// a strip that isn't there any more.
     func clearSelectionActions() {
+        readSelectionAloud = {}
         editSelection = {}
         toggleSelectionDone = {}
         archiveSelection = {}
@@ -157,6 +161,14 @@ struct BoardCommandMenus: Commands {
                     .keyboardShortcut(move.keyboardShortcut)
                     .disabled(state?.availableMoves.contains(move) != true)
             }
+
+            Divider()
+
+            Button("Read Notes Aloud") { actions.readSelectionAloud() }
+                .keyboardShortcut("r", modifiers: [.command, .option])
+                // Greyed out for a strip with no notes: there would be nothing to read, and the
+                // title is already on screen.
+                .disabled(state?.selectionHasNotes != true)
 
             Divider()
 
