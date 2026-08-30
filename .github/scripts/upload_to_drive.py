@@ -8,6 +8,12 @@ through GitHub's artifact page on a small screen.
 Needs DRIVE_CLIENT_ID and DRIVE_REFRESH_TOKEN in the environment. The client is the app's own
 OAuth client, which is an installed/desktop client and therefore has no secret — a refresh token
 is enough. Its drive.file scope means this can only see files the project's apps created.
+
+DRIVE_FOLDER_ID is optional and is what to set for a Shared Drive: give the id of any folder —
+in My Drive or in a Shared Drive — and the build goes straight there instead of into
+TaskStripBackups. Every call carries supportsAllDrives, which a Shared Drive requires and My
+Drive ignores, so one code path serves both. With Drive for desktop mirroring that folder, the
+APK turns up in Finder on its own.
 """
 
 import json
@@ -53,6 +59,12 @@ def access_token(client_id, refresh_token):
 
 
 def ensure_folder(token):
+    """The shared backups folder in My Drive, made if it isn't there — the same ensure both apps do.
+
+    Only used when no folder was named. A Shared Drive can't be reached this way: a plain files
+    query doesn't look inside one without corpora and driveId, which is why naming the folder
+    outright is the supported route for those.
+    """
     auth = {"Authorization": f"Bearer {token}"}
     query = urllib.parse.quote(
         f"mimeType='{FOLDER_MIME}' and name='{FOLDER_NAME}' and trashed=false"
@@ -63,7 +75,7 @@ def ensure_folder(token):
         return files[0]["id"]
 
     created = request(
-        f"{BASE}/files?fields=id",
+        f"{BASE}/files?fields=id&supportsAllDrives=true",
         method="POST",
         headers={**auth, "Content-Type": "application/json; charset=UTF-8"},
         body=json.dumps({"name": FOLDER_NAME, "mimeType": FOLDER_MIME}).encode(),
@@ -88,8 +100,10 @@ def upload(token, folder_id, path, name):
             f"\r\n--{boundary}--\r\n".encode(),
         ]
     )
+    # supportsAllDrives is what makes a Shared Drive destination work at all; My Drive ignores it,
+    # so it is unconditional rather than another branch to get wrong.
     return request(
-        f"{UPLOAD_BASE}/files?uploadType=multipart&fields=id,name",
+        f"{UPLOAD_BASE}/files?uploadType=multipart&fields=id,name,webViewLink&supportsAllDrives=true",
         method="POST",
         headers={
             "Authorization": f"Bearer {token}",
@@ -116,9 +130,15 @@ def main():
     name = f"TaskStrip-{stamp}-{sha}.apk"
 
     token = access_token(client_id, refresh_token)
-    folder_id = ensure_folder(token)
+    folder_id = os.environ.get("DRIVE_FOLDER_ID", "").strip()
+    where = folder_id or FOLDER_NAME
+    if not folder_id:
+        folder_id = ensure_folder(token)
+
     result = upload(token, folder_id, path, name)
-    print(f"Uploaded {result.get('name')} to {FOLDER_NAME} (id {result.get('id')})")
+    print(f"Uploaded {result.get('name')} to {where}")
+    if result.get("webViewLink"):
+        print(result["webViewLink"])
 
 
 if __name__ == "__main__":
