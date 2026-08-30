@@ -23,6 +23,8 @@ struct TaskListView: View {
     @Query private var allStorageItems: [StorageItem]
     /// Same again for the standalone reminders.
     @Query private var allReminders: [Reminder]
+    /// And the credentials, whose passwords a Replace has to clear from the keychain as well.
+    @Query private var allCredentials: [Credential]
 
     @State private var searchText = ""
     @State private var tagFilter: String?
@@ -200,7 +202,9 @@ struct TaskListView: View {
                 ImportBackupSheet(
                     summary: summary,
                     existingCount: allTasks.count,
-                    onImport: { mode in performImport(summary, mode: mode) },
+                    onImport: { mode, passphrase in
+                        performImport(summary, mode: mode, passphrase: passphrase)
+                    },
                     onCancel: { importSummary = nil }
                 )
             }
@@ -623,7 +627,7 @@ struct TaskListView: View {
         }
     }
 
-    private func performImport(_ summary: BackupImportSummary, mode: ImportMode) {
+    private func performImport(_ summary: BackupImportSummary, mode: ImportMode, passphrase: String) {
         let replaced = mode == .replace ? allTasks.count : 0
         let referenced = summary.referencedMediaPaths
 
@@ -667,6 +671,14 @@ struct TaskListView: View {
             existing: allReminders,
             context: modelContext
         )
+        let importedCredentials = BackupImport.apply(
+            credentials: summary.credentials,
+            mode: mode,
+            existing: allCredentials,
+            passphrase: passphrase,
+            store: .shared,
+            context: modelContext
+        )
         importSummary = nil
         ReminderScheduler.shared.sync(allTasks)
         ReminderScheduler.shared.sync(allReminders)
@@ -687,6 +699,17 @@ struct TaskListView: View {
             }
             if importedReminders > 0 {
                 body += " \(importedReminders) standalone reminder\(importedReminders == 1 ? "" : "s") came across."
+            }
+            if importedCredentials.imported > 0 {
+                body += " \(importedCredentials.imported) credential\(importedCredentials.imported == 1 ? "" : "s") came across"
+                let withPasswords = importedCredentials.passwordsRestored
+                if withPasswords == 0 {
+                    body += summary.hasEncryptedPasswords
+                        ? ", but none of their passwords could be unlocked — check the passphrase."
+                        : ", without passwords: the backup was written without a passphrase, so it carries none."
+                } else {
+                    body += ", \(withPasswords) with \(withPasswords == 1 ? "its password" : "their passwords")."
+                }
             }
             if !referenced.isEmpty {
                 body += " Restored \(restored.count) of \(referenced.count) file\(referenced.count == 1 ? "" : "s")."

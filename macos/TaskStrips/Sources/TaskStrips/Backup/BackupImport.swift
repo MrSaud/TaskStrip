@@ -64,6 +64,19 @@ struct ImportedNote {
     var createdAt: Date = .now
 }
 
+/// One saved login out of the backup.
+///
+/// The password is only here when the backup was written with a passphrase — Android leaves it
+/// out entirely otherwise, rather than ever writing it in the clear.
+struct ImportedCredential {
+    var title: String = ""
+    var username: String = ""
+    var url: String = ""
+    var notes: String = ""
+    var createdAt: Date = .now
+    var encryptedPassword: BackupCrypto.Encrypted?
+}
+
 /// One standalone reminder out of the backup.
 struct ImportedReminder {
     var text: String = ""
@@ -103,6 +116,13 @@ struct BackupImportSummary: Identifiable {
     var notes: [ImportedNote] = []
     var storageItems: [ImportedStorageItem] = []
     var reminders: [ImportedReminder] = []
+    var credentials: [ImportedCredential] = []
+
+    /// Whether any credential carries a password to decrypt, which is the only reason to ask the
+    /// user for the passphrase they wrote the backup with.
+    var hasEncryptedPasswords: Bool {
+        credentials.contains { $0.encryptedPassword != nil }
+    }
     var attachmentCount: Int = 0
     var reminderOnTaskCount: Int = 0
     /// Whole top-level sections of the backup with no Mac equivalent, e.g. "notes": 12.
@@ -126,10 +146,12 @@ enum ImportMode {
 }
 
 enum BackupImport {
-    /// Section name in backup.json -> what to call it in the UI. Everything here is a feature the
-    /// Android app has and the Mac port doesn't, so it's reported and dropped.
-    private static let skippableSections: [(key: String, label: String)] = [
-        ("credentials", "credentials"),
+    /// Every top-level section this app knows what to do with. Anything else in the file gets
+    /// counted and reported rather than silently dropped — the phone's app can grow a section
+    /// this one has never heard of, and a backup that quietly lost part of itself is worse than
+    /// one that says what it couldn't take.
+    private static let handledSections: Set<String> = [
+        "version", "tasks", "notes", "reminders", "storageItems", "credentials",
     ]
 
     /// `timeZone` is only used for the two wall-clock fields — a strip's dueAt and a reminder's
@@ -159,12 +181,18 @@ enum BackupImport {
         summary.reminders = (root["reminders"] as? [Any] ?? [])
             .compactMap { $0 as? [String: Any] }
             .map { reminder(from: $0, timeZone: timeZone) }
+        summary.credentials = (root["credentials"] as? [Any] ?? [])
+            .compactMap { $0 as? [String: Any] }
+            .map { credential(from: $0) }
         summary.attachmentCount = summary.tasks.reduce(0) { $0 + $1.attachmentCount }
         summary.reminderOnTaskCount = summary.tasks.filter(\.hasReminder).count
-        summary.skippedSections = skippableSections.compactMap { section -> (name: String, count: Int)? in
-            guard let items = root[section.key] as? [Any], !items.isEmpty else { return nil }
-            return (name: section.label, count: items.count)
-        }
+        summary.skippedSections = root.keys
+            .filter { !handledSections.contains($0) }
+            .compactMap { key -> (name: String, count: Int)? in
+                guard let items = root[key] as? [Any], !items.isEmpty else { return nil }
+                return (name: key, count: items.count)
+            }
+            .sorted { $0.name < $1.name }
         return summary
     }
 
@@ -222,6 +250,25 @@ enum BackupImport {
         return task
     }
 
+    private static func credential(from object: [String: Any]) -> ImportedCredential {
+        var credential = ImportedCredential()
+        credential.title = stringValue(object, "title")
+        credential.username = stringValue(object, "username")
+        credential.url = stringValue(object, "url")
+        credential.notes = stringValue(object, "notes")
+        credential.createdAt = dateValue(object, "createdAt") ?? .now
+
+        // All three or none: a password missing any one of them can't be opened, and carrying a
+        // half of it would only produce a credential that claims a password it can never show.
+        let salt = stringValue(object, "passwordSalt")
+        let iv = stringValue(object, "passwordIv")
+        let cipher = stringValue(object, "passwordCipher")
+        if !salt.isEmpty, !iv.isEmpty, !cipher.isEmpty {
+            credential.encryptedPassword = BackupCrypto.Encrypted(salt: salt, iv: iv, cipher: cipher)
+        }
+        return credential
+    }
+
     private static func reminder(from object: [String: Any], timeZone: TimeZone) -> ImportedReminder {
         var reminder = ImportedReminder()
         reminder.text = stringValue(object, "text")
@@ -256,6 +303,59 @@ enum BackupImport {
         item.tagEmoji = stringValue(object, "tagEmoji")
         item.createdAt = dateValue(object, "createdAt") ?? .now
         return item
+    }
+
+    /// What an import of the credentials section actually managed.
+    struct CredentialImportResult: Equatable {
+        var imported = 0
+        /// How many passwords were decrypted and put in the keychain. Less than `imported`
+        /// whenever the backup carried no passphrase, the wrong one was given, or the keychain
+        /// refused the write.
+        var passwordsRestored = 0
+    }
+
+    /// Inserts the backup's saved logins, decrypting any passwords the passphrase opens.
+    ///
+    /// A credential whose password can't be opened still comes across: the title, username and
+    /// URL are worth having on their own, and the alternative is dropping the record of an
+    /// account entirely because its secret didn't travel.
+    @discardableResult
+    static func apply(
+        credentials: [ImportedCredential],
+        mode: ImportMode,
+        existing: [Credential],
+        passphrase: String,
+        store: CredentialStore,
+        context: ModelContext
+    ) -> CredentialImportResult {
+        if mode == .replace {
+            for credential in existing {
+                store.removePassword(for: credential.id)
+                context.delete(credential)
+            }
+        }
+
+        var result = CredentialImportResult()
+        for imported in credentials {
+            let credential = Credential(
+                title: imported.title,
+                username: imported.username,
+                url: imported.url,
+                notes: imported.notes,
+                createdAt: imported.createdAt
+            )
+            context.insert(credential)
+            result.imported += 1
+
+            guard !passphrase.isEmpty,
+                  let encrypted = imported.encryptedPassword,
+                  let password = BackupCrypto.decrypt(encrypted, passphrase: passphrase)
+            else { continue }
+            if store.setPassword(password, for: credential.id) {
+                result.passwordsRestored += 1
+            }
+        }
+        return result
     }
 
     /// Inserts the backup's standalone reminders, returning how many landed.

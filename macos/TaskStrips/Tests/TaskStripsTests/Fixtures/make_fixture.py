@@ -121,7 +121,25 @@ MANIFEST = {
             "createdAt": 1786200000000,
         },
     ],
-    "credentials": [],
+    # Written without a backup passphrase, which is the common case: Android leaves the password
+    # out entirely rather than ever putting it in the file in the clear. The encrypted form has
+    # its own tests, built in Swift so the ciphertext is real rather than hand-waved.
+    "credentials": [
+        {
+            "title": "Consulate portal",
+            "username": "saud",
+            "url": "https://visa.example.com",
+            "notes": "Application reference in the strip",
+            "createdAt": 1787200000000,
+        },
+        {
+            "title": "Router",
+            "username": "admin",
+            "url": "",
+            "notes": "",
+            "createdAt": 1787300000000,
+        },
+    ],
     # Real NoteEntity shape: text and when it was written, nothing else. The first is multi-line
     # with checkbox prefixes, which is what "split into strips" is for.
     "notes": [

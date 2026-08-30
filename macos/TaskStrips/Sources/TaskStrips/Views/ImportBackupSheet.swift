@@ -8,10 +8,13 @@ import SwiftUI
 struct ImportBackupSheet: View {
     let summary: BackupImportSummary
     let existingCount: Int
-    let onImport: (ImportMode) -> Void
+    let onImport: (ImportMode, String) -> Void
     let onCancel: () -> Void
 
     @State private var confirmingReplace = false
+    /// Only asked for when the file actually carries encrypted passwords, and never stored — it
+    /// unlocks this import and is gone when the sheet closes.
+    @State private var passphrase = ""
 
     private var archivedCount: Int { summary.tasks.filter(\.isArchived).count }
     private var activeCount: Int { summary.tasks.count - archivedCount }
@@ -41,6 +44,10 @@ struct ImportBackupSheet: View {
                     Text("\(summary.reminders.count) standalone reminder\(summary.reminders.count == 1 ? "" : "s") will come across too.")
                         .foregroundStyle(.secondary)
                 }
+                if !summary.credentials.isEmpty {
+                    Text("\(summary.credentials.count) credential\(summary.credentials.count == 1 ? "" : "s") will come across too.")
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if !notImported.isEmpty {
@@ -62,6 +69,22 @@ struct ImportBackupSheet: View {
                 .background(TaskStripTheme.baySurface, in: RoundedRectangle(cornerRadius: 8))
             }
 
+            if summary.hasEncryptedPasswords {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label("This backup carries passwords", systemImage: "key")
+                        .font(.callout.weight(.medium))
+                    SecureField("Backup passphrase", text: $passphrase)
+                        .textFieldStyle(.roundedBorder)
+                    Text("The passphrase you set on the phone when the backup was written. Without "
+                         + "it the credentials still come across — just without their passwords.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(12)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(TaskStripTheme.baySurface, in: RoundedRectangle(cornerRadius: 8))
+            }
+
             Spacer(minLength: 0)
 
             HStack {
@@ -70,19 +93,19 @@ struct ImportBackupSheet: View {
                 Spacer()
                 Button("Replace Board…") { confirmingReplace = true }
                     .disabled(existingCount == 0)
-                Button("Add to Board") { onImport(.add) }
+                Button("Add to Board") { onImport(.add, passphrase) }
                     .keyboardShortcut(.defaultAction)
                     // A backup carrying only quick notes is still worth taking.
-                    .disabled(summary.tasks.isEmpty && summary.notes.isEmpty
-                              && summary.storageItems.isEmpty && summary.reminders.isEmpty)
+                    .disabled(summary.tasks.isEmpty && summary.notes.isEmpty && summary.storageItems.isEmpty
+                              && summary.reminders.isEmpty && summary.credentials.isEmpty)
             }
         }
         .padding(20)
-        .frame(width: 460, height: 300)
+        .frame(width: 460, height: summary.hasEncryptedPasswords ? 430 : 300)
         .background(TaskStripTheme.bayBackground)
         .alert("Replace everything on the board?", isPresented: $confirmingReplace) {
             Button("Cancel", role: .cancel) {}
-            Button("Replace", role: .destructive) { onImport(.replace) }
+            Button("Replace", role: .destructive) { onImport(.replace, passphrase) }
         } message: {
             Text("This deletes the \(existingCount) strip\(existingCount == 1 ? "" : "s") already on this Mac, archived ones included\(summary.notes.isEmpty ? "" : ", along with every quick note"), and puts the backup's \(summary.tasks.count) in their place. It can't be undone.")
         }

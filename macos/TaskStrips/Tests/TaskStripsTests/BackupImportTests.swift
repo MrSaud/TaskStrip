@@ -31,7 +31,7 @@ final class BackupImportTests: XCTestCase {
 
     private func makeContext() throws -> ModelContext {
         let container = try ModelContainer(
-            for: TaskItem.self, Note.self, StorageItem.self, Reminder.self,
+            for: TaskItem.self, Note.self, StorageItem.self, Reminder.self, Credential.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         return ModelContext(container)
@@ -51,6 +51,10 @@ final class BackupImportTests: XCTestCase {
 
     private func reminders(_ context: ModelContext) throws -> [Reminder] {
         try context.fetch(FetchDescriptor<Reminder>(sortBy: [SortDescriptor(\Reminder.triggerAt)]))
+    }
+
+    private func logins(_ context: ModelContext) throws -> [Credential] {
+        try context.fetch(FetchDescriptor<Credential>(sortBy: [SortDescriptor(\Credential.createdAt)]))
     }
 
     // MARK: - Parsing
@@ -100,10 +104,8 @@ final class BackupImportTests: XCTestCase {
         let sections = Dictionary(uniqueKeysWithValues: summary.skippedSections.map { ($0.name, $0.count) })
         // Quick notes do come across now, so they're no longer on this list.
         XCTAssertNil(sections["notes"])
-        // Notes, the storage library and the standalone reminders all come across now — only
-        // credentials are still dropped, and the fixture has none.
-        XCTAssertNil(sections["standalone reminders"])
-        XCTAssertNil(sections["storage items"])
+        // Every section in this file is handled now, so nothing is reported as dropped.
+        XCTAssertTrue(summary.skippedSections.isEmpty, "unexpectedly skipped \(sections)")
         // Empty sections aren't worth telling the user about.
         XCTAssertNil(sections["credentials"])
     }
@@ -606,5 +608,130 @@ final class BackupImportTests: XCTestCase {
         )
 
         XCTAssertEqual(try reminders(context).map(\.text), ["Renew the car registration", "Dentist"])
+    }
+
+    // MARK: - Credentials
+
+    func testReadsTheCredentials() throws {
+        let summary = try fixtureSummary()
+        XCTAssertEqual(summary.credentials.map(\.title), ["Consulate portal", "Router"])
+
+        let portal = try XCTUnwrap(summary.credentials.first)
+        XCTAssertEqual(portal.username, "saud")
+        XCTAssertEqual(portal.url, "https://visa.example.com")
+        XCTAssertEqual(portal.notes, "Application reference in the strip")
+        XCTAssertEqual(portal.createdAt, Date(timeIntervalSince1970: 1_787_200_000))
+    }
+
+    /// A backup written without a passphrase carries no passwords at all, which is Android's
+    /// choice rather than an omission — better nothing than plain text in a file.
+    func testABackupWithNoPassphraseCarriesNoPasswords() throws {
+        let summary = try fixtureSummary()
+        XCTAssertFalse(summary.hasEncryptedPasswords)
+        XCTAssertTrue(summary.credentials.allSatisfy { $0.encryptedPassword == nil })
+    }
+
+    /// Built here rather than in the fixture because the ciphertext has to be real: the fixture
+    /// generator has no AES-GCM to hand, and a hand-written one would prove nothing.
+    private func manifestWithEncryptedPassword(_ password: String, passphrase: String) throws -> Data {
+        let encrypted = try XCTUnwrap(BackupCrypto.encrypt(password, passphrase: passphrase))
+        let manifest: [String: Any] = [
+            "tasks": [],
+            "credentials": [[
+                "title": "Consulate portal",
+                "username": "saud",
+                "passwordSalt": encrypted.salt,
+                "passwordIv": encrypted.iv,
+                "passwordCipher": encrypted.cipher,
+                "createdAt": 1_787_200_000_000,
+            ]],
+        ]
+        return try JSONSerialization.data(withJSONObject: manifest)
+    }
+
+    func testAPasswordTravelsWhenThePassphraseIsRight() throws {
+        let context = try makeContext()
+        let store = CredentialStore(ephemeral: true)
+        let summary = try BackupImport.parse(
+            manifest: try manifestWithEncryptedPassword("hunter2", passphrase: "open sesame")
+        )
+        XCTAssertTrue(summary.hasEncryptedPasswords)
+
+        let result = BackupImport.apply(
+            credentials: summary.credentials,
+            mode: .add,
+            existing: [],
+            passphrase: "open sesame",
+            store: store,
+            context: context
+        )
+
+        XCTAssertEqual(result, BackupImport.CredentialImportResult(imported: 1, passwordsRestored: 1))
+        let credential = try XCTUnwrap(try logins(context).first)
+        XCTAssertEqual(store.password(for: credential.id), "hunter2")
+    }
+
+    /// The record of an account is worth having even when its secret didn't travel — dropping the
+    /// credential entirely would lose more than the password.
+    func testTheWrongPassphraseStillBringsTheCredentialAcross() throws {
+        let context = try makeContext()
+        let store = CredentialStore(ephemeral: true)
+        let summary = try BackupImport.parse(
+            manifest: try manifestWithEncryptedPassword("hunter2", passphrase: "open sesame")
+        )
+
+        let result = BackupImport.apply(
+            credentials: summary.credentials,
+            mode: .add,
+            existing: [],
+            passphrase: "wrong",
+            store: store,
+            context: context
+        )
+
+        XCTAssertEqual(result, BackupImport.CredentialImportResult(imported: 1, passwordsRestored: 0))
+        let credential = try XCTUnwrap(try logins(context).first)
+        XCTAssertEqual(credential.title, "Consulate portal")
+        XCTAssertNil(store.password(for: credential.id))
+    }
+
+    /// Half an encrypted password can't be opened, so it isn't carried as though it could be.
+    func testAPasswordMissingOneOfItsThreeFieldsIsIgnored() throws {
+        let manifest = Data(#"{"tasks":[],"credentials":[{"title":"Half","passwordSalt":"AAAA","passwordCipher":"AAAA"}]}"#.utf8)
+        let summary = try BackupImport.parse(manifest: manifest)
+        XCTAssertNil(try XCTUnwrap(summary.credentials.first).encryptedPassword)
+        XCTAssertFalse(summary.hasEncryptedPasswords)
+    }
+
+    /// Replacing has to take the old passwords out of the keychain, or they outlive every record
+    /// that pointed at them.
+    func testReplacingClearsTheKeychainToo() throws {
+        let context = try makeContext()
+        let store = CredentialStore(ephemeral: true)
+        let existing = Credential(title: "Mine")
+        context.insert(existing)
+        store.setPassword("old secret", for: existing.id)
+
+        BackupImport.apply(
+            credentials: try fixtureSummary().credentials,
+            mode: .replace,
+            existing: [existing],
+            passphrase: "",
+            store: store,
+            context: context
+        )
+
+        XCTAssertNil(store.password(for: existing.id))
+        XCTAssertEqual(try logins(context).map(\.title), ["Consulate portal", "Router"])
+    }
+
+    /// A newer phone app can add a section this one has never heard of; saying so beats losing it
+    /// quietly.
+    func testASectionThisAppDoesNotKnowIsReportedRatherThanIgnored() throws {
+        let manifest = Data(#"{"tasks":[],"sketches":[{"a":1},{"b":2}],"somethingElse":[]}"#.utf8)
+        let summary = try BackupImport.parse(manifest: manifest)
+
+        XCTAssertEqual(summary.skippedSections.map(\.name), ["sketches"])
+        XCTAssertEqual(summary.skippedSections.first?.count, 2)
     }
 }
