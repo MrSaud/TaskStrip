@@ -9,7 +9,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -254,11 +253,10 @@ fun FlightStripRow(
                                     modifier = Modifier.weight(1f)
                                 )
                                 Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = "FILED ${formatTimestampShort(task.createdAt)}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Paper.copy(alpha = 0.45f),
-                                    maxLines = 1
+                                StripInlineField(
+                                    label = "FILED",
+                                    value = formatAgeCompact(task.createdAt),
+                                    valueColor = Paper.copy(alpha = 0.6f)
                                 )
                                 if (task.repeatIntervalDays != null) {
                                     Spacer(Modifier.width(8.dp))
@@ -282,26 +280,31 @@ fun FlightStripRow(
                             Spacer(Modifier.height(4.dp))
                             Row(
                                 Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                // Dates lead, at a fixed left edge, so reading a column of strips
+                                // is reading one column rather than hunting for where the field
+                                // landed on each. Tags used to come first and are the only field
+                                // here with no upper bound on its width — which is what pushed the
+                                // due date off the strip once a task carried a few of them. They
+                                // now follow the dates and are the one thing that gives way.
+                                if (dueAt != null) {
+                                    DueChip(
+                                        text = formatDueCompact(dueAt),
+                                        color = dueColor,
+                                        isLate = isOverdue,
+                                        pulseAlpha = pulseAlpha
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                }
+                                Box(Modifier.weight(1f)) {
                                     if (task.tags.isNotEmpty()) {
-                                        StripField(label = "TAGS", value = task.tags.joinToString(", ") { it.uppercase() })
-                                        Spacer(Modifier.width(14.dp))
-                                    }
-                                    if (dueAt != null) {
-                                        StripField(label = "DUE", value = formatEtaShort(dueAt), valueColor = dueColor)
-                                    }
-                                    if (isOverdue) {
-                                        Spacer(Modifier.width(6.dp))
-                                        Icon(
-                                            Icons.Default.Alarm,
-                                            contentDescription = "Overdue",
-                                            tint = PriorityUrgent.copy(alpha = pulseAlpha),
-                                            modifier = Modifier
-                                                .height(18.dp)
-                                                .scale(0.85f + pulseAlpha * 0.3f)
+                                        Text(
+                                            text = task.tags.joinToString(" · ") { it.uppercase() },
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = Paper.copy(alpha = 0.75f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
@@ -589,9 +592,65 @@ private fun ProgressTrack(progress: Int, color: Color) {
 }
 
 @Composable
-private fun StripField(label: String, value: String, valueColor: Color = Paper) {
-    Column {
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = Paper.copy(alpha = 0.5f))
-        Text(text = value, style = MaterialTheme.typography.bodyMedium, color = valueColor, fontWeight = FontWeight.SemiBold)
+private fun StripInlineField(label: String, value: String, valueColor: Color = Paper) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(text = label, style = MaterialTheme.typography.labelSmall, color = Paper.copy(alpha = 0.4f))
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = valueColor,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1
+        )
+    }
+}
+
+/** The due date, in the one place on the strip the eye is trained to look.
+ *
+ * A tinted box rather than another label/value pair: due is the only field on the row whose colour
+ * carries meaning — soon and late are both red, further out is amber — and a filled chip is what
+ * makes that colour legible at this size against the strip's own dark surface.
+ *
+ * The word DUE is dropped once the strip is late, because "DUE 3D LATE" reads worse than "3D LATE"
+ * and the alarm has already said what kind of field this is.
+ */
+@Composable
+private fun DueChip(text: String, color: Color, isLate: Boolean, pulseAlpha: Float) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(3.dp))
+            // Late strips breathe through the chip's own fill. The old pulsing alarm sat loose in
+            // the row next to a date that never said how late anything was; the number is the
+            // information, and the pulse is now just what carries the eye to it.
+            .background(color.copy(alpha = if (isLate) 0.12f + pulseAlpha * 0.18f else 0.12f))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (isLate) {
+            Icon(
+                Icons.Default.Alarm,
+                contentDescription = "Overdue",
+                tint = color.copy(alpha = 0.55f + pulseAlpha * 0.45f),
+                modifier = Modifier
+                    .height(13.dp)
+                    .scale(0.9f + pulseAlpha * 0.2f)
+            )
+            Spacer(Modifier.width(4.dp))
+        } else {
+            Text(
+                text = "DUE",
+                style = MaterialTheme.typography.labelSmall,
+                color = color.copy(alpha = 0.65f)
+            )
+            Spacer(Modifier.width(4.dp))
+        }
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = color,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1
+        )
     }
 }
