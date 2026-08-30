@@ -184,6 +184,7 @@ struct TaskListView: View {
             } message: {
                 Text("Deleting a strip is permanent. Archiving keeps it.")
             }
+            .task { ReminderScheduler.shared.sync(allTasks) }
             .focusedSceneValue(\.boardCommandState, commandState)
             .onChange(of: commandState, initial: true) { publishCommandActions() }
     }
@@ -453,12 +454,16 @@ struct TaskListView: View {
         // I finish last week" keeps working.
         if task.isDone, let next = ReminderPlan.nextOccurrence(completing: task, orderIndex: nextOrderIndex()) {
             modelContext.insert(next)
+            ReminderScheduler.shared.schedule(for: next)
         }
+        // Covers both directions: completing clears the pending reminder, reopening restores it.
+        ReminderScheduler.shared.schedule(for: task)
     }
 
     private func archive(_ task: TaskItem) {
         task.isArchived = true
         if selectedTaskID == task.id { selectedTaskID = nil }
+        ReminderScheduler.shared.schedule(for: task)
     }
 
     /// Deleting a strip is permanent and there's no undo, so the board asks first unless the user
@@ -478,6 +483,7 @@ struct TaskListView: View {
         // The strip's files go with it — nothing else points at them, and leaving them behind
         // would grow the media folder forever.
         for attachment in task.attachments { AttachmentStore.shared.remove(attachment) }
+        ReminderScheduler.shared.cancel(taskID: id)
         modelContext.delete(task)
         cleanUpDanglingBlockers(deletedID: id)
     }
@@ -546,6 +552,7 @@ struct TaskListView: View {
             context: modelContext
         )
         importSummary = nil
+        ReminderScheduler.shared.sync(allTasks)
 
         // SwiftData autosaves, but a failure here is exactly the silent-save class of bug that bit
         // Phase 1 — an import that quietly wrote nothing would look identical to an empty backup.

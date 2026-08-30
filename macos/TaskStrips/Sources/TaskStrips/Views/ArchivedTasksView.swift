@@ -27,8 +27,12 @@ struct ArchivedTasksView: View {
                         }
                     }
                     Spacer()
-                    Button("Unarchive") { onUnarchive(task) }
+                    Button("Unarchive") {
+                        onUnarchive(task)
+                        ReminderScheduler.shared.schedule(for: task)
+                    }
                     Button(role: .destructive) {
+                        ReminderScheduler.shared.cancel(taskID: task.id)
                         modelContext.delete(task)
                     } label: {
                         Image(systemName: "trash")

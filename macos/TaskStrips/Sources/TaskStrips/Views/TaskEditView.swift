@@ -35,6 +35,11 @@ struct TaskEditView: View {
     @State private var hasFollowUp: Bool
     @State private var waitingOnFollowUpDays: Double
     @State private var showDeleteConfirm = false
+    @State private var hasReminder: Bool
+    @State private var reminderMinutesBefore: Int
+    @State private var repeats: Bool
+    @State private var repeatIntervalDays: Double
+    @State private var reminderDenied = false
     @State private var attachments: [TaskAttachment]
     /// Files copied in during this sitting, and files dropped from the strip. Only one of the two
     /// gets deleted, depending on whether you save or cancel.
@@ -72,6 +77,10 @@ struct TaskEditView: View {
         _contacts = State(initialValue: editingTask?.contacts ?? [])
         _actionLog = State(initialValue: editingTask?.actionLog ?? [])
         _attachments = State(initialValue: editingTask?.attachments ?? [])
+        _hasReminder = State(initialValue: editingTask?.reminderMinutesBefore != nil)
+        _reminderMinutesBefore = State(initialValue: editingTask?.reminderMinutesBefore ?? 30)
+        _repeats = State(initialValue: editingTask?.repeatIntervalDays != nil)
+        _repeatIntervalDays = State(initialValue: Double(editingTask?.repeatIntervalDays ?? 7))
         _blockedByID = State(initialValue: editingTask?.blockedByID)
         _waitingOnName = State(initialValue: editingTask?.waitingOnName ?? "")
         _hasFollowUp = State(initialValue: editingTask?.waitingOnFollowUpDays != nil)
@@ -79,6 +88,17 @@ struct TaskEditView: View {
     }
 
     private var isEditing: Bool { editingTask != nil }
+
+    /// Lead times worth offering. Minutes throughout, matching what the backup carries.
+    private static let leadTimes: [(minutes: Int, label: String)] = [
+        (5, "5 minutes before"),
+        (15, "15 minutes before"),
+        (30, "30 minutes before"),
+        (60, "1 hour before"),
+        (120, "2 hours before"),
+        (1440, "1 day before"),
+        (2880, "2 days before"),
+    ]
 
     private var blockableTasks: [TaskItem] {
         allTasks.filter { $0.id != editingTask?.id && !$0.isArchived }
@@ -128,6 +148,41 @@ struct TaskEditView: View {
                 actionLogEditor
             }
 
+            Section("REMINDER") {
+                Toggle("Remind me before it's due", isOn: $hasReminder)
+                    // A reminder is measured backwards from the due date, so without one there's
+                    // nothing to measure from — ReminderPlan would return nil and the toggle
+                    // would be a lie.
+                    .disabled(!hasDueDate)
+                if !hasDueDate {
+                    Text("Set a due date first.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if hasReminder && hasDueDate {
+                    Picker("Remind me", selection: $reminderMinutesBefore) {
+                        ForEach(Self.leadTimes, id: \.minutes) { option in
+                            Text(option.label).tag(option.minutes)
+                        }
+                    }
+                    if reminderDenied {
+                        Text("Notifications are turned off for Task Strips — check System Settings.")
+                            .font(.caption)
+                            .foregroundStyle(TaskStripTheme.urgent)
+                    }
+                }
+
+                Toggle("Repeats", isOn: $repeats)
+                    .disabled(!hasDueDate)
+                if repeats && hasDueDate {
+                    Stepper("Every \(Int(repeatIntervalDays)) day\(Int(repeatIntervalDays) == 1 ? "" : "s")",
+                            value: $repeatIntervalDays, in: 1...365)
+                    Text("Completing this strip files the next one, due \(Int(repeatIntervalDays)) day\(Int(repeatIntervalDays) == 1 ? "" : "s") later.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
             Section("ATTACHMENTS") {
                 AttachmentsSection(
                     attachments: $attachments,
@@ -173,6 +228,12 @@ struct TaskEditView: View {
         }
         .formStyle(.grouped)
         .frame(minWidth: 480, minHeight: 560)
+        .onChange(of: hasReminder) { _, isOn in
+            guard isOn else { return }
+            Task {
+                reminderDenied = await !ReminderScheduler.shared.requestAuthorization()
+            }
+        }
         .navigationTitle(isEditing ? "EDIT STRIP" : "NEW STRIP")
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
@@ -187,6 +248,7 @@ struct TaskEditView: View {
             Button("Delete", role: .destructive) {
                 if let task = editingTask {
                     for attachment in task.attachments { attachmentStore.remove(attachment) }
+                    ReminderScheduler.shared.cancel(taskID: task.id)
                     modelContext.delete(task)
                 }
                 onDeleted()
@@ -221,6 +283,8 @@ struct TaskEditView: View {
         task.contacts = contacts
         task.actionLog = actionLog
         task.attachments = attachments
+        task.reminderMinutesBefore = (hasReminder && hasDueDate) ? reminderMinutesBefore : nil
+        task.repeatIntervalDays = (repeats && hasDueDate) ? Int(repeatIntervalDays) : nil
         task.blockedByID = blockedByID
         task.waitingOnName = waitingOnName
         task.waitingOnFollowUpDays = hasFollowUp ? Int(waitingOnFollowUpDays) : nil
@@ -229,6 +293,7 @@ struct TaskEditView: View {
             modelContext.insert(task)
         }
         for attachment in removedAttachments { attachmentStore.remove(attachment) }
+        ReminderScheduler.shared.schedule(for: task)
         onSaved()
         dismiss()
     }
