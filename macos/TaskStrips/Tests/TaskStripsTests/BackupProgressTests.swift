@@ -109,6 +109,9 @@ final class BackupProgressTests: XCTestCase {
             // Two of these are in the archive; documents/checklist.pdf is deliberately not.
             paths: ["images/passport.jpg", "images/form.jpg", "documents/checklist.pdf"],
             into: makeStore(),
+            // Carrying is off so this stays about counting the claim: with sketches on, the
+            // archive's extra file would make restored and claimed the same number again.
+            carrying: [],
             progress: { reports.append(($0, $1)) }
         )
 
@@ -126,7 +129,7 @@ final class BackupProgressTests: XCTestCase {
         )
         var reports: [(Int, Int)] = []
         _ = try BackupImport.restoreMedia(fromArchiveAt: source, paths: [], into: makeStore(),
-                                          progress: { reports.append(($0, $1)) })
+                                          carrying: [], progress: { reports.append(($0, $1)) })
         XCTAssertTrue(reports.isEmpty)
     }
 }

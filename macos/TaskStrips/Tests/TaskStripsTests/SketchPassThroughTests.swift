@@ -116,6 +116,21 @@ final class SketchPassThroughTests: XCTestCase {
         XCTAssertTrue(BackupExport.mediaPaths(BackupExport.Contents()).isEmpty)
     }
 
+    /// A carried file is one the manifest never counted, so it must not push the progress bar
+    /// past its own total — a bar that reads "4 of 3" is worse than no bar.
+    func testCarriedFilesDoNotPushTheCountPastItsTotal() throws {
+        var reports: [(Int, Int)] = []
+        _ = try BackupImport.restoreMedia(
+            fromArchiveAt: try fixtureURL(),
+            paths: ["images/passport.jpg", "images/form.jpg"],
+            into: makeStore(),
+            progress: { reports.append(($0, $1)) }
+        )
+
+        XCTAssertTrue(reports.allSatisfy { $0.0 <= $0.1 }, "got \(reports)")
+        XCTAssertEqual(reports.last?.1, 2)
+    }
+
     /// The whole point, end to end: what a phone's backup carried has to still be there in one
     /// written on the Mac.
     func testASketchSurvivesAWholeRoundTrip() throws {

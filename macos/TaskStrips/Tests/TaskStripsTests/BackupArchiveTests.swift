@@ -78,7 +78,14 @@ final class BackupArchiveTests: XCTestCase {
         let entries = try BackupArchive.entries(inArchive: fixtureArchive())
         XCTAssertEqual(
             entries.map(\.name),
-            ["backup.json", "media/images/passport.jpg", "media/images/form.jpg"]
+            [
+                "backup.json",
+                "media/images/passport.jpg",
+                "media/images/form.jpg",
+                // Belongs to no strip and is named by nothing in the manifest — see
+                // SketchPassThroughTests for why a backup carries it anyway.
+                "media/sketches/note_1787000000000/page1.png",
+            ]
         )
         XCTAssertTrue(entries.allSatisfy { $0.uncompressedSize > 0 })
         XCTAssertTrue(entries.allSatisfy { !$0.isDirectory })
@@ -118,7 +125,14 @@ final class BackupArchiveTests: XCTestCase {
 
         XCTAssertEqual(
             entries.map(\.name),
-            ["backup.json", "media/images/passport.jpg", "media/images/form.jpg"]
+            [
+                "backup.json",
+                "media/images/passport.jpg",
+                "media/images/form.jpg",
+                // Belongs to no strip and is named by nothing in the manifest — see
+                // SketchPassThroughTests for why a backup carries it anyway.
+                "media/sketches/note_1787000000000/page1.png",
+            ]
         )
         let passport = try XCTUnwrap(entries.first { $0.name == "media/images/passport.jpg" })
         XCTAssertEqual(

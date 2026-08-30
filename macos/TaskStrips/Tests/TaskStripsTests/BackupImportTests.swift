@@ -227,7 +227,12 @@ final class BackupImportTests: XCTestCase {
             into: store
         )
 
-        XCTAssertEqual(restored, ["images/passport.jpg", "images/form.jpg"])
+        XCTAssertEqual(
+            restored,
+            // Both referenced files, plus the sketch page carried on top; checklist.pdf is
+            // referenced but isn't in the archive, so it can't be.
+            ["images/passport.jpg", "images/form.jpg", "sketches/note_1787000000000/page1.png"]
+        )
         let written = store.root.appending(path: "images/passport.jpg")
         XCTAssertEqual(Array(try Data(contentsOf: written).prefix(4)), [0xFF, 0xD8, 0xFF, 0xE0])
     }
@@ -256,17 +261,24 @@ final class BackupImportTests: XCTestCase {
             paths: try fixtureSummary().referencedAttachmentPaths,
             into: store
         )
-        XCTAssertEqual(restored, ["images/passport.jpg", "images/form.jpg"])
+        XCTAssertEqual(
+            restored,
+            ["images/passport.jpg", "images/form.jpg", "sketches/note_1787000000000/page1.png"]
+        )
     }
 
-    /// Only what the strips point at: an Android backup also carries sketches and storage-library
-    /// files, and copying those in would grow the folder for nothing.
+    /// Only what the strips point at, with one exception that earns itself: sketch files, which
+    /// belong to no strip and would otherwise be lost on the way back to a phone. Everything else
+    /// an archive happens to hold is left where it is.
     func testIgnoresMediaNothingPointsAt() throws {
         let store = try makeStore()
         let restored = try BackupImport.restoreMedia(
             fromArchiveAt: try fixtureURL(),
             paths: ["images/form.jpg"],
-            into: store
+            into: store,
+            // Sketches are the one thing carried without being asked for, and that exception has
+            // its own tests — this one is about everything else.
+            carrying: []
         )
         XCTAssertEqual(restored, ["images/form.jpg"])
         XCTAssertFalse(
@@ -308,7 +320,9 @@ final class BackupImportTests: XCTestCase {
     func testRestoringNothingIsNotAnError() throws {
         let store = try makeStore()
         XCTAssertEqual(
-            try BackupImport.restoreMedia(fromArchiveAt: try fixtureURL(), paths: [], into: store),
+            try BackupImport.restoreMedia(
+                fromArchiveAt: try fixtureURL(), paths: [], into: store, carrying: []
+            ),
             []
         )
     }
