@@ -115,13 +115,13 @@ enum BackupExport {
     /// the sketch notes.
     ///
     /// The sketches come from the store rather than from the model because nothing in the model
-    /// mentions them — the Mac can't draw one, it only holds what a phone's backup brought, so
-    /// that a backup written here still carries them home. Android walks its own sketches folder
-    /// for exactly the same reason.
+    /// mentions them: a strip may carry a sketch's id, but a sketch belongs to no strip. Android
+    /// walks its own sketches folder for exactly the same reason, dotfiles included — a note's
+    /// name and creation date live beside its pages rather than in any manifest.
     static func mediaPaths(_ contents: Contents, store: AttachmentStore? = nil) -> Set<String> {
         var paths = Set(contents.tasks.flatMap { $0.attachments.map(\.path) })
         paths.formUnion(contents.storageItems.map(\.path))
-        if let store { paths.formUnion(store.relativePaths(under: BackupArchive.sketchesPrefix)) }
+        if let store { paths.formUnion(store.relativePaths(under: BackupArchive.sketchesPrefix, includingHidden: true)) }
         return paths.filter { !$0.isEmpty }
     }
 

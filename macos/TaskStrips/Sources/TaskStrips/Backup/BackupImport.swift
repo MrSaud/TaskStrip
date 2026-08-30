@@ -456,8 +456,9 @@ enum BackupImport {
             guard entry.name.hasPrefix(BackupArchive.mediaPrefix) else { continue }
             let path = String(entry.name.dropFirst(BackupArchive.mediaPrefix.count))
             // Sketch files belong to no strip and are named by no manifest, so they're taken by
-            // where they sit rather than by being asked for. The Mac can't draw them; it holds
-            // them so they survive the trip back.
+            // where they sit rather than by being asked for. This started out only so they'd
+            // survive the trip back; now SketchStore reads the same folder, so a sketch drawn on
+            // the phone opens here too.
             let carried = prefixes.contains { path.hasPrefix($0) }
             guard paths.contains(path) || carried else { continue }
             try store.write(try BackupArchive.data(for: entry, inArchive: archive), toRelativePath: path)

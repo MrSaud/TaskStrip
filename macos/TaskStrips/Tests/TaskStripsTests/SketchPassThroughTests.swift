@@ -116,6 +116,21 @@ final class SketchPassThroughTests: XCTestCase {
         XCTAssertTrue(BackupExport.mediaPaths(BackupExport.Contents()).isEmpty)
     }
 
+    /// The name the user gave a sketch and the day it was started live in dotfiles beside the
+    /// pages. BackupHelper.kt takes every file inside a note folder without filtering, so an
+    /// export that skipped hidden files would hand the phone back a sketch called "07 Mar 2026".
+    func testTheNameAndTheCreatedStampGoWithTheSketch() throws {
+        let store = makeStore()
+        try store.write(Data("page one".utf8), toRelativePath: "sketches/note_1/page1.png")
+        try store.write(Data("Kitchen plan".utf8), toRelativePath: "sketches/note_1/.name")
+        try store.write(Data("1787000000000".utf8), toRelativePath: "sketches/note_1/.created")
+
+        let paths = BackupExport.mediaPaths(BackupExport.Contents(), store: store)
+
+        XCTAssertTrue(paths.contains("sketches/note_1/.name"), "got \(paths)")
+        XCTAssertTrue(paths.contains("sketches/note_1/.created"), "got \(paths)")
+    }
+
     /// A carried file is one the manifest never counted, so it must not push the progress bar
     /// past its own total — a bar that reads "4 of 3" is worse than no bar.
     func testCarriedFilesDoNotPushTheCountPastItsTotal() throws {

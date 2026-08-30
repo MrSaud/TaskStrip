@@ -87,12 +87,17 @@ struct AttachmentStore {
     ///
     /// Used for the sketch notes a backup carries: nothing in the app points at them, so the only
     /// way to find them again is to look.
-    func relativePaths(under folder: String) -> Set<String> {
+    ///
+    /// `includingHidden` is what a sketch note needs: its name and its creation date live in
+    /// `.name` and `.created` beside the pages, and BackupHelper.kt lists every file inside a note
+    /// folder without filtering. Skipping them would export a sketch that arrives on the phone
+    /// having lost the name the user gave it.
+    func relativePaths(under folder: String, includingHidden: Bool = false) -> Set<String> {
         let base = url(forRelativePath: folder)
         guard let walker = FileManager.default.enumerator(
             at: base,
             includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
+            options: includingHidden ? [] : [.skipsHiddenFiles]
         ) else { return [] }
 
         var paths: Set<String> = []

@@ -40,6 +40,7 @@ struct TaskListView: View {
     @State private var showStorage = false
     @State private var showReminders = false
     @State private var showCredentials = false
+    @State private var showSketches = false
     @State private var rollUp: RollUp?
     @State private var blockedAlertTask: TaskItem?
     @State private var importSummary: BackupImportSummary?
@@ -210,6 +211,11 @@ struct TaskListView: View {
                     CredentialsView()
                 }
             }
+            .sheet(isPresented: $showSketches) {
+                NavigationStack {
+                    SketchListView()
+                }
+            }
             .sheet(isPresented: $showReminders) {
                 NavigationStack {
                     RemindersView()
@@ -342,6 +348,7 @@ struct TaskListView: View {
         actions.showStorage = { showStorage = true }
         actions.showReminders = { showReminders = true }
         actions.showCredentials = { showCredentials = true }
+        actions.showSketches = { showSketches = true }
         actions.showRollUp = { rollUp = $0 }
         actions.clearFilters = { clearFilters() }
         actions.setSortMode = { sortMode = $0 }
@@ -567,6 +574,13 @@ struct TaskListView: View {
                     showCredentials = true
                 } label: {
                     Label("Credentials", systemImage: "key")
+                }
+            }
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    showSketches = true
+                } label: {
+                    Label("Sketches", systemImage: "scribble")
                 }
             }
             ToolbarItem(placement: .navigation) {

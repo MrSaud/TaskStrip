@@ -62,11 +62,11 @@ final class TaskItem: Identifiable {
     var waitingOnName: String
     var waitingOnSince: Date?
     var waitingOnFollowUpDays: Int?
-    /// The sketch this strip points at on the phone.
+    /// The folder name of the sketch this strip points at — see SketchStore.
     ///
-    /// The Mac has no canvas, so nothing here reads it — it exists so a backup written on this
-    /// Mac still points at the right sketch when it lands back on a phone. Dropping the field
-    /// would quietly break that link on every round trip.
+    /// It carried nothing but a round trip at first: the Mac had no canvas, and the field existed
+    /// only so a backup written here still pointed at the right sketch when it landed back on a
+    /// phone. Now the editor links and opens one, on the same id the phone uses.
     var linkedSketchID: String?
     var tags: [String]
     var contacts: [TaskContact]

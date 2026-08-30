@@ -1,10 +1,9 @@
 import SwiftUI
 import SwiftData
 
-// Mirrors ui/screens/AddEditTaskScreen.kt's fields at the concept level (v1 core-task subset:
-// no reminders/sketch link). Holds local draft state and only writes into the
-// SwiftData model on Save, matching Android's "editing doesn't commit until you tap
-// Update/File Strip" behavior — Cancel discards everything.
+// Mirrors ui/screens/AddEditTaskScreen.kt's fields at the concept level. Holds local draft state
+// and only writes into the SwiftData model on Save, matching Android's "editing doesn't commit
+// until you tap Update/File Strip" behavior — Cancel discards everything.
 struct TaskEditView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -45,6 +44,9 @@ struct TaskEditView: View {
     /// gets deleted, depending on whether you save or cancel.
     @State private var addedAttachments: [TaskAttachment] = []
     @State private var removedAttachments: [TaskAttachment] = []
+    @State private var linkedSketchID: String?
+    @State private var isPickingSketch = false
+    @State private var openingLinkedSketch = false
 
     private let attachmentStore = AttachmentStore.shared
 
@@ -85,6 +87,7 @@ struct TaskEditView: View {
         _waitingOnName = State(initialValue: editingTask?.waitingOnName ?? "")
         _hasFollowUp = State(initialValue: editingTask?.waitingOnFollowUpDays != nil)
         _waitingOnFollowUpDays = State(initialValue: Double(editingTask?.waitingOnFollowUpDays ?? 3))
+        _linkedSketchID = State(initialValue: editingTask?.linkedSketchID)
     }
 
     private var isEditing: Bool { editingTask != nil }
@@ -185,6 +188,10 @@ struct TaskEditView: View {
                 )
             }
 
+            Section("LINKED SKETCH") {
+                sketchLink
+            }
+
             Section("LINKS") {
                 linksEditor
             }
@@ -237,6 +244,18 @@ struct TaskEditView: View {
                     .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
             }
         }
+        .sheet(isPresented: $isPickingSketch) {
+            NavigationStack {
+                SketchListView(onPick: { linkedSketchID = $0.id })
+            }
+        }
+        .sheet(isPresented: $openingLinkedSketch) {
+            if let linkedSketchID {
+                NavigationStack {
+                    SketchCanvasView(noteID: linkedSketchID)
+                }
+            }
+        }
         .confirmationDialog("Delete this strip?", isPresented: $showDeleteConfirm, titleVisibility: .visible) {
             Button("Delete", role: .destructive) {
                 if let task = editingTask {
@@ -281,6 +300,7 @@ struct TaskEditView: View {
         task.blockedByID = blockedByID
         task.waitingOnName = waitingOnName
         task.waitingOnFollowUpDays = hasFollowUp ? Int(waitingOnFollowUpDays) : nil
+        task.linkedSketchID = linkedSketchID
 
         if editingTask == nil {
             modelContext.insert(task)
@@ -289,6 +309,38 @@ struct TaskEditView: View {
         ReminderScheduler.shared.schedule(for: task)
         onSaved()
         dismiss()
+    }
+
+    /// The strip carries the sketch's folder name, nothing more — which is exactly what a backup
+    /// carries, and why a sketch linked on the phone is still linked here.
+    @ViewBuilder
+    private var sketchLink: some View {
+        if let linkedSketchID {
+            let note = SketchStore.shared.note(linkedSketchID)
+            HStack {
+                Image(systemName: "scribble")
+                VStack(alignment: .leading) {
+                    Text(note?.displayName ?? "Sketch note")
+                    // A linked sketch whose pages aren't here yet is the normal state right
+                    // after a partial restore, so say so rather than showing an empty row.
+                    Text(note == nil ? "Not on this Mac yet" : "\(note?.pageCount ?? 0) page(s)")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Open") { openingLinkedSketch = true }
+                    .disabled(note == nil)
+                Button {
+                    self.linkedSketchID = nil
+                } label: {
+                    Label("Unlink sketch", systemImage: "xmark.circle")
+                        .labelStyle(.iconOnly)
+                }
+                .buttonStyle(.borderless)
+            }
+        } else {
+            Button("Link a sketch…") { isPickingSketch = true }
+        }
     }
 
     private var tagsEditor: some View {
