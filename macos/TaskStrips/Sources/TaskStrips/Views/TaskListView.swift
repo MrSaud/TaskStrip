@@ -420,7 +420,18 @@ struct TaskListView: View {
         .listRowSeparator(.hidden)
     }
 
+    /// Split in two because SwiftUI's builders top out at ten children, and the second list of
+    /// places to go pushed this past it. Nesting groups is the fix; the order on screen is
+    /// unchanged.
     private var toolbarContent: some ToolbarContent {
+        Group {
+            placesToolbarItems
+            boardToolbarItems
+        }
+    }
+
+    /// The other places the app keeps things, none of which are the board.
+    private var placesToolbarItems: some ToolbarContent {
         Group {
             ToolbarItem(placement: .navigation) {
                 Button {
@@ -466,6 +477,12 @@ struct TaskListView: View {
                     Label("Roll-ups", systemImage: "chart.bar.doc.horizontal")
                 }
             }
+        }
+    }
+
+    /// What acts on the board itself: what's shown, in what order, and adding to it.
+    private var boardToolbarItems: some ToolbarContent {
+        Group {
             ToolbarItem {
                 Menu {
                     Button("All tags") { tagFilter = nil }

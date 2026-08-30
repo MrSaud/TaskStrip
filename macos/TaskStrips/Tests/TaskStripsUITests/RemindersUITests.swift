@@ -37,7 +37,7 @@ final class RemindersUITests: XCTestCase {
         openReminders()
         app.windowButton("New Reminder").click()
 
-        let title = app.textFields["What is it?"]
+        let title = app.textFields["reminderTitle"]
         XCTAssertTrue(title.waitForExistence(timeout: UITestSupport.timeout), "the editor never opened")
         title.click()
         title.typeText("Renew the registration")

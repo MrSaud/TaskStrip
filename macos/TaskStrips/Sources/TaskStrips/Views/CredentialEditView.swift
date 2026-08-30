@@ -50,6 +50,9 @@ struct CredentialEditView: View {
             Form {
                 Section("CREDENTIAL") {
                     TextField("What is it for?", text: $draft.title)
+                        // See the note in ReminderEditView: the placeholder is not what the
+                        // accessibility tree calls this field.
+                        .accessibilityIdentifier("credentialTitle")
                     TextField("Username", text: $draft.username)
                     TextField("URL", text: $draft.url)
                 }

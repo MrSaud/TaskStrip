@@ -36,7 +36,7 @@ final class CredentialsUITests: XCTestCase {
         openCredentials()
         app.windowButton("New Credential").click()
 
-        let title = app.textFields["What is it for?"]
+        let title = app.textFields["credentialTitle"]
         XCTAssertTrue(title.waitForExistence(timeout: UITestSupport.timeout), "the editor never opened")
         title.click()
         title.typeText("Consulate portal")
@@ -65,7 +65,7 @@ final class CredentialsUITests: XCTestCase {
         openCredentials()
         app.windowButton("New Credential").click()
 
-        let title = app.textFields["What is it for?"]
+        let title = app.textFields["credentialTitle"]
         XCTAssertTrue(title.waitForExistence(timeout: UITestSupport.timeout))
         title.click()
         title.typeText("Just a note of a URL")

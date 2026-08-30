@@ -61,6 +61,10 @@ struct ReminderEditView: View {
             Form {
                 Section("REMINDER") {
                     TextField("What is it?", text: $draft.text)
+                        // Looked up by identifier in the UI tests: a SwiftUI TextField in a Form
+                        // doesn't expose its placeholder as an accessibility label on macOS, so
+                        // searching for the prompt text finds nothing.
+                        .accessibilityIdentifier("reminderTitle")
                     TextField("Anything else worth remembering", text: $draft.details, axis: .vertical)
                         .lineLimit(2...4)
                 }
