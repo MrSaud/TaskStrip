@@ -48,32 +48,51 @@ fun dueAtAsLocalInstant(epochMillis: Long): Long {
 
 // A live header clock — always the device's real local time, unlike the UTC-display convention
 // used for ETA fields above.
+//
+// The time alone: the day it belongs to is on the Gregorian line beside it, and printing the date
+// here as well is what made the header wide enough to wrap.
 fun formatBoardHeaderClock(epochMillis: Long): String {
     val zdt = Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault())
-    return zdt.format(DateTimeFormatter.ofPattern("EEE, dd MMM · HH:mm:ss")).uppercase()
+    return zdt.format(DateTimeFormatter.ofPattern("HH:mm:ss"))
 }
 
-/** Today in both calendars, with how long each month runs.
+/* Today in both calendars, with how long each month runs.
  *
  * "Is this month 29, 30 or 31 days?" is two questions at once: a Gregorian month runs 28 to 31,
  * an Umm al-Qura one 29 or 30, and neither answers the other. Both are shown rather than leaving
  * the conversion to the reader.
  *
+ * One line each, rather than one line carrying both. Together they ran to 47 characters, which is
+ * wider than the header has ever been — the app bar's title shares its row with six action icons
+ * and keeps about a quarter of the screen — so the single line wrapped and then cropped, and the
+ * Hijri half, the half you cannot work out for yourself, was the half that got cut off. Split in
+ * two, each line is around 25 characters and each calendar keeps its own month length next to it.
+ *
  * HijrahChronology.INSTANCE is Umm al-Qura, which is also what the Mac app's
  * Calendar(identifier: .islamicUmmAlQura) uses — so both apps say the same thing on the same day.
  */
-fun formatBoardHeaderCalendars(
+
+/** "SUN 30 AUG 2026 · 31 DAYS" — the day, and how long this Gregorian month runs. */
+fun formatGregorianHeaderLine(
+    epochMillis: Long,
+    locale: Locale = Locale.getDefault()
+): String {
+    val date = Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+    val text = date.format(DateTimeFormatter.ofPattern("EEE dd MMM yyyy", locale))
+    return "$text · ${date.lengthOfMonth()} DAYS".uppercase(locale)
+}
+
+/** "17 SAFAR 1448 · 30 DAYS" — the same day in Umm al-Qura, and how long that month runs. */
+fun formatHijriHeaderLine(
     epochMillis: Long,
     locale: Locale = Locale.getDefault()
 ): String {
     val date = Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate()
     val hijri = HijrahDate.from(date)
-    val gregorianText = date.format(DateTimeFormatter.ofPattern("dd MMM yyyy", locale))
-    val hijriText = DateTimeFormatter.ofPattern("d MMMM yyyy", locale)
+    val text = DateTimeFormatter.ofPattern("d MMMM yyyy", locale)
         .withChronology(HijrahChronology.INSTANCE)
         .format(hijri)
-    return "$gregorianText · ${date.lengthOfMonth()} DAYS · $hijriText · ${hijri.lengthOfMonth()} DAYS"
-        .uppercase(locale)
+    return "$text · ${hijri.lengthOfMonth()} DAYS".uppercase(locale)
 }
 
 // "Today" is evaluated in UTC to stay consistent with how dueAt is stored/displayed everywhere

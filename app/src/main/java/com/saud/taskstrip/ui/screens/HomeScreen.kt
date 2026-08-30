@@ -106,8 +106,9 @@ import com.saud.taskstrip.ui.components.DateRange
 import com.saud.taskstrip.ui.components.DateRangeFilterDialog
 import com.saud.taskstrip.ui.components.FlightStripRow
 import com.saud.taskstrip.ui.components.StripHeight
-import com.saud.taskstrip.ui.components.formatBoardHeaderCalendars
 import com.saud.taskstrip.ui.components.formatBoardHeaderClock
+import com.saud.taskstrip.ui.components.formatGregorianHeaderLine
+import com.saud.taskstrip.ui.components.formatHijriHeaderLine
 import com.saud.taskstrip.ui.components.isDueTodayOrOverdue
 import com.saud.taskstrip.ui.theme.AmberTab
 import com.saud.taskstrip.ui.theme.BayBackground
@@ -273,21 +274,19 @@ fun HomeScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
                     } else {
-                        Column {
-                            Text("THE BOARD", style = MaterialTheme.typography.titleLarge, color = Paper)
-                            Text(
-                                text = formatBoardHeaderClock(nowMillis),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Paper.copy(alpha = 0.6f)
-                            )
-                            // Both calendars and both month lengths — see
-                            // formatBoardHeaderCalendars for why one answer isn't enough.
-                            Text(
-                                text = formatBoardHeaderCalendars(nowMillis),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Paper.copy(alpha = 0.45f)
-                            )
-                        }
+                        // The dates used to hang off this title and had a quarter of the screen
+                        // to do it in — see BoardDateStrip, which now carries them at full width.
+                        //
+                        // titleLarge wrapped "THE BOARD" onto two lines: six action icons leave
+                        // the title about 113dp and the name needs about 117dp at that size. The
+                        // name no longer has to be the largest thing on the screen now that the
+                        // date strip below carries its own weight.
+                        Text(
+                            text = "THE BOARD",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Paper,
+                            maxLines = 1
+                        )
                     }
                 },
                 actions = {
@@ -431,14 +430,6 @@ fun HomeScreen(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("SYNC NOTES") },
-                                leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
-                                onClick = {
-                                    menuExpanded = false
-                                    onSyncNotesClick()
-                                }
-                            )
-                            DropdownMenuItem(
                                 text = { Text("BACKUP & RESTORE") },
                                 leadingIcon = { Icon(Icons.Default.CloudUpload, contentDescription = null) },
                                 onClick = {
@@ -566,6 +557,14 @@ fun HomeScreen(
                     }
                 }
                 Spacer(Modifier.width(10.dp))
+                SmallFloatingActionButton(
+                    onClick = onSyncNotesClick,
+                    containerColor = BaySurface,
+                    contentColor = Paper
+                ) {
+                    Icon(Icons.Default.Sync, contentDescription = "Sync notes")
+                }
+                Spacer(Modifier.width(10.dp))
                 Box {
                     SmallFloatingActionButton(
                         onClick = { newStripMenuExpanded = true },
@@ -608,6 +607,7 @@ fun HomeScreen(
         }
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
+            BoardDateStrip(nowMillis)
             quote?.let { QuoteOfDayCard(it) }
             if (allTags.isNotEmpty()) {
                 LazyRow(
@@ -809,6 +809,48 @@ fun HomeScreen(
             dismissButton = {
                 TextButton(onClick = { pendingArchive = null }) { Text("CANCEL") }
             }
+        )
+    }
+}
+
+/** The board's date header, on a full-width row of its own under the app bar.
+ *
+ * It used to hang off the app bar's title, which shares its row with six action icons and is left
+ * with roughly a quarter of the screen — narrower than the dates themselves, so they wrapped and
+ * were then cut off by the bar's fixed height. Nothing here is shortened to make it fit; it simply
+ * has the width it always needed.
+ *
+ * The clock sits apart on the right because it is the one part that changes every second, and the
+ * two calendar lines beside it do not.
+ */
+@Composable
+private fun BoardDateStrip(nowMillis: Long) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = formatGregorianHeaderLine(nowMillis),
+                style = MaterialTheme.typography.labelSmall,
+                color = Paper.copy(alpha = 0.65f),
+                maxLines = 1
+            )
+            Text(
+                text = formatHijriHeaderLine(nowMillis),
+                style = MaterialTheme.typography.labelSmall,
+                color = Paper.copy(alpha = 0.45f),
+                maxLines = 1
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = formatBoardHeaderClock(nowMillis),
+            style = MaterialTheme.typography.titleMedium,
+            color = AmberTab,
+            maxLines = 1
         )
     }
 }
