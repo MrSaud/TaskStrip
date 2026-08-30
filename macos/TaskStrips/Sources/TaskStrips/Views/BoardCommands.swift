@@ -39,6 +39,7 @@ final class BoardActions {
     var newStrip: () -> Void = {}
     var importBackup: () -> Void = {}
     var exportBackup: () -> Void = {}
+    var showDrive: () -> Void = {}
     var showArchived: () -> Void = {}
     var showNotes: () -> Void = {}
     var showStorage: () -> Void = {}
@@ -121,6 +122,10 @@ struct BoardCommandMenus: Commands {
 
             Button("Export Backup…") { actions.exportBackup() }
                 .keyboardShortcut("e", modifiers: [.command, .shift, .option])
+                .disabled(state == nil)
+
+            Button("Google Drive…") { actions.showDrive() }
+                .keyboardShortcut("d", modifiers: [.command, .shift])
                 .disabled(state == nil)
         }
 

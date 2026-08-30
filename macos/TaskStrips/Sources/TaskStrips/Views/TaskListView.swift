@@ -44,6 +44,7 @@ struct TaskListView: View {
     @State private var importSummary: BackupImportSummary?
     @State private var importMessage: ImportMessage?
     @State private var isExporting = false
+    @State private var showDrive = false
     @State private var selectedTaskID: TaskItem.ID?
     @State private var pendingDeletion: TaskItem?
 
@@ -199,6 +200,9 @@ struct TaskListView: View {
                     dismissButton: .default(Text("OK"))
                 )
             }
+            .sheet(isPresented: $showDrive) {
+                DriveBackupsView(contents: exportContents, onRestore: readDriveArchive)
+            }
             .sheet(isPresented: $isExporting) {
                 ExportBackupSheet(
                     contents: exportContents,
@@ -267,6 +271,7 @@ struct TaskListView: View {
         actions.newStrip = { isPresentingNewTask = true }
         actions.importBackup = { chooseBackupFile() }
         actions.exportBackup = { isExporting = true }
+        actions.showDrive = { showDrive = true }
         actions.showArchived = { showArchive = true }
         actions.showNotes = { showNotes = true }
         actions.showStorage = { showStorage = true }
@@ -624,6 +629,28 @@ struct TaskListView: View {
             reminders: allReminders,
             credentials: allCredentials
         )
+    }
+
+    /// A backup pulled off Drive goes through exactly the same door as one picked off disk: the
+    /// summary sheet, the add-or-replace choice, the passphrase field. The only difference is
+    /// where the bytes came from.
+    ///
+    /// Written to a temp file first because restoring the media reads the archive from a URL —
+    /// and because a multi-gigabyte backup shouldn't be held in memory twice.
+    private func readDriveArchive(_ archive: Data) {
+        do {
+            let url = FileManager.default.temporaryDirectory
+                .appending(path: "TaskStrips-drive-\(UUID().uuidString).zip")
+            try archive.write(to: url)
+            var summary = try BackupImport.parse(manifest: BackupArchive.manifestData(inArchive: archive))
+            summary.sourceURL = url
+            importSummary = summary
+        } catch {
+            importMessage = ImportMessage(
+                title: "Couldn't read that backup",
+                body: error.localizedDescription
+            )
+        }
     }
 
     private func exportBackup(passphrase: String) {
