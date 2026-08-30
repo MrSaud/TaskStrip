@@ -34,6 +34,7 @@ struct TaskListView: View {
     @State private var showDateFilter = false
     @State private var editingTask: TaskItem?
     @State private var isPresentingNewTask = false
+    @State private var isCapturingVoice = false
     @State private var showArchive = false
     @State private var showNotes = false
     @State private var showStorage = false
@@ -224,6 +225,15 @@ struct TaskListView: View {
             )) {
                 if let progress { BackupProgressView(progress: progress) }
             }
+            .sheet(isPresented: $isCapturingVoice) {
+                VoiceCaptureSheet(
+                    onFile: { draft in
+                        isCapturingVoice = false
+                        fileVoiceDraft(draft)
+                    },
+                    onCancel: { isCapturingVoice = false }
+                )
+            }
             .sheet(isPresented: $showDrive) {
                 DriveBackupsView(contents: exportContents, onRestore: readDriveArchive)
             }
@@ -293,6 +303,7 @@ struct TaskListView: View {
     private func publishCommandActions() {
         let actions = BoardActions.shared
         actions.newStrip = { isPresentingNewTask = true }
+        actions.newStripByVoice = { isCapturingVoice = true }
         actions.importBackup = { chooseBackupFile() }
         actions.exportBackup = { isExporting = true }
         actions.showDrive = { showDrive = true }
@@ -578,6 +589,20 @@ struct TaskListView: View {
                 }
             }
         }
+    }
+
+    /// Files what the voice sheet handed back. It arrives already reviewed, so this is an
+    /// ordinary insert — the same one the editor does.
+    private func fileVoiceDraft(_ draft: VoiceDraft) {
+        let task = TaskItem(
+            title: draft.title,
+            orderIndex: nextOrderIndex(),
+            priority: draft.priority ?? defaultPriority
+        )
+        task.notes = draft.notes
+        task.notesRtl = defaultNotesRtl
+        modelContext.insert(task)
+        selectedTaskID = task.id
     }
 
     private func nextOrderIndex() -> Int {

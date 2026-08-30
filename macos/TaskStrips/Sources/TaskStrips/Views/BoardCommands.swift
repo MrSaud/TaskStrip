@@ -37,6 +37,7 @@ final class BoardActions {
     private init() {}
 
     var newStrip: () -> Void = {}
+    var newStripByVoice: () -> Void = {}
     var importBackup: () -> Void = {}
     var exportBackup: () -> Void = {}
     var showDrive: () -> Void = {}
@@ -114,6 +115,10 @@ struct BoardCommandMenus: Commands {
         CommandGroup(replacing: .newItem) {
             Button("New Strip") { actions.newStrip() }
                 .keyboardShortcut("n")
+                .disabled(state == nil)
+
+            Button("New Strip by Voice…") { actions.newStripByVoice() }
+                .keyboardShortcut("n", modifiers: [.command, .option])
                 .disabled(state == nil)
             Divider()
             Button("Import Android Backup…") { actions.importBackup() }
