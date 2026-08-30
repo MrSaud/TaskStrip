@@ -54,6 +54,10 @@ struct TaskListView: View {
     @AppStorage(AppSettingsKey.defaultPriority) private var defaultPriority = Priority.normal
     @AppStorage(AppSettingsKey.defaultNotesRtl) private var defaultNotesRtl = false
     @AppStorage(AppSettingsKey.confirmBeforeDelete) private var confirmBeforeDelete = true
+    @AppStorage(AppSettingsKey.dailyDigest) private var dailyDigest = false
+    @AppStorage(AppSettingsKey.weeklyReview) private var weeklyReview = false
+    @AppStorage(AppSettingsKey.autoBackup) private var autoBackup = false
+    @AppStorage(AppSettingsKey.lastAutoBackup) private var lastAutoBackup: Double = 0
 
     private var activeTasks: [TaskItem] { allTasks.filter { !$0.isArchived } }
 
@@ -283,7 +287,15 @@ struct TaskListView: View {
             } message: {
                 Text("Deleting a strip is permanent. Archiving keeps it.")
             }
-            .task { ReminderScheduler.shared.sync(allTasks) }
+            .task {
+                ReminderScheduler.shared.sync(allTasks)
+                await runAutomaticBackupIfDue()
+            }
+            // Re-armed whenever the board changes, since a scheduled summary's text is fixed when
+            // it's scheduled — see ReminderScheduler.scheduleDigests.
+            .onChange(of: allTasks.count, initial: true) { refreshDigests() }
+            .onChange(of: dailyDigest) { refreshDigests() }
+            .onChange(of: weeklyReview) { refreshDigests() }
             .focusedSceneValue(\.boardCommandState, commandState)
             .onChange(of: commandState, initial: true) { publishCommandActions() }
     }
@@ -630,6 +642,48 @@ struct TaskListView: View {
         task.notesRtl = defaultNotesRtl
         modelContext.insert(task)
         selectedTaskID = task.id
+    }
+
+    // MARK: - Scheduled summaries and backups
+
+    private func refreshDigests() {
+        ReminderScheduler.shared.scheduleDigests(allTasks, daily: dailyDigest, weekly: weeklyReview)
+    }
+
+    /// Backs up to Drive if it's switched on and a day has gone by.
+    ///
+    /// Silent on success, like Android's: a backup that announces itself every morning is noise.
+    /// A failure is silent too, but the Drive window shows when the last one actually went up, so
+    /// "it hasn't run since Tuesday" is answerable rather than assumed.
+    private func runAutomaticBackupIfDue() async {
+        let last = lastAutoBackup > 0 ? Date(timeIntervalSince1970: lastAutoBackup) : nil
+        guard autoBackup,
+              DriveSession.shared.isSignedIn,
+              DigestPlan.isBackupDue(lastBackup: last)
+        else { return }
+
+        do {
+            var passwordsIncluded = 0
+            // No passphrase: an unattended backup has nobody to ask for one, so it carries
+            // everything except the passwords — which is what Android does without one too.
+            let manifest = try BackupExport.manifestData(
+                exportContents,
+                credentialStore: .shared,
+                passwordsIncluded: &passwordsIncluded
+            )
+            let paths = BackupExport.mediaPaths(exportContents, store: .shared)
+            let result = await Task.detached {
+                BackupExport.archive(manifest: manifest, mediaPaths: paths, store: .shared)
+            }.value
+
+            let client = try await DriveSession.shared.client()
+            let folder = try await client.ensureBackupFolder()
+            try await client.upload(result.archive, named: BackupExport.suggestedFileName(), toFolder: folder)
+            lastAutoBackup = Date.now.timeIntervalSince1970
+        } catch {
+            // Left for the next launch to try again rather than surfaced: the user didn't ask for
+            // this one now, and an alert about it on every launch would be worse than the miss.
+        }
     }
 
     // MARK: - Dropped things

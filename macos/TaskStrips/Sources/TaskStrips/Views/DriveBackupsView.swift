@@ -21,6 +21,8 @@ struct DriveBackupsView: View {
     @State private var hasLoaded = false
     @State private var passphrase = ""
     @State private var includePasswords = false
+    @AppStorage(AppSettingsKey.autoBackup) private var autoBackup = false
+    @AppStorage(AppSettingsKey.lastAutoBackup) private var lastAutoBackup: Double = 0
 
     private var isWorking: Bool { progress != nil }
 
@@ -135,6 +137,14 @@ struct DriveBackupsView: View {
                 }
                 .padding(10)
                 .background(TaskStripTheme.baySurface, in: RoundedRectangle(cornerRadius: 6))
+            }
+
+            if autoBackup {
+                Text(lastAutoBackup > 0
+                     ? "Daily backup on. Last one \(Date(timeIntervalSince1970: lastAutoBackup).formatted(date: .abbreviated, time: .shortened))."
+                     : "Daily backup on. None has run yet.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Text("BACKUPS ON DRIVE")

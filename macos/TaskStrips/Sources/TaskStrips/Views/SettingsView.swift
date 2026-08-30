@@ -4,6 +4,11 @@ enum AppSettingsKey {
     static let defaultPriority = "defaultPriority"
     static let defaultNotesRtl = "defaultNotesRtl"
     static let confirmBeforeDelete = "confirmBeforeDelete"
+    static let dailyDigest = "dailyDigest"
+    static let weeklyReview = "weeklyReview"
+    static let autoBackup = "autoBackup"
+    /// When the last automatic backup went up, so the next one knows whether a day has passed.
+    static let lastAutoBackup = "lastAutoBackupAt"
 }
 
 /// The cmd-, window. Deliberately small: only settings that change something the app already
@@ -12,6 +17,9 @@ struct SettingsView: View {
     @AppStorage(AppSettingsKey.defaultPriority) private var defaultPriority = Priority.normal
     @AppStorage(AppSettingsKey.defaultNotesRtl) private var defaultNotesRtl = false
     @AppStorage(AppSettingsKey.confirmBeforeDelete) private var confirmBeforeDelete = true
+    @AppStorage(AppSettingsKey.dailyDigest) private var dailyDigest = false
+    @AppStorage(AppSettingsKey.weeklyReview) private var weeklyReview = false
+    @AppStorage(AppSettingsKey.autoBackup) private var autoBackup = false
     @ObservedObject private var drive = DriveSession.shared
     @State private var clientID = GoogleOAuth.clientID() ?? ""
     @State private var clientIDProblem: String?
@@ -37,6 +45,21 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            Section {
+                Toggle("Morning digest at 8am", isOn: $dailyDigest)
+                Toggle("Week in review, Fridays at 5pm", isOn: $weeklyReview)
+            } header: {
+                Text("Summaries")
+            } footer: {
+                // Both are off by default: an app that starts sending notifications before being
+                // asked is an app whose notifications get turned off wholesale.
+                Text("Each says nothing on a day with nothing to report. They're worked out while "
+                     + "the app is open, so one that fires after days of the Mac being shut "
+                     + "describes the board as it was last seen.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             // Written with an explicit header rather than Section("Google Drive") { } footer: { }:
             // SwiftUI has a titled section and a section with a footer, but no initialiser that
             // takes both.
@@ -57,10 +80,14 @@ struct SettingsView: View {
                         .font(.caption)
                         .foregroundStyle(TaskStripTheme.urgent)
                 }
+                Toggle("Back up to Drive daily", isOn: $autoBackup)
+                    .disabled(!drive.isSignedIn)
             } header: {
                 Text("Google Drive")
             } footer: {
-                Text("Create an OAuth client of type iOS in the same Google Cloud project as the "
+                Text("A daily backup runs when the app is open and a day has passed since the "
+                     + "last one — nothing wakes a Mac app that isn't running. "
+                     + "Create an OAuth client of type iOS in the same Google Cloud project as the "
                      + "phone app, with bundle id com.saud.taskstrip.mac. Only the drive.file "
                      + "scope is used — files this app created, nothing else in your Drive. "
                      + "Sign in from File → Google Drive… (⇧⌘D).")

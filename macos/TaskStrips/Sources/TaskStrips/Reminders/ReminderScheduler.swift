@@ -137,6 +137,45 @@ final class ReminderScheduler {
         "reminder-\(id.uuidString)"
     }
 
+    /// Arms the two scheduled summaries, or clears them when they're switched off.
+    ///
+    /// Each is scheduled one at a time rather than as a repeating notification, because a
+    /// repeating one would say the same thing every morning: the system fixes a notification's
+    /// text when it's scheduled, and nothing of ours runs at the moment it fires to refresh it.
+    /// So each is re-armed with fresh content every time the board changes while the app is open.
+    ///
+    /// The consequence, which is worth knowing: if the Mac hasn't been opened since the last
+    /// digest fired, the next one reports the board as it stood when it was last seen. Android
+    /// recomputes at fire time inside a broadcast receiver; there's no equivalent hook here.
+    func scheduleDigests(_ tasks: [TaskItem], daily: Bool, weekly: Bool, now: Date = .now) {
+        if daily, let fireAt = DigestPlan.nextDaily(after: now) {
+            let digest = DigestPlan.daily(for: tasks, on: fireAt)
+            post(
+                identifier: Self.dailyDigestIdentifier,
+                at: digest.isEmpty ? nil : fireAt,
+                title: digest.title,
+                body: digest.body
+            )
+        } else {
+            center.removePendingNotificationRequests(withIdentifiers: [Self.dailyDigestIdentifier])
+        }
+
+        if weekly, let fireAt = DigestPlan.nextWeekly(after: now) {
+            let review = DigestPlan.weekly(for: tasks, on: fireAt)
+            post(
+                identifier: Self.weeklyDigestIdentifier,
+                at: review.isEmpty ? nil : fireAt,
+                title: review.title,
+                body: review.body
+            )
+        } else {
+            center.removePendingNotificationRequests(withIdentifiers: [Self.weeklyDigestIdentifier])
+        }
+    }
+
+    static let dailyDigestIdentifier = "digest-daily"
+    static let weeklyDigestIdentifier = "digest-weekly"
+
     /// Reconciles everything at launch, and after an import.
     ///
     /// Pending notifications live in the system, not the store, so the two drift apart whenever
