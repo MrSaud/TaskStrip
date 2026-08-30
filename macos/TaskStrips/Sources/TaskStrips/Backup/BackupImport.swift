@@ -34,6 +34,8 @@ struct ImportedTask {
     var waitingOnName: String = ""
     var waitingOnSince: Date?
     var waitingOnFollowUpDays: Int?
+    var reminderMinutesBefore: Int?
+    var repeatIntervalDays: Int?
     var tags: [String] = []
     var contacts: [TaskContact] = []
     var links: [TaskLink] = []
@@ -160,7 +162,9 @@ enum BackupImport {
                 .filter { !$0.isEmpty }
                 .map { ImportedAttachment(kind: kind, path: $0) }
         }
-        task.hasReminder = intValue(object, "reminderMinutesBefore") != nil
+        task.reminderMinutesBefore = intValue(object, "reminderMinutesBefore")
+        task.repeatIntervalDays = intValue(object, "repeatIntervalDays")
+        task.hasReminder = task.reminderMinutesBefore != nil
 
         return task
     }
@@ -242,6 +246,8 @@ enum BackupImport {
             item.links = imported.links
             item.actionLog = imported.actionLog
             item.attachments = attachments(for: imported)
+            item.reminderMinutesBefore = imported.reminderMinutesBefore
+            item.repeatIntervalDays = imported.repeatIntervalDays
             context.insert(item)
             created.append(item)
         }

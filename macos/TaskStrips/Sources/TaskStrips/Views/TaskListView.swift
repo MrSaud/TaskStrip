@@ -447,6 +447,13 @@ struct TaskListView: View {
         }
         task.isDone.toggle()
         task.completedAt = task.isDone ? .now : nil
+
+        // Completing a repeating strip spawns the next one rather than rolling this one forward,
+        // so the finished occurrence stays as history — Android's choice, and the reason "what did
+        // I finish last week" keeps working.
+        if task.isDone, let next = ReminderPlan.nextOccurrence(completing: task, orderIndex: nextOrderIndex()) {
+            modelContext.insert(next)
+        }
     }
 
     private func archive(_ task: TaskItem) {

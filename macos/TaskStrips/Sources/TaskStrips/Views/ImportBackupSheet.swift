@@ -77,9 +77,6 @@ struct ImportBackupSheet: View {
     /// Everything in the file that this app has no home for yet, phrased for the sheet.
     private var notImported: [String] {
         var lines: [String] = []
-        if summary.reminderOnTaskCount > 0 {
-            lines.append("reminders on \(summary.reminderOnTaskCount) strip\(summary.reminderOnTaskCount == 1 ? "" : "s")")
-        }
         for section in summary.skippedSections {
             lines.append("\(section.count) \(section.name)")
         }

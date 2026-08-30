@@ -69,6 +69,10 @@ final class TaskItem: Identifiable {
     /// Files on this strip. Added after Phase 1, so it carries a default for SwiftData's
     /// lightweight migration to fill in on an existing store.
     var attachments: [TaskAttachment] = []
+    /// Fire a reminder this many minutes before `dueAt`. Nil means no reminder.
+    var reminderMinutesBefore: Int? = nil
+    /// Completing this strip spawns the next one this many days later — see ReminderPlan.
+    var repeatIntervalDays: Int? = nil
     var createdAt: Date
 
     var priority: Priority {
@@ -103,6 +107,8 @@ final class TaskItem: Identifiable {
         self.links = []
         self.actionLog = []
         self.attachments = []
+        self.reminderMinutesBefore = nil
+        self.repeatIntervalDays = nil
         self.createdAt = createdAt
     }
 }
