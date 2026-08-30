@@ -3,6 +3,8 @@ package com.saud.taskstrip.ui.components
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZoneOffset
+import java.time.chrono.HijrahChronology
+import java.time.chrono.HijrahDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
@@ -45,6 +47,29 @@ fun dueAtAsLocalInstant(epochMillis: Long): Long {
 fun formatBoardHeaderClock(epochMillis: Long): String {
     val zdt = Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault())
     return zdt.format(DateTimeFormatter.ofPattern("EEE, dd MMM · HH:mm:ss")).uppercase()
+}
+
+/** Today in both calendars, with how long each month runs.
+ *
+ * "Is this month 29, 30 or 31 days?" is two questions at once: a Gregorian month runs 28 to 31,
+ * an Umm al-Qura one 29 or 30, and neither answers the other. Both are shown rather than leaving
+ * the conversion to the reader.
+ *
+ * HijrahChronology.INSTANCE is Umm al-Qura, which is also what the Mac app's
+ * Calendar(identifier: .islamicUmmAlQura) uses — so both apps say the same thing on the same day.
+ */
+fun formatBoardHeaderCalendars(
+    epochMillis: Long,
+    locale: Locale = Locale.getDefault()
+): String {
+    val date = Instant.ofEpochMilli(epochMillis).atZone(ZoneId.systemDefault()).toLocalDate()
+    val hijri = HijrahDate.from(date)
+    val gregorianText = date.format(DateTimeFormatter.ofPattern("dd MMM yyyy", locale))
+    val hijriText = DateTimeFormatter.ofPattern("d MMMM yyyy", locale)
+        .withChronology(HijrahChronology.INSTANCE)
+        .format(hijri)
+    return "$gregorianText · ${date.lengthOfMonth()} DAYS · $hijriText · ${hijri.lengthOfMonth()} DAYS"
+        .uppercase(locale)
 }
 
 // "Today" is evaluated in UTC to stay consistent with how dueAt is stored/displayed everywhere

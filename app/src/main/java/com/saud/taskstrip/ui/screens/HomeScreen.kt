@@ -105,6 +105,7 @@ import com.saud.taskstrip.ui.components.DateRange
 import com.saud.taskstrip.ui.components.DateRangeFilterDialog
 import com.saud.taskstrip.ui.components.FlightStripRow
 import com.saud.taskstrip.ui.components.StripHeight
+import com.saud.taskstrip.ui.components.formatBoardHeaderCalendars
 import com.saud.taskstrip.ui.components.formatBoardHeaderClock
 import com.saud.taskstrip.ui.components.isDueTodayOrOverdue
 import com.saud.taskstrip.ui.theme.AmberTab
@@ -276,6 +277,13 @@ fun HomeScreen(
                                 text = formatBoardHeaderClock(nowMillis),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Paper.copy(alpha = 0.6f)
+                            )
+                            // Both calendars and both month lengths — see
+                            // formatBoardHeaderCalendars for why one answer isn't enough.
+                            Text(
+                                text = formatBoardHeaderCalendars(nowMillis),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Paper.copy(alpha = 0.45f)
                             )
                         }
                     }

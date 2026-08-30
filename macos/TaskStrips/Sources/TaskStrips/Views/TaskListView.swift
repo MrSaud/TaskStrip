@@ -97,9 +97,26 @@ struct TaskListView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                dateHeader
                 reorderNotice
                 board
             }
+        }
+    }
+
+    /// Today in both calendars, with how long each month runs.
+    ///
+    /// Rebuilt every minute rather than once: a board left open overnight would otherwise still
+    /// be showing yesterday, which is worse than showing nothing.
+    private var dateHeader: some View {
+        TimelineView(.periodic(from: .now, by: 60)) { context in
+            Text(BoardCalendars.headerText(context.date))
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(TaskStripTheme.baySurfaceFaded)
         }
     }
 
