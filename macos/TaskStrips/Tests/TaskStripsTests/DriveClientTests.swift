@@ -156,7 +156,9 @@ final class DriveClientTests: XCTestCase {
         ])
         let client = DriveClient(transport: transport, accessToken: token)
 
-        XCTAssertEqual(try await client.ensureBackupFolder(), "new")
+        // Awaited into a value first: XCTAssert takes autoclosures, which can't contain await.
+        let id = try await client.ensureBackupFolder()
+        XCTAssertEqual(id, "new")
         XCTAssertEqual(transport.log.requests.count, 2)
         XCTAssertEqual(transport.log.requests.last?.httpMethod, "POST")
     }
