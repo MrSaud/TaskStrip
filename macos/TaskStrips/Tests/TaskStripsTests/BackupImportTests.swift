@@ -302,10 +302,24 @@ final class BackupImportTests: XCTestCase {
     // in UTC everywhere on the phone, so reading it as a real instant lands it on the Mac shifted
     // by the local offset — three hours late at UTC+3, which is where this backup came from.
 
-    /// 1789000000000 ms is 2026-09-09 07:06:40 UTC. Whatever zone you're in, that wall clock is
+    /// 1789000000000 ms is 2026-09-10 00:26:40 UTC. Whatever zone you're in, that wall clock is
     /// what the phone showed, so that's the wall clock the Mac has to show.
+    ///
+    /// The expected values are derived rather than written by hand — the first version of this
+    /// test hardcoded a date I'd worked out wrong, and twelve assertions failed against perfectly
+    /// good conversion code. Reading the wall clock back out of the source instant can't drift
+    /// from it the way a typed-in constant can.
     func testADueDateKeepsTheWallClockThePhoneShowed() throws {
         let millis = 1_789_000_000_000.0
+
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = try XCTUnwrap(TimeZone(identifier: "UTC"))
+        let expected = utc.dateComponents(
+            [.year, .month, .day, .hour, .minute],
+            from: Date(timeIntervalSince1970: millis / 1000)
+        )
+        XCTAssertEqual(expected.day, 10, "sanity: the fixture's due date is 2026-09-10 00:26 UTC")
+        XCTAssertEqual(expected.hour, 0)
 
         for identifier in ["Asia/Riyadh", "America/Los_Angeles", "UTC", "Asia/Kolkata"] {
             let zone = try XCTUnwrap(TimeZone(identifier: identifier))
@@ -315,11 +329,11 @@ final class BackupImportTests: XCTestCase {
             calendar.timeZone = zone
             let parts = calendar.dateComponents([.year, .month, .day, .hour, .minute], from: converted)
 
-            XCTAssertEqual(parts.year, 2026, identifier)
-            XCTAssertEqual(parts.month, 9, identifier)
-            XCTAssertEqual(parts.day, 9, identifier)
-            XCTAssertEqual(parts.hour, 7, identifier)
-            XCTAssertEqual(parts.minute, 6, identifier)
+            XCTAssertEqual(parts.year, expected.year, identifier)
+            XCTAssertEqual(parts.month, expected.month, identifier)
+            XCTAssertEqual(parts.day, expected.day, identifier)
+            XCTAssertEqual(parts.hour, expected.hour, identifier)
+            XCTAssertEqual(parts.minute, expected.minute, identifier)
         }
     }
 
