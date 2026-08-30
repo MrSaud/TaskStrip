@@ -42,6 +42,7 @@ final class BoardActions {
     var showNotes: () -> Void = {}
     var showStorage: () -> Void = {}
     var showReminders: () -> Void = {}
+    var showCredentials: () -> Void = {}
     var showRollUp: (RollUp) -> Void = { _ in }
     var clearFilters: () -> Void = {}
     var setSortMode: (ProgressSort) -> Void = { _ in }
@@ -180,6 +181,10 @@ struct BoardCommandMenus: Commands {
 
             Button("Reminders…") { actions.showReminders() }
                 .keyboardShortcut("y", modifiers: [.command, .shift])
+                .disabled(state == nil)
+
+            Button("Credentials…") { actions.showCredentials() }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
                 .disabled(state == nil)
 
             Divider()
