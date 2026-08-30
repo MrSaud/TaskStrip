@@ -28,11 +28,14 @@ final class SpeechReader: NSObject, ObservableObject {
 
     /// What a strip reads out: its notes, which is what Android speaks — the title is already on
     /// screen, and reading it back adds nothing.
-    static func speech(for task: TaskItem) -> String? {
+    ///
+    /// Nonisolated, like the reminder one below: both are pure functions of their argument, and
+    /// inheriting the class's main-actor isolation only made them unusable from a test.
+    nonisolated static func speech(for task: TaskItem) -> String? {
         task.notes.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : task.notes
     }
 
-    static func speech(for reminder: Reminder) -> String {
+    nonisolated static func speech(for reminder: Reminder) -> String {
         reminder.details.isEmpty ? reminder.text : "\(reminder.text). \(reminder.details)"
     }
 
