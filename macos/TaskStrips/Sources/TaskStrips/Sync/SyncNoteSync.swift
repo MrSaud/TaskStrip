@@ -22,41 +22,23 @@ struct SyncNoteOutcome: Equatable {
 /// Read-merge-write rather than anything cleverer, because the merge is order-independent and
 /// idempotent — running this twice in a row changes nothing the second time, and two devices
 /// running it in either order end up holding the same notes.
+///
+/// It knows nothing about Drive. Whether the document arrives over the REST API or off a folder
+/// Drive for desktop is already mirroring is the transport's business, which is what lets a Mac
+/// sync without signing in while the phone, which has no such option, keeps using the API.
 struct SyncNoteSync {
-    var client: DriveClient
+    var transport: SyncNoteTransport
 
     func run(local: [SyncNoteRecord]) async throws -> SyncNoteOutcome {
-        let folderID = try await client.ensureBackupFolder()
-        let existing = try await client.file(named: SyncNoteDocument.fileName, inFolder: folderID)
-
-        let remote: [SyncNoteRecord]
-        if let existing {
-            remote = SyncNoteDocument.notes(from: try await client.download(fileID: existing.id))
-        } else {
-            remote = []
-        }
-
+        let remote = try await transport.load()
         let merged = SyncNoteDocument.merge(local: local, remote: remote)
+
         // Compared against what each side actually held, so "already up to date" means it, and a
         // sync that changed nothing doesn't rewrite the document for the sake of it.
         let pushed = merged != SyncNoteDocument.sorted(remote)
         let pulled = merged != SyncNoteDocument.sorted(local)
 
-        if pushed {
-            let data = try SyncNoteDocument.data(for: merged)
-            if let existing {
-                try await client.replace(
-                    fileID: existing.id, with: data, mimeType: SyncNoteDocument.mimeType
-                )
-            } else {
-                try await client.upload(
-                    data,
-                    named: SyncNoteDocument.fileName,
-                    toFolder: folderID,
-                    mimeType: SyncNoteDocument.mimeType
-                )
-            }
-        }
+        if pushed { try await transport.save(merged) }
 
         return SyncNoteOutcome(merged: merged, pushed: pushed, pulled: pulled)
     }

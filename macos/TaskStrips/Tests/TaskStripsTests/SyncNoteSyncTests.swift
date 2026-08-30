@@ -66,7 +66,7 @@ final class SyncNoteSyncTests: XCTestCase {
             (200, noFile),
             (200, Data(#"{"id":"new"}"#.utf8)),
         ])
-        let sync = SyncNoteSync(client: DriveClient(transport: transport, accessToken: "at"))
+        let sync = SyncNoteSync(transport: DriveSyncTransport(client: DriveClient(transport: transport, accessToken: "at")))
 
         let outcome = try await sync.run(local: [record("a", "hello", at: 10)])
 
@@ -85,7 +85,7 @@ final class SyncNoteSyncTests: XCTestCase {
             (200, remote),
             (200, Data(#"{"id":"doc1"}"#.utf8)),
         ])
-        let sync = SyncNoteSync(client: DriveClient(transport: transport, accessToken: "at"))
+        let sync = SyncNoteSync(transport: DriveSyncTransport(client: DriveClient(transport: transport, accessToken: "at")))
 
         let outcome = try await sync.run(local: [record("a", "from the Mac", at: 10)])
 
@@ -104,7 +104,7 @@ final class SyncNoteSyncTests: XCTestCase {
             (200, existingFile("doc1")),
             (200, try SyncNoteDocument.data(for: shared)),
         ])
-        let sync = SyncNoteSync(client: DriveClient(transport: transport, accessToken: "at"))
+        let sync = SyncNoteSync(transport: DriveSyncTransport(client: DriveClient(transport: transport, accessToken: "at")))
 
         let outcome = try await sync.run(local: shared)
 
@@ -124,7 +124,7 @@ final class SyncNoteSyncTests: XCTestCase {
             (200, existingFile("doc1")),
             (200, try SyncNoteDocument.data(for: [mine, theirs])),
         ])
-        let sync = SyncNoteSync(client: DriveClient(transport: transport, accessToken: "at"))
+        let sync = SyncNoteSync(transport: DriveSyncTransport(client: DriveClient(transport: transport, accessToken: "at")))
 
         let outcome = try await sync.run(local: [mine])
 
@@ -149,7 +149,7 @@ final class SyncNoteSyncTests: XCTestCase {
             (200, existingFile("doc1")),
             (200, document),
         ])
-        let sync = SyncNoteSync(client: DriveClient(transport: transport, accessToken: "at"))
+        let sync = SyncNoteSync(transport: DriveSyncTransport(client: DriveClient(transport: transport, accessToken: "at")))
 
         let first = try await sync.run(local: shared)
         let second = try await sync.run(local: first.merged)

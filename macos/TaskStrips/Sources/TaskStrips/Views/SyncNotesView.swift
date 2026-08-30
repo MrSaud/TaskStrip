@@ -1,3 +1,4 @@
+import AppKit
 import SwiftData
 import SwiftUI
 
@@ -17,6 +18,8 @@ struct SyncNotesView: View {
     @State private var isSyncing = false
     @State private var status: String?
     @State private var problem: String?
+    @State private var mode = SyncFolder.mode
+    @State private var folderName = SyncNotesView.currentFolderName()
 
     /// Tombstones are how a delete travels; they are not notes.
     private var notes: [SyncNote] { stored.filter { !$0.isDeleted } }
@@ -63,12 +66,50 @@ struct SyncNotesView: View {
             }
             .frame(minWidth: 220)
 
+            Divider()
+            whereItSyncs
+                .padding(8)
+
             if let status {
                 Text(status)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-                    .padding(8)
+                    .padding(.horizontal, 8)
+                    .padding(.bottom, 8)
                     .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+
+    /// Both ways in, named for what they actually are rather than for the API each uses.
+    private var whereItSyncs: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Picker("Sync through", selection: $mode) {
+                Text("Google Drive").tag(SyncFolder.Mode.drive)
+                Text("A folder").tag(SyncFolder.Mode.folder)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .onChange(of: mode) { _, new in
+                SyncFolder.mode = new
+                Task { await syncNow(quietly: true) }
+            }
+
+            if mode == .folder {
+                HStack(spacing: 6) {
+                    Text(folderName ?? "No folder yet")
+                        .font(.caption)
+                        .foregroundStyle(folderName == nil ? .secondary : .primary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                    Button(folderName == nil ? "Choose…" : "Change…") { chooseFolder() }
+                        .controlSize(.small)
+                }
+            } else if !session.isSignedIn {
+                Text("Sign in from the board's Drive window.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -99,9 +140,9 @@ struct SyncNotesView: View {
             Text("NOTHING SYNCED YET")
                 .font(.headline)
                 .foregroundStyle(.secondary)
-            Text(session.isSignedIn
+            Text(canSync
                  ? "Write something here and it turns up on the phone."
-                 : "Sign in to Google Drive from the board's Drive window to sync.")
+                 : "Choose where to sync below, and it turns up on the phone.")
                 .font(.callout)
                 .foregroundStyle(.tertiary)
             Button("New Note") { newNote() }
@@ -130,10 +171,10 @@ struct SyncNotesView: View {
                     Label("Sync Now", systemImage: "arrow.triangle.2.circlepath")
                 }
             }
-            .disabled(isSyncing || !session.isSignedIn)
-            .help(session.isSignedIn
-                  ? "Sync with the phone through Google Drive (⌘R)"
-                  : "Sign in to Google Drive first")
+            .disabled(isSyncing || !canSync)
+            .help(mode == .folder
+                  ? "Sync through the folder (⌘R)"
+                  : "Sync with the phone through Google Drive (⌘R)")
             .keyboardShortcut("r")
         }
         ToolbarItem(placement: .confirmationAction) {
@@ -170,19 +211,70 @@ struct SyncNotesView: View {
     /// `quietly` is for the syncs nobody asked for — opening and closing the page. Those must not
     /// raise an alert over a network that happens to be down, or every visit becomes a dialog.
     private func syncNow(quietly: Bool) async {
-        guard session.isSignedIn, !isSyncing else { return }
+        guard !isSyncing, canSync else { return }
         isSyncing = true
         defer { isSyncing = false }
 
+        // Folder mode holds a security-scoped resource for exactly as long as the sync takes.
+        var scoped: URL?
+        defer { if let scoped { SyncFolder.endAccess(scoped) } }
+
         do {
-            let client = try await session.client()
-            let outcome = try await SyncNoteSync(client: client).run(local: stored.map(\.record))
+            let transport: SyncNoteTransport
+            switch mode {
+            case .drive:
+                transport = DriveSyncTransport(client: try await session.client())
+            case .folder:
+                guard let folder = SyncFolder.resolve() else {
+                    status = "Pick a folder to sync through."
+                    return
+                }
+                scoped = folder
+                transport = FolderSyncTransport(folder: folder)
+            }
+
+            let outcome = try await SyncNoteSync(transport: transport).run(local: stored.map(\.record))
             apply(outcome.merged)
             status = outcome.summary
         } catch {
             status = "Last sync failed."
             if !quietly { problem = error.localizedDescription }
         }
+    }
+
+    private var canSync: Bool {
+        switch mode {
+        case .drive: return session.isSignedIn
+        case .folder: return folderName != nil
+        }
+    }
+
+    private static func currentFolderName() -> String? {
+        guard let url = SyncFolder.resolve() else { return nil }
+        defer { SyncFolder.endAccess(url) }
+        return url.lastPathComponent
+    }
+
+    /// Picking the folder is also how the app is granted access to it — the open panel is the
+    /// grant, which is why there is no way to type a path instead.
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Sync Here"
+        panel.message = "Pick the folder both machines share — inside Google Drive, if you use Drive for desktop."
+        panel.directoryURL = SyncFolder.likelyDriveFolder
+
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        guard SyncFolder.store(url) else {
+            problem = "Couldn't keep access to that folder."
+            return
+        }
+        folderName = url.lastPathComponent
+        mode = .folder
+        SyncFolder.mode = .folder
+        Task { await syncNow(quietly: false) }
     }
 
     /// Writes the merge back into the store: existing rows updated in place so nothing that points
