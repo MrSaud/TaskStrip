@@ -11,6 +11,12 @@ struct TaskStripsApp: App {
     /// Titles the UI tests expect on the board, top to bottom.
     static let uiTestingStrips = ["Alpha strip", "Bravo strip", "Charlie strip"]
 
+    /// One file seeded into the storage library, so the library and the "add from storage" picker
+    /// have something real to show. Its bytes go into the throwaway media root, never the real
+    /// one — see AttachmentStore.shared.
+    static let uiTestingLibraryFile = "Seeded receipt.pdf"
+    static let uiTestingLibraryPath = "documents/seed/Seeded receipt.pdf"
+
     private static var isUITesting: Bool {
         ProcessInfo.processInfo.arguments.contains(uiTestingArgument)
     }
@@ -44,11 +50,30 @@ struct TaskStripsApp: App {
             for (index, title) in uiTestingStrips.enumerated() {
                 context.insert(TaskItem(title: title, orderIndex: index))
             }
+            seedLibrary(into: context)
             try context.save()
             return container
         } catch {
             fatalError("Failed to create the UI-testing ModelContainer: \(error)")
         }
+    }
+
+    /// The library is only worth testing with something in it, and its rows are only real if the
+    /// file behind them exists — the picker greys out anything it can't actually copy.
+    private static func seedLibrary(into context: ModelContext) {
+        let bytes = Data("a seeded file, standing in for a scanned receipt".utf8)
+        try? AttachmentStore.shared.write(bytes, toRelativePath: uiTestingLibraryPath)
+        context.insert(
+            StorageItem(
+                name: uiTestingLibraryFile,
+                path: uiTestingLibraryPath,
+                type: .document,
+                mimeType: "application/pdf",
+                sizeBytes: bytes.count,
+                tag: "Receipt",
+                tagEmoji: "💳"
+            )
+        )
     }
 
     var body: some Scene {

@@ -5,6 +5,8 @@ enum UITestSupport {
     static let launchArgument = "-TaskStripsUITesting"
     /// Must match `TaskStripsApp.uiTestingStrips`, in board order.
     static let strips = ["Alpha strip", "Bravo strip", "Charlie strip"]
+    /// Must match `TaskStripsApp.uiTestingLibraryFile`.
+    static let libraryFile = "Seeded receipt.pdf"
     static let timeout: TimeInterval = 15
 }
 

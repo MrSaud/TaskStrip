@@ -132,4 +132,52 @@ final class AttachmentStoreTests: XCTestCase {
             "but not the documents folder itself"
         )
     }
+
+    // MARK: - Taking a file out of the library
+
+    func testDuplicateMakesASecondCopyRatherThanASecondPointer() throws {
+        let original = try store.add(contentsOf: try makeFile(named: "scan.pdf", contents: "receipt"))
+        let copy = try store.duplicate(relativePath: original.path, kind: .document, name: "scan.pdf")
+
+        XCTAssertNotEqual(copy.path, original.path)
+        XCTAssertEqual(
+            try String(contentsOf: store.url(for: copy), encoding: .utf8),
+            "receipt"
+        )
+        // Deleting the library's file has to leave the strip's copy alone — the library says so
+        // in as many words when it asks about deleting.
+        store.remove(relativePath: original.path, kind: .document)
+        XCTAssertFalse(store.exists(original))
+        XCTAssertTrue(store.exists(copy))
+    }
+
+    /// The library file is stored under a uuid, so the name has to come from the row rather than
+    /// from the path, or every copied photo would land on the strip called "B7F3…".
+    func testDuplicateCarriesTheNameItIsGiven() throws {
+        let original = try store.add(contentsOf: try makeFile(named: "holiday.jpg"), kind: .image)
+        let copy = try store.duplicate(relativePath: original.path, kind: .image, name: "holiday.jpg")
+
+        XCTAssertEqual(copy.name, "holiday.jpg")
+        XCTAssertEqual(copy.kind, .image)
+        XCTAssertTrue(copy.path.hasPrefix("images/"))
+        XCTAssertTrue(copy.path.hasSuffix(".jpg"))
+    }
+
+    func testDuplicatingTheSameFileTwiceDoesNotCollide() throws {
+        let original = try store.add(contentsOf: try makeFile(named: "invoice.pdf"))
+        let first = try store.duplicate(relativePath: original.path, kind: .document, name: "invoice.pdf")
+        let second = try store.duplicate(relativePath: original.path, kind: .document, name: "invoice.pdf")
+
+        XCTAssertNotEqual(first.path, second.path)
+        XCTAssertTrue(store.exists(first))
+        XCTAssertTrue(store.exists(second))
+    }
+
+    /// A library row can outlive its file — an imported backup that didn't carry the bytes, or a
+    /// store moved out from under the app. The picker greys those out; this is the backstop.
+    func testDuplicatingAFileThatIsNotThereFails() {
+        XCTAssertThrowsError(
+            try store.duplicate(relativePath: "documents/gone/missing.pdf", kind: .document, name: "missing.pdf")
+        )
+    }
 }

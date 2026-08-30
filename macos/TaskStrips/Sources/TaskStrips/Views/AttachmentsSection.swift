@@ -17,6 +17,7 @@ struct AttachmentsSection: View {
     let onRemoved: (TaskAttachment) -> Void
 
     @State private var failure: String?
+    @State private var isPickingFromLibrary = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -36,6 +37,11 @@ struct AttachmentsSection: View {
                 } label: {
                     Label("Add Files…", systemImage: "paperclip")
                 }
+                Button {
+                    isPickingFromLibrary = true
+                } label: {
+                    Label("Add from Library…", systemImage: "tray.full")
+                }
                 Spacer()
                 if !attachments.isEmpty {
                     Text(summary)
@@ -49,6 +55,16 @@ struct AttachmentsSection: View {
                     .font(.caption)
                     .foregroundStyle(TaskStripTheme.urgent)
             }
+        }
+        .sheet(isPresented: $isPickingFromLibrary) {
+            StoragePickerSheet(
+                store: store,
+                onAdd: { picked in
+                    isPickingFromLibrary = false
+                    takeFromLibrary(picked)
+                },
+                onCancel: { isPickingFromLibrary = false }
+            )
         }
     }
 
@@ -112,6 +128,29 @@ struct AttachmentsSection: View {
             .sorted { $0.key.rawValue < $1.key.rawValue }
             .map { "\($0.value.count) \($0.key.label.lowercased())\($0.value.count == 1 ? "" : "s")" }
         return counts.joined(separator: ", ")
+    }
+
+    /// The strip gets its own copy of the file, not a second pointer at the library's — so
+    /// deleting it from storage later leaves this strip's attachment intact, which is exactly
+    /// what the library's delete dialog promises.
+    private func takeFromLibrary(_ items: [StorageItem]) {
+        var problems: [String] = []
+        for item in items {
+            do {
+                let attachment = try store.duplicate(
+                    relativePath: item.path,
+                    kind: item.type.attachmentKind,
+                    name: item.name
+                )
+                attachments.append(attachment)
+                onAdded(attachment)
+            } catch {
+                problems.append(item.name)
+            }
+        }
+        failure = problems.isEmpty
+            ? nil
+            : "Couldn't copy \(problems.joined(separator: ", ")) from storage."
     }
 
     private func pickFiles() {

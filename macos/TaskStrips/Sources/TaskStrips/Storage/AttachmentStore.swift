@@ -83,6 +83,31 @@ struct AttachmentStore {
         return TaskAttachment(kind: kind, path: relativePath, name: name)
     }
 
+    /// Copies a file the store already holds to a fresh path inside it.
+    ///
+    /// Taking a library file onto a strip duplicates it rather than pointing both at the same
+    /// bytes — which is what lets the library say "strips that already took a copy keep theirs"
+    /// and mean it. `name` is what the user should see, since the stored file is usually named
+    /// after a uuid.
+    func duplicate(relativePath: String, kind: AttachmentKind, name: String) throws -> TaskAttachment {
+        let source = url(forRelativePath: relativePath)
+        guard FileManager.default.isReadableFile(atPath: source.path) else {
+            throw AttachmentStoreError.cannotRead(source)
+        }
+        let destinationPath = Self.relativePath(for: name, kind: kind)
+        let destination = url(forRelativePath: destinationPath)
+        try FileManager.default.createDirectory(
+            at: destination.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        do {
+            try FileManager.default.copyItem(at: source, to: destination)
+        } catch {
+            throw AttachmentStoreError.cannotWrite(destinationPath)
+        }
+        return TaskAttachment(kind: kind, path: destinationPath, name: name)
+    }
+
     /// Used by the backup import, which has bytes rather than a file on disk, and a path the
     /// backup already chose.
     func write(_ data: Data, toRelativePath relativePath: String) throws {
