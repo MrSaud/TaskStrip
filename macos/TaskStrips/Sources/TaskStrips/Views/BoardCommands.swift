@@ -38,6 +38,7 @@ final class BoardActions {
 
     var newStrip: () -> Void = {}
     var importBackup: () -> Void = {}
+    var exportBackup: () -> Void = {}
     var showArchived: () -> Void = {}
     var showNotes: () -> Void = {}
     var showStorage: () -> Void = {}
@@ -116,6 +117,10 @@ struct BoardCommandMenus: Commands {
             Divider()
             Button("Import Android Backup…") { actions.importBackup() }
                 .keyboardShortcut("i", modifiers: [.command, .shift])
+                .disabled(state == nil)
+
+            Button("Export Backup…") { actions.exportBackup() }
+                .keyboardShortcut("e", modifiers: [.command, .shift, .option])
                 .disabled(state == nil)
         }
 

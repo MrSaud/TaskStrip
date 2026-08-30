@@ -43,6 +43,7 @@ struct TaskListView: View {
     @State private var blockedAlertTask: TaskItem?
     @State private var importSummary: BackupImportSummary?
     @State private var importMessage: ImportMessage?
+    @State private var isExporting = false
     @State private var selectedTaskID: TaskItem.ID?
     @State private var pendingDeletion: TaskItem?
 
@@ -198,6 +199,16 @@ struct TaskListView: View {
                     dismissButton: .default(Text("OK"))
                 )
             }
+            .sheet(isPresented: $isExporting) {
+                ExportBackupSheet(
+                    contents: exportContents,
+                    onExport: { passphrase in
+                        isExporting = false
+                        exportBackup(passphrase: passphrase)
+                    },
+                    onCancel: { isExporting = false }
+                )
+            }
             .sheet(item: $importSummary) { summary in
                 ImportBackupSheet(
                     summary: summary,
@@ -255,6 +266,7 @@ struct TaskListView: View {
         let actions = BoardActions.shared
         actions.newStrip = { isPresentingNewTask = true }
         actions.importBackup = { chooseBackupFile() }
+        actions.exportBackup = { isExporting = true }
         actions.showArchived = { showArchive = true }
         actions.showNotes = { showNotes = true }
         actions.showStorage = { showStorage = true }
@@ -598,6 +610,57 @@ struct TaskListView: View {
 
     private func move(from source: IndexSet, to destination: Int) {
         BoardOrdering.move(from: source, to: destination, in: filtered)
+    }
+
+    // MARK: - Export
+
+    /// Everything the app holds, archived ones included — a backup is the whole state, not the
+    /// visible part of it.
+    private var exportContents: BackupExport.Contents {
+        BackupExport.Contents(
+            tasks: allTasks,
+            notes: allNotes,
+            storageItems: allStorageItems,
+            reminders: allReminders,
+            credentials: allCredentials
+        )
+    }
+
+    private func exportBackup(passphrase: String) {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.zip]
+        panel.nameFieldStringValue = BackupExport.suggestedFileName()
+        panel.prompt = "Export"
+        panel.message = "Where should the backup go?"
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+
+        do {
+            let result = try BackupExport.archive(
+                exportContents,
+                passphrase: passphrase,
+                store: .shared,
+                credentialStore: .shared
+            )
+            try result.archive.write(to: url)
+
+            var body = "Wrote \(exportContents.tasks.count) strip"
+                + "\(exportContents.tasks.count == 1 ? "" : "s") and \(result.fileCount) file"
+                + "\(result.fileCount == 1 ? "" : "s") to \(url.lastPathComponent)."
+            if result.passwordsIncluded > 0 {
+                body += " \(result.passwordsIncluded) password"
+                    + "\(result.passwordsIncluded == 1 ? " is" : "s are") encrypted with your passphrase."
+            }
+            if result.filesMissing > 0 {
+                body += " \(result.filesMissing) file\(result.filesMissing == 1 ? "" : "s") named by a strip "
+                    + "couldn't be read, so \(result.filesMissing == 1 ? "it isn't" : "they aren't") in the backup."
+            }
+            importMessage = ImportMessage(title: "Backup written", body: body)
+        } catch {
+            importMessage = ImportMessage(
+                title: "Couldn't write the backup",
+                body: error.localizedDescription
+            )
+        }
     }
 
     // MARK: - Android backup import
