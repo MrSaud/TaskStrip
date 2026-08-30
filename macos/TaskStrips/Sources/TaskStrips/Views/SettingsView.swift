@@ -7,6 +7,7 @@ enum AppSettingsKey {
     static let dailyDigest = "dailyDigest"
     static let weeklyReview = "weeklyReview"
     static let autoBackup = "autoBackup"
+    static let showQuote = "showQuoteOfTheDay"
     /// When the last automatic backup went up, so the next one knows whether a day has passed.
     static let lastAutoBackup = "lastAutoBackupAt"
 }
@@ -20,6 +21,7 @@ struct SettingsView: View {
     @AppStorage(AppSettingsKey.dailyDigest) private var dailyDigest = false
     @AppStorage(AppSettingsKey.weeklyReview) private var weeklyReview = false
     @AppStorage(AppSettingsKey.autoBackup) private var autoBackup = false
+    @AppStorage(AppSettingsKey.showQuote) private var showQuote = true
     @ObservedObject private var drive = DriveSession.shared
     @State private var clientID = GoogleOAuth.clientID() ?? ""
     @State private var clientIDProblem: String?
@@ -41,6 +43,17 @@ struct SettingsView: View {
                 Toggle("Ask before deleting a strip", isOn: $confirmBeforeDelete)
             } footer: {
                 Text("Deleting a strip is permanent — archiving keeps it.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("Quote of the day on the board", isOn: $showQuote)
+            } footer: {
+                // Worth being able to switch off: it's the one thing the app fetches from a
+                // service the user never set up.
+                Text("Fetched once a day from zenquotes.io. Everything else the app talks to is "
+                     + "your own Drive.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

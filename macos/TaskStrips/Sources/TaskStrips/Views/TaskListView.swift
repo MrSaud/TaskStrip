@@ -58,6 +58,8 @@ struct TaskListView: View {
     @AppStorage(AppSettingsKey.weeklyReview) private var weeklyReview = false
     @AppStorage(AppSettingsKey.autoBackup) private var autoBackup = false
     @AppStorage(AppSettingsKey.lastAutoBackup) private var lastAutoBackup: Double = 0
+    @AppStorage(AppSettingsKey.showQuote) private var showQuote = true
+    @State private var quote: Quote?
 
     private var activeTasks: [TaskItem] { allTasks.filter { !$0.isArchived } }
 
@@ -104,6 +106,9 @@ struct TaskListView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 dateHeader
+                if showQuote, let quote {
+                    QuoteOfDayCard(quote: quote)
+                }
                 reorderNotice
                 board
             }
@@ -289,6 +294,7 @@ struct TaskListView: View {
             }
             .task {
                 ReminderScheduler.shared.sync(allTasks)
+                await loadQuote()
                 await runAutomaticBackupIfDue()
             }
             // Re-armed whenever the board changes, since a scheduled summary's text is fixed when
@@ -642,6 +648,20 @@ struct TaskListView: View {
         task.notesRtl = defaultNotesRtl
         modelContext.insert(task)
         selectedTaskID = task.id
+    }
+
+    /// Today's quote: from the cache if it's already been fetched today, otherwise once from the
+    /// network. A day with no connection simply has no card.
+    private func loadQuote() async {
+        guard showQuote else { return }
+        let cache = QuoteCache()
+        if let cached = cache.quote() {
+            quote = cached
+            return
+        }
+        guard let fetched = await QuoteOfTheDay.fetch() else { return }
+        cache.save(fetched)
+        quote = fetched
     }
 
     // MARK: - Scheduled summaries and backups
