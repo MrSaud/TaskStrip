@@ -59,7 +59,7 @@ enum BackupExport {
         )
         var result = archive(
             manifest: manifest,
-            mediaPaths: mediaPaths(contents),
+            mediaPaths: mediaPaths(contents, store: store),
             store: store,
             progress: progress
         )
@@ -111,10 +111,17 @@ enum BackupExport {
         )
     }
 
-    /// Every file the backup should carry: a strip's attachments and the library's own files.
-    static func mediaPaths(_ contents: Contents) -> Set<String> {
+    /// Every file the backup should carry: a strip's attachments, the library's own files, and
+    /// the sketch notes.
+    ///
+    /// The sketches come from the store rather than from the model because nothing in the model
+    /// mentions them — the Mac can't draw one, it only holds what a phone's backup brought, so
+    /// that a backup written here still carries them home. Android walks its own sketches folder
+    /// for exactly the same reason.
+    static func mediaPaths(_ contents: Contents, store: AttachmentStore? = nil) -> Set<String> {
         var paths = Set(contents.tasks.flatMap { $0.attachments.map(\.path) })
         paths.formUnion(contents.storageItems.map(\.path))
+        if let store { paths.formUnion(store.relativePaths(under: BackupArchive.sketchesPrefix)) }
         return paths.filter { !$0.isEmpty }
     }
 
@@ -191,6 +198,9 @@ enum BackupExport {
         if let blockedByID = task.blockedByID, let index = indexOfTask[blockedByID] {
             object["blockedByIndex"] = index
         }
+        // Written back exactly as it arrived. The Mac never reads it, but leaving it out is what
+        // silently broke a strip's link to its sketch on a phone → Mac → phone round trip.
+        if let sketch = task.linkedSketchID { object["linkedSketchId"] = sketch }
         return object
     }
 

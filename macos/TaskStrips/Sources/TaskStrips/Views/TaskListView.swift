@@ -736,7 +736,7 @@ struct TaskListView: View {
                 credentialStore: .shared,
                 passwordsIncluded: &passwordsIncluded
             )
-            let paths = BackupExport.mediaPaths(exportContents)
+            let paths = BackupExport.mediaPaths(exportContents, store: .shared)
             let strips = exportContents.tasks.count
             progress = BackupProgress(
                 title: "Writing the backup",

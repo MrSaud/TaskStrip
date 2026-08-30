@@ -42,6 +42,8 @@ struct ImportedTask {
     var actionLog: [TaskActionLogEntry] = []
     var createdAt: Date = .now
     var blockedByIndex: Int?
+    /// Carried through untouched — see TaskItem.linkedSketchID.
+    var linkedSketchID: String?
     /// The files this strip claims, as paths relative to the media root — which is also where
     /// they sit inside the archive, behind a "media/" prefix.
     var attachments: [ImportedAttachment] = []
@@ -219,6 +221,8 @@ enum BackupImport {
         task.tags = (object["tags"] as? [Any])?.compactMap { $0 as? String } ?? []
         task.createdAt = dateValue(object, "createdAt") ?? .now
         task.blockedByIndex = intValue(object, "blockedByIndex")
+        let sketch = stringValue(object, "linkedSketchId")
+        task.linkedSketchID = sketch.isEmpty ? nil : sketch
 
         task.contacts = (object["contacts"] as? [Any] ?? []).compactMap { $0 as? [String: Any] }.map {
             TaskContact(
@@ -436,9 +440,12 @@ enum BackupImport {
         fromArchiveAt url: URL,
         paths: Set<String>,
         into store: AttachmentStore,
+        carrying prefixes: Set<String> = [BackupArchive.sketchesPrefix],
         progress: BackupExport.ProgressHandler? = nil
     ) throws -> Set<String> {
-        guard !paths.isEmpty, url.pathExtension.lowercased() != "json" else { return [] }
+        guard !paths.isEmpty || !prefixes.isEmpty,
+              url.pathExtension.lowercased() != "json"
+        else { return [] }
 
         let archive = try Data(contentsOf: url, options: .mappedIfSafe)
         var restored: Set<String> = []
@@ -448,10 +455,16 @@ enum BackupImport {
         for entry in try BackupArchive.entries(inArchive: archive) where !entry.isDirectory {
             guard entry.name.hasPrefix(BackupArchive.mediaPrefix) else { continue }
             let path = String(entry.name.dropFirst(BackupArchive.mediaPrefix.count))
-            guard paths.contains(path) else { continue }
+            // Sketch files belong to no strip and are named by no manifest, so they're taken by
+            // where they sit rather than by being asked for. The Mac can't draw them; it holds
+            // them so they survive the trip back.
+            let carried = prefixes.contains { path.hasPrefix($0) }
+            guard paths.contains(path) || carried else { continue }
             try store.write(try BackupArchive.data(for: entry, inArchive: archive), toRelativePath: path)
             restored.insert(path)
-            progress?(restored.count, paths.count)
+            // Counted against the manifest's own list, so files carried on top don't push the
+            // number past its total.
+            progress?(min(restored.count, paths.count), paths.count)
         }
         return restored
     }
@@ -507,6 +520,7 @@ enum BackupImport {
             item.links = imported.links
             item.actionLog = imported.actionLog
             item.attachments = attachments(for: imported)
+            item.linkedSketchID = imported.linkedSketchID
             item.reminderMinutesBefore = imported.reminderMinutesBefore
             item.repeatIntervalDays = imported.repeatIntervalDays
             context.insert(item)

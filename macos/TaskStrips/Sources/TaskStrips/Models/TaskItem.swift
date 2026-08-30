@@ -62,6 +62,12 @@ final class TaskItem: Identifiable {
     var waitingOnName: String
     var waitingOnSince: Date?
     var waitingOnFollowUpDays: Int?
+    /// The sketch this strip points at on the phone.
+    ///
+    /// The Mac has no canvas, so nothing here reads it — it exists so a backup written on this
+    /// Mac still points at the right sketch when it lands back on a phone. Dropping the field
+    /// would quietly break that link on every round trip.
+    var linkedSketchID: String?
     var tags: [String]
     var contacts: [TaskContact]
     var links: [TaskLink]
@@ -102,6 +108,7 @@ final class TaskItem: Identifiable {
         self.waitingOnName = ""
         self.waitingOnSince = nil
         self.waitingOnFollowUpDays = nil
+        self.linkedSketchID = nil
         self.tags = []
         self.contacts = []
         self.links = []

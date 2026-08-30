@@ -204,7 +204,7 @@ struct DriveBackupsView: View {
                 credentialStore: .shared,
                 passwordsIncluded: &passwordsIncluded
             )
-            let paths = BackupExport.mediaPaths(contents)
+            let paths = BackupExport.mediaPaths(contents, store: .shared)
             progress = BackupProgress(
                 title: "Backing up to Drive",
                 step: "Packing files",

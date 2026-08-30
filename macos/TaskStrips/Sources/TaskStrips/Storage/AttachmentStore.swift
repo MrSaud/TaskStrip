@@ -83,6 +83,29 @@ struct AttachmentStore {
         return TaskAttachment(kind: kind, path: relativePath, name: name)
     }
 
+    /// Every file under a folder of the store, as paths relative to its root.
+    ///
+    /// Used for the sketch notes a backup carries: nothing in the app points at them, so the only
+    /// way to find them again is to look.
+    func relativePaths(under folder: String) -> Set<String> {
+        let base = url(forRelativePath: folder)
+        guard let walker = FileManager.default.enumerator(
+            at: base,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return [] }
+
+        var paths: Set<String> = []
+        let rootPath = root.standardizedFileURL.path
+        for case let url as URL in walker {
+            guard (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory != true else { continue }
+            let full = url.standardizedFileURL.path
+            guard full.hasPrefix(rootPath + "/") else { continue }
+            paths.insert(String(full.dropFirst(rootPath.count + 1)))
+        }
+        return paths
+    }
+
     /// Copies a file the store already holds to a fresh path inside it.
     ///
     /// Taking a library file onto a strip duplicates it rather than pointing both at the same

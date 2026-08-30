@@ -21,6 +21,23 @@ enum ReminderPlan {
         return fireAt > now ? fireAt : nil
     }
 
+    /// When to chase whoever this strip is waiting on, or nil if there's no one to chase.
+    ///
+    /// Mirrors FollowUpScheduler.schedule: counted from when the waiting started, not from the
+    /// due date, because "I handed this over on Tuesday, nudge me on Friday" is what the field
+    /// means. Nil covers the same cases the reminder does — done, archived, already past — plus
+    /// the two halves this needs: someone to chase, and a date to count from.
+    static func followUpDate(for task: TaskItem, now: Date = .now) -> Date? {
+        guard !task.isDone, !task.isArchived,
+              !task.waitingOnName.trimmingCharacters(in: .whitespaces).isEmpty,
+              let since = task.waitingOnSince,
+              let days = task.waitingOnFollowUpDays
+        else { return nil }
+
+        let fireAt = since.addingTimeInterval(Double(days) * 24 * 60 * 60)
+        return fireAt > now ? fireAt : nil
+    }
+
     /// The strip that completing a repeating one should spawn, or nil if it doesn't repeat.
     ///
     /// A new strip rather than an edit in place, which is Android's choice and the right one: the

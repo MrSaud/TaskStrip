@@ -44,35 +44,64 @@ final class ReminderScheduler {
         return await center.notificationSettings().authorizationStatus == .denied
     }
 
-    /// Brings the system's idea of this strip's reminder in line with the strip.
+    /// Brings the system's idea of this strip's alarms in line with the strip.
     ///
     /// Always clears first, so this doubles as the cancel path: a strip that's been completed,
     /// archived, had its due date removed or its reminder switched off ends up with nothing
     /// pending, without the caller having to work out which case it's in.
+    /// Both of a strip's alarms in one call — the due-date reminder and the delegation follow-up.
+    ///
+    /// Together rather than separately because they're driven by the same edits: completing,
+    /// archiving, changing a due date or handing something over all change both answers, and a
+    /// caller that remembered one and forgot the other is exactly how the follow-up came to be
+    /// stored but never scheduled.
     func schedule(for task: TaskItem) {
-        let identifier = task.id.uuidString
-        center.removePendingNotificationRequests(withIdentifiers: [identifier])
+        post(
+            identifier: task.id.uuidString,
+            at: ReminderPlan.fireDate(for: task),
+            title: task.title,
+            body: body(for: task)
+        )
+        post(
+            identifier: Self.followUpIdentifier(forTaskID: task.id),
+            at: ReminderPlan.followUpDate(for: task),
+            title: "Follow up with \(task.waitingOnName)",
+            body: task.title.uppercased()
+        )
+    }
 
-        guard isEnabled, let fireAt = ReminderPlan.fireDate(for: task) else { return }
+    func cancel(taskID: UUID) {
+        center.removePendingNotificationRequests(
+            withIdentifiers: [taskID.uuidString, Self.followUpIdentifier(forTaskID: taskID)]
+        )
+    }
+
+    /// Namespaced for the same reason a standalone reminder's is: one flat namespace, and a strip
+    /// now has two alarms in it.
+    static func followUpIdentifier(forTaskID id: UUID) -> String {
+        "followup-\(id.uuidString)"
+    }
+
+    /// Always clears first, so passing a nil date is how anything gets cancelled.
+    private func post(identifier: String, at fireAt: Date?, title: String, body: String) {
+        center.removePendingNotificationRequests(withIdentifiers: [identifier])
+        guard isEnabled, let fireAt else { return }
 
         let content = UNMutableNotificationContent()
-        content.title = task.title
-        content.body = body(for: task)
+        content.title = title
+        content.body = body
         content.sound = .default
 
         let components = Calendar.current.dateComponents(
             [.year, .month, .day, .hour, .minute], from: fireAt
         )
-        let request = UNNotificationRequest(
-            identifier: identifier,
-            content: content,
-            trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        center.add(
+            UNNotificationRequest(
+                identifier: identifier,
+                content: content,
+                trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+            )
         )
-        center.add(request)
-    }
-
-    func cancel(taskID: UUID) {
-        center.removePendingNotificationRequests(withIdentifiers: [taskID.uuidString])
     }
 
     /// The same contract for a standalone reminder: always clears first, so this is the cancel

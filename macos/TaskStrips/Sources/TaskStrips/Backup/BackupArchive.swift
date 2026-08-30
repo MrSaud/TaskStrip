@@ -50,6 +50,9 @@ enum BackupArchive {
     static let manifestEntryName = "backup.json"
     /// Everything else in a backup lives behind this, at the path it had under filesDir.
     static let mediaPrefix = "media/"
+    /// Where the phone keeps its sketch notes, relative to the media root. Nothing in a backup's
+    /// manifest names these files — they belong to no strip — so they're recognised by path.
+    static let sketchesPrefix = "sketches/"
 
     /// Accepts either a backup `.zip` or a `backup.json` extracted from one by hand.
     static func manifestData(at url: URL) throws -> Data {

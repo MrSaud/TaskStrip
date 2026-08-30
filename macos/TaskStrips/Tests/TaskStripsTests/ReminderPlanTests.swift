@@ -134,4 +134,80 @@ final class ReminderPlanTests: XCTestCase {
             )
         }
     }
+
+    // MARK: - Chasing whoever the strip is waiting on
+
+    private func delegated(
+        since: Date?,
+        days: Int?,
+        name: String = "Travel desk",
+        done: Bool = false,
+        archived: Bool = false
+    ) -> TaskItem {
+        let task = TaskItem(title: "Visa application", orderIndex: 0)
+        task.waitingOnName = name
+        task.waitingOnSince = since
+        task.waitingOnFollowUpDays = days
+        task.isDone = done
+        task.isArchived = archived
+        return task
+    }
+
+    /// Counted from when the waiting started, not from a due date: "handed over Tuesday, nudge me
+    /// Friday" is what the field means.
+    func testTheFollowUpIsCountedFromWhenTheWaitingStarted() {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        let task = delegated(since: now, days: 3)
+
+        XCTAssertEqual(
+            ReminderPlan.followUpDate(for: task, now: now),
+            now.addingTimeInterval(3 * 24 * 60 * 60)
+        )
+    }
+
+    func testAFollowUpNeedsSomeoneToChaseAndADateToCountFrom() {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+
+        XCTAssertNil(ReminderPlan.followUpDate(for: delegated(since: nil, days: 3), now: now))
+        XCTAssertNil(ReminderPlan.followUpDate(for: delegated(since: now, days: nil), now: now))
+        XCTAssertNil(ReminderPlan.followUpDate(for: delegated(since: now, days: 3, name: ""), now: now))
+        XCTAssertNil(
+            ReminderPlan.followUpDate(for: delegated(since: now, days: 3, name: "   "), now: now),
+            "a name of spaces is nobody to chase"
+        )
+    }
+
+    func testAFinishedOrArchivedStripIsNotChased() {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        XCTAssertNil(ReminderPlan.followUpDate(for: delegated(since: now, days: 3, done: true), now: now))
+        XCTAssertNil(ReminderPlan.followUpDate(for: delegated(since: now, days: 3, archived: true), now: now))
+    }
+
+    /// An import arrives full of waiting that started weeks ago; none of it should announce
+    /// itself on arrival.
+    func testAFollowUpThatIsAlreadyOverdueDoesNotFire() {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        let task = delegated(since: now.addingTimeInterval(-10 * 24 * 60 * 60), days: 3)
+        XCTAssertNil(ReminderPlan.followUpDate(for: task, now: now))
+    }
+
+    /// The two alarms a strip can have are separate: waiting on someone says nothing about when
+    /// the work is due.
+    func testTheFollowUpIsIndependentOfTheDueDateReminder() {
+        let now = Date(timeIntervalSince1970: 1_780_000_000)
+        let task = delegated(since: now, days: 2)
+        task.dueAt = now.addingTimeInterval(30 * 24 * 60 * 60)
+        task.reminderMinutesBefore = 60
+
+        XCTAssertNotNil(ReminderPlan.followUpDate(for: task, now: now))
+        XCTAssertNotNil(ReminderPlan.fireDate(for: task, now: now))
+        XCTAssertNotEqual(ReminderPlan.followUpDate(for: task, now: now), ReminderPlan.fireDate(for: task, now: now))
+    }
+
+    /// Two alarms in one flat namespace, so they can't share an identifier.
+    func testAStripsTwoAlarmsAreNamedApart() {
+        let id = UUID()
+        XCTAssertNotEqual(ReminderScheduler.followUpIdentifier(forTaskID: id), id.uuidString)
+        XCTAssertTrue(ReminderScheduler.followUpIdentifier(forTaskID: id).contains(id.uuidString))
+    }
 }

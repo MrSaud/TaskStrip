@@ -53,7 +53,7 @@ MANIFEST = {
             "waitingOnName": "",
             "waitingOnSince": None,
             "waitingOnFollowUpDays": None,
-            "linkedSketchId": None,
+            "linkedSketchId": "note_1787000000000",
             "actionLog": [
                 {"text": "Booked appointment", "timestamp": 1787000000000},
                 {"text": "Paid fee", "timestamp": 1787600000000},
@@ -280,6 +280,9 @@ def main():
         (MANIFEST_NAME, manifest_bytes),
         (b"media/images/passport.jpg", b"\xff\xd8\xff\xe0 not a real jpeg " * 64),
         (b"media/images/form.jpg", b"\xff\xd8\xff\xe0 also not a jpeg " * 32),
+        # A sketch page: named by nothing in the manifest, which is the whole point — it belongs
+        # to no strip, so it has to be recognised by where it sits.
+        (b"media/sketches/note_1787000000000/page1.png", b"\x89PNG\r\n\x1a\n not a real png " * 16),
     ]
 
     for filename, zip64 in (("android_backup.zip", False), ("android_backup_zip64.zip", True)):
