@@ -40,6 +40,7 @@ final class BoardActions {
     var importBackup: () -> Void = {}
     var showArchived: () -> Void = {}
     var showNotes: () -> Void = {}
+    var showRollUp: (RollUp) -> Void = { _ in }
     var clearFilters: () -> Void = {}
     var setSortMode: (ProgressSort) -> Void = { _ in }
 
@@ -169,6 +170,15 @@ struct BoardCommandMenus: Commands {
 
             Button("Quick Notes…") { actions.showNotes() }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
+                .disabled(state == nil)
+
+            Divider()
+
+            Button("Standup Summary…") { actions.showRollUp(.standup) }
+                .keyboardShortcut("s", modifiers: [.command, .shift])
+                .disabled(state == nil)
+
+            Button("Tag Progress…") { actions.showRollUp(.tags) }
                 .disabled(state == nil)
         }
     }

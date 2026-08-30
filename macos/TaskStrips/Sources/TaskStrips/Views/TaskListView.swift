@@ -30,6 +30,7 @@ struct TaskListView: View {
     @State private var isPresentingNewTask = false
     @State private var showArchive = false
     @State private var showNotes = false
+    @State private var rollUp: RollUp?
     @State private var blockedAlertTask: TaskItem?
     @State private var importSummary: BackupImportSummary?
     @State private var importMessage: ImportMessage?
@@ -151,6 +152,13 @@ struct TaskListView: View {
                     )
                 }
             }
+            .sheet(item: $rollUp) { rollUp in
+                NavigationStack {
+                    // The board, not every strip: an archived strip is neither work done today
+                    // nor a blocker, which is how Android's roll-ups read it too.
+                    RollUpsView(showing: rollUp, tasks: activeTasks)
+                }
+            }
             .sheet(isPresented: $showNotes) {
                 NavigationStack {
                     NotesView(nextOrderIndex: nextOrderIndex)
@@ -223,6 +231,7 @@ struct TaskListView: View {
         actions.importBackup = { chooseBackupFile() }
         actions.showArchived = { showArchive = true }
         actions.showNotes = { showNotes = true }
+        actions.showRollUp = { rollUp = $0 }
         actions.clearFilters = { clearFilters() }
         actions.setSortMode = { sortMode = $0 }
 
@@ -400,6 +409,15 @@ struct TaskListView: View {
                     showNotes = true
                 } label: {
                     Label("Quick notes", systemImage: "note.text")
+                }
+            }
+            ToolbarItem(placement: .navigation) {
+                Menu {
+                    ForEach(RollUp.allCases) { item in
+                        Button(item.rawValue) { rollUp = item }
+                    }
+                } label: {
+                    Label("Roll-ups", systemImage: "chart.bar.doc.horizontal")
                 }
             }
             ToolbarItem {
