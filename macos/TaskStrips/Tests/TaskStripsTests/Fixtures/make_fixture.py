@@ -129,10 +129,40 @@ MANIFEST = {
         {"text": "Ideas", "createdAt": 1787600000000},
     ],
     "reminders": [{"label": "Standup", "at": 1788000000000}],
+    # Real StorageItemEntity shape. Paths are relative to Android's filesDir, exactly like a
+    # strip's attachment paths — images/form.jpg is in the archive, the other two are not, so the
+    # import has to cope with a library row whose bytes never made it in.
     "storageItems": [
-        {"path": "media/images/passport.jpg", "tags": ["travel"]},
-        {"path": "media/images/form.jpg", "tags": []},
-        {"path": "documents/checklist.pdf", "tags": []},
+        {
+            "name": "form.jpg",
+            "path": "images/form.jpg",
+            "type": "IMAGE",
+            "mimeType": "image/jpeg",
+            "sizeBytes": 928,
+            "tag": "",
+            "tagEmoji": "",
+            "createdAt": 1787700000000,
+        },
+        {
+            "name": "receipt.pdf",
+            "path": "documents/receipt.pdf",
+            "type": "DOCUMENT",
+            "mimeType": "application/pdf",
+            "sizeBytes": 20480,
+            "tag": "Receipt",
+            "tagEmoji": "\U0001f4b3",
+            "createdAt": 1787800000000,
+        },
+        {
+            "name": "clip.mp4",
+            "path": "videos/clip.mp4",
+            "type": "VIDEO",
+            "mimeType": "video/mp4",
+            "sizeBytes": 1048576,
+            "tag": "Travel",
+            "tagEmoji": "\u2708\ufe0f",
+            "createdAt": 1787900000000,
+        },
     ],
 }
 

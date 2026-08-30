@@ -46,7 +46,13 @@ struct AttachmentStore {
     }
 
     func url(for attachment: TaskAttachment) -> URL {
-        root.appending(path: attachment.path)
+        url(forRelativePath: attachment.path)
+    }
+
+    /// The library stores paths without an attachment around them, so both callers go through
+    /// the same place rather than each joining paths their own way.
+    func url(forRelativePath path: String) -> URL {
+        root.appending(path: path)
     }
 
     func exists(_ attachment: TaskAttachment) -> Bool {
@@ -95,11 +101,15 @@ struct AttachmentStore {
     /// Removes the file. Documents get their own folder, so that goes too rather than leaving an
     /// empty one behind.
     func remove(_ attachment: TaskAttachment) {
-        let file = url(for: attachment)
+        remove(relativePath: attachment.path, kind: attachment.kind)
+    }
+
+    func remove(relativePath: String, kind: AttachmentKind) {
+        let file = url(forRelativePath: relativePath)
         try? FileManager.default.removeItem(at: file)
-        if attachment.kind == .document {
+        if kind == .document {
             let folder = file.deletingLastPathComponent()
-            if folder != root, folder.lastPathComponent != attachment.kind.folder {
+            if folder != root, folder.lastPathComponent != kind.folder {
                 try? FileManager.default.removeItem(at: folder)
             }
         }

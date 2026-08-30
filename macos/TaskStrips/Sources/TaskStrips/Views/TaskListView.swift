@@ -19,6 +19,8 @@ struct TaskListView: View {
     /// Only needed so a Replace import knows what it's clearing — the notes sheet runs its own
     /// query.
     @Query private var allNotes: [Note]
+    /// Same reason as the notes above: a Replace import needs to know what it's clearing.
+    @Query private var allStorageItems: [StorageItem]
 
     @State private var searchText = ""
     @State private var tagFilter: String?
@@ -30,6 +32,7 @@ struct TaskListView: View {
     @State private var isPresentingNewTask = false
     @State private var showArchive = false
     @State private var showNotes = false
+    @State private var showStorage = false
     @State private var rollUp: RollUp?
     @State private var blockedAlertTask: TaskItem?
     @State private var importSummary: BackupImportSummary?
@@ -159,6 +162,11 @@ struct TaskListView: View {
                     RollUpsView(showing: rollUp, tasks: activeTasks)
                 }
             }
+            .sheet(isPresented: $showStorage) {
+                NavigationStack {
+                    StorageLibraryView()
+                }
+            }
             .sheet(isPresented: $showNotes) {
                 NavigationStack {
                     NotesView(nextOrderIndex: nextOrderIndex)
@@ -231,6 +239,7 @@ struct TaskListView: View {
         actions.importBackup = { chooseBackupFile() }
         actions.showArchived = { showArchive = true }
         actions.showNotes = { showNotes = true }
+        actions.showStorage = { showStorage = true }
         actions.showRollUp = { rollUp = $0 }
         actions.clearFilters = { clearFilters() }
         actions.setSortMode = { sortMode = $0 }
@@ -412,6 +421,13 @@ struct TaskListView: View {
                 }
             }
             ToolbarItem(placement: .navigation) {
+                Button {
+                    showStorage = true
+                } label: {
+                    Label("Storage library", systemImage: "tray.full")
+                }
+            }
+            ToolbarItem(placement: .navigation) {
                 Menu {
                     ForEach(RollUp.allCases) { item in
                         Button(item.rawValue) { rollUp = item }
@@ -562,7 +578,7 @@ struct TaskListView: View {
 
     private func performImport(_ summary: BackupImportSummary, mode: ImportMode) {
         let replaced = mode == .replace ? allTasks.count : 0
-        let referenced = summary.referencedAttachmentPaths
+        let referenced = summary.referencedMediaPaths
 
         // Files first: a strip that ends up pointing at nothing is better than files on disk that
         // nothing points at, and this is the step that can fail on its own.
@@ -592,6 +608,12 @@ struct TaskListView: View {
             existing: allNotes,
             context: modelContext
         )
+        let importedFiles = BackupImport.apply(
+            storageItems: summary.storageItems,
+            mode: mode,
+            existing: allStorageItems,
+            context: modelContext
+        )
         importSummary = nil
         ReminderScheduler.shared.sync(allTasks)
 
@@ -605,6 +627,9 @@ struct TaskListView: View {
                 : "Added \(imported) strip\(imported == 1 ? "" : "s") to the board."
             if importedNotes > 0 {
                 body += " \(importedNotes) quick note\(importedNotes == 1 ? "" : "s") came across too."
+            }
+            if importedFiles > 0 {
+                body += " \(importedFiles) file\(importedFiles == 1 ? "" : "s") joined the storage library."
             }
             if !referenced.isEmpty {
                 body += " Restored \(restored.count) of \(referenced.count) file\(referenced.count == 1 ? "" : "s")."

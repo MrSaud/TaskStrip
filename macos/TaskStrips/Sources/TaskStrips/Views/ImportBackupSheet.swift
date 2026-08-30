@@ -33,6 +33,10 @@ struct ImportBackupSheet: View {
                     Text("\(summary.notes.count) quick note\(summary.notes.count == 1 ? "" : "s") will come across too.")
                         .foregroundStyle(.secondary)
                 }
+                if !summary.storageItems.isEmpty {
+                    Text("\(summary.storageItems.count) file\(summary.storageItems.count == 1 ? "" : "s") in the storage library will come across too.")
+                        .foregroundStyle(.secondary)
+                }
             }
 
             if !notImported.isEmpty {
@@ -65,7 +69,7 @@ struct ImportBackupSheet: View {
                 Button("Add to Board") { onImport(.add) }
                     .keyboardShortcut(.defaultAction)
                     // A backup carrying only quick notes is still worth taking.
-                    .disabled(summary.tasks.isEmpty && summary.notes.isEmpty)
+                    .disabled(summary.tasks.isEmpty && summary.notes.isEmpty && summary.storageItems.isEmpty)
             }
         }
         .padding(20)

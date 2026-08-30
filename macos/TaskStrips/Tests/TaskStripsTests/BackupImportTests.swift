@@ -31,7 +31,7 @@ final class BackupImportTests: XCTestCase {
 
     private func makeContext() throws -> ModelContext {
         let container = try ModelContainer(
-            for: TaskItem.self, Note.self,
+            for: TaskItem.self, Note.self, StorageItem.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         return ModelContext(container)
@@ -43,6 +43,10 @@ final class BackupImportTests: XCTestCase {
 
     private func scratchpad(_ context: ModelContext) throws -> [Note] {
         try context.fetch(FetchDescriptor<Note>(sortBy: [SortDescriptor(\Note.createdAt)]))
+    }
+
+    private func library(_ context: ModelContext) throws -> [StorageItem] {
+        try context.fetch(FetchDescriptor<StorageItem>(sortBy: [SortDescriptor(\StorageItem.createdAt)]))
     }
 
     // MARK: - Parsing
@@ -93,7 +97,8 @@ final class BackupImportTests: XCTestCase {
         // Quick notes do come across now, so they're no longer on this list.
         XCTAssertNil(sections["notes"])
         XCTAssertEqual(sections["standalone reminders"], 1)
-        XCTAssertEqual(sections["storage items"], 3)
+        // The storage library comes across now, so it's no longer on this list either.
+        XCTAssertNil(sections["storage items"])
         // Empty sections aren't worth telling the user about.
         XCTAssertNil(sections["credentials"])
     }
@@ -424,5 +429,89 @@ final class BackupImportTests: XCTestCase {
         )
 
         XCTAssertEqual(try scratchpad(context).map(\.text), ["Packing list\n[ ] socks\n[x] adapter", "Ideas"])
+    }
+
+    // MARK: - The storage library
+
+    func testReadsTheStorageLibrary() throws {
+        let summary = try fixtureSummary()
+        XCTAssertEqual(summary.storageItems.map(\.name), ["form.jpg", "receipt.pdf", "clip.mp4"])
+        XCTAssertEqual(summary.storageItems.map(\.type), [.image, .document, .video])
+
+        let receipt = try XCTUnwrap(summary.storageItems.first { $0.name == "receipt.pdf" })
+        XCTAssertEqual(receipt.path, "documents/receipt.pdf")
+        XCTAssertEqual(receipt.mimeType, "application/pdf")
+        XCTAssertEqual(receipt.sizeBytes, 20_480)
+        XCTAssertEqual(receipt.tag, "Receipt")
+        XCTAssertEqual(receipt.tagEmoji, "💳")
+        XCTAssertEqual(receipt.createdAt, Date(timeIntervalSince1970: 1_787_800_000))
+    }
+
+    /// A row with no file behind it points at nothing that can be opened, tagged, or copied.
+    func testALibraryRowWithNoPathIsDropped() throws {
+        let manifest = Data(#"{"tasks":[],"storageItems":[{"name":"ghost.pdf"},{"name":"real.pdf","path":"documents/real.pdf"}]}"#.utf8)
+        let summary = try BackupImport.parse(manifest: manifest)
+        XCTAssertEqual(summary.storageItems.map(\.name), ["real.pdf"])
+    }
+
+    /// Older rows predate the type column, and a row from somewhere else may not carry one.
+    func testALibraryRowWithNoTypeIsCategorisedFromWhatItHas() throws {
+        let manifest = Data(#"{"tasks":[],"storageItems":[{"path":"images/holiday.jpg"},{"path":"documents/x","mimeType":"video/mp4"}]}"#.utf8)
+        let summary = try BackupImport.parse(manifest: manifest)
+        XCTAssertEqual(summary.storageItems.map(\.type), [.image, .video])
+        // A row with no name falls back to the file's own.
+        XCTAssertEqual(summary.storageItems.first?.name, "holiday.jpg")
+    }
+
+    /// The library's files belong to no strip, so nothing else would ask for them.
+    func testTheLibrarysFilesAreWorthPullingOutOfTheArchive() throws {
+        let summary = try fixtureSummary()
+        XCTAssertFalse(summary.referencedAttachmentPaths.contains("videos/clip.mp4"))
+        XCTAssertTrue(summary.referencedMediaPaths.contains("videos/clip.mp4"))
+        XCTAssertTrue(summary.referencedMediaPaths.contains("images/passport.jpg"))
+    }
+
+    func testRestoringPullsTheLibrarysFilesTooWhenTheArchiveHasThem() throws {
+        let store = try makeStore()
+        let restored = try BackupImport.restoreMedia(
+            fromArchiveAt: try fixtureURL(),
+            paths: try fixtureSummary().referencedMediaPaths,
+            into: store
+        )
+        // images/form.jpg is in the archive; the library's other two rows name files that aren't.
+        XCTAssertTrue(restored.contains("images/form.jpg"))
+        XCTAssertFalse(restored.contains("documents/receipt.pdf"))
+    }
+
+    func testAddingLibraryRowsKeepsTheOnesAlreadyThere() throws {
+        let context = try makeContext()
+        let existing = StorageItem(name: "mine.pdf", path: "documents/mine.pdf", type: .document,
+                                   createdAt: Date(timeIntervalSince1970: 1_000))
+        context.insert(existing)
+
+        BackupImport.apply(
+            storageItems: try fixtureSummary().storageItems,
+            mode: .add,
+            existing: [existing],
+            context: context
+        )
+
+        XCTAssertEqual(try library(context).count, 4)
+        XCTAssertEqual(try library(context).first?.name, "mine.pdf")
+    }
+
+    func testReplacingClearsTheLibraryFirst() throws {
+        let context = try makeContext()
+        let existing = StorageItem(name: "mine.pdf", path: "documents/mine.pdf", type: .document)
+        context.insert(existing)
+
+        BackupImport.apply(
+            storageItems: try fixtureSummary().storageItems,
+            mode: .replace,
+            existing: [existing],
+            context: context
+        )
+
+        XCTAssertEqual(try library(context).map(\.name), ["form.jpg", "receipt.pdf", "clip.mp4"])
     }
 }

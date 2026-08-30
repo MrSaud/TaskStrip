@@ -64,6 +64,19 @@ struct ImportedNote {
     var createdAt: Date = .now
 }
 
+/// One library row out of the backup. Same fields as StorageItemEntity, since the Mac keeps the
+/// library in the same shape.
+struct ImportedStorageItem {
+    var name: String = ""
+    var path: String = ""
+    var type: StorageItemType = .document
+    var mimeType: String = ""
+    var sizeBytes: Int = 0
+    var tag: String = ""
+    var tagEmoji: String = ""
+    var createdAt: Date = .now
+}
+
 /// What a backup holds, including the parts this app can't take yet, so the user is told rather
 /// than left to notice the gap themselves.
 struct BackupImportSummary: Identifiable {
@@ -74,14 +87,21 @@ struct BackupImportSummary: Identifiable {
     var version: Int = 0
     var tasks: [ImportedTask] = []
     var notes: [ImportedNote] = []
+    var storageItems: [ImportedStorageItem] = []
     var attachmentCount: Int = 0
     var reminderOnTaskCount: Int = 0
     /// Whole top-level sections of the backup with no Mac equivalent, e.g. "notes": 12.
     var skippedSections: [(name: String, count: Int)] = []
 
-    /// Every file path the strips reference, which is what `restoreMedia` goes looking for.
+    /// Every file path the strips reference.
     var referencedAttachmentPaths: Set<String> {
         Set(tasks.flatMap { $0.attachments.map(\.path) })
+    }
+
+    /// Everything worth pulling out of the archive: a strip's attachments plus the library's own
+    /// files, which belong to no strip and would otherwise be left behind.
+    var referencedMediaPaths: Set<String> {
+        referencedAttachmentPaths.union(storageItems.map(\.path))
     }
 }
 
@@ -96,7 +116,6 @@ enum BackupImport {
     private static let skippableSections: [(key: String, label: String)] = [
         ("reminders", "standalone reminders"),
         ("credentials", "credentials"),
-        ("storageItems", "storage items"),
     ]
 
     /// `timeZone` is only used for due dates — see `dueDate(fromAndroidWallClock:in:)` — and is a
@@ -116,6 +135,12 @@ enum BackupImport {
         summary.notes = (root["notes"] as? [Any] ?? [])
             .compactMap { $0 as? [String: Any] }
             .map { ImportedNote(text: stringValue($0, "text"), createdAt: dateValue($0, "createdAt") ?? .now) }
+        summary.storageItems = (root["storageItems"] as? [Any] ?? [])
+            .compactMap { $0 as? [String: Any] }
+            .map { storageItem(from: $0) }
+            // A library row with no file behind it points at nothing and can't be opened,
+            // tagged, or copied onto a strip.
+            .filter { !$0.path.isEmpty }
         summary.attachmentCount = summary.tasks.reduce(0) { $0 + $1.attachmentCount }
         summary.reminderOnTaskCount = summary.tasks.filter(\.hasReminder).count
         summary.skippedSections = skippableSections.compactMap { section -> (name: String, count: Int)? in
@@ -179,10 +204,60 @@ enum BackupImport {
         return task
     }
 
+    private static func storageItem(from object: [String: Any]) -> ImportedStorageItem {
+        var item = ImportedStorageItem()
+        item.path = stringValue(object, "path")
+        item.name = stringValue(object, "name")
+        if item.name.isEmpty { item.name = (item.path as NSString).lastPathComponent }
+        item.mimeType = stringValue(object, "mimeType")
+        // The stored category wins; the MIME type and then the extension only stand in for a row
+        // that predates it or came from somewhere else.
+        item.type = StorageItemType(rawValue: stringValue(object, "type"))
+            ?? StorageItemType.inferred(mimeType: item.mimeType, name: item.name)
+        item.sizeBytes = max(intValue(object, "sizeBytes") ?? 0, 0)
+        item.tag = stringValue(object, "tag")
+        item.tagEmoji = stringValue(object, "tagEmoji")
+        item.createdAt = dateValue(object, "createdAt") ?? .now
+        return item
+    }
+
+    /// Inserts the backup's library rows, returning how many landed.
+    ///
+    /// Whether the bytes are actually there is `restoreMedia`'s business — a row whose file the
+    /// archive didn't carry still comes across, the same way a strip keeps an attachment it can
+    /// no longer open.
+    @discardableResult
+    static func apply(
+        storageItems: [ImportedStorageItem],
+        mode: ImportMode,
+        existing: [StorageItem],
+        context: ModelContext
+    ) -> Int {
+        if mode == .replace {
+            for item in existing { context.delete(item) }
+        }
+        for imported in storageItems {
+            context.insert(
+                StorageItem(
+                    name: imported.name,
+                    path: imported.path,
+                    type: imported.type,
+                    mimeType: imported.mimeType,
+                    sizeBytes: imported.sizeBytes,
+                    tag: imported.tag,
+                    tagEmoji: imported.tagEmoji,
+                    createdAt: imported.createdAt
+                )
+            )
+        }
+        return storageItems.count
+    }
+
     /// Pulls the files the strips reference out of the archive and into the attachment store.
     ///
-    /// Only the referenced ones: an Android backup also carries sketches and storage-library
-    /// files, and there's nowhere to put those yet, so copying them would just grow the folder.
+    /// Only the referenced ones: `paths` is whatever the caller means to keep — a strip's
+    /// attachments and the library's files — and an Android backup also carries sketches, which
+    /// have nowhere to go yet, so copying those would just grow the folder.
     /// Returns the paths actually written — a backup can name a file whose bytes never made it
     /// into the zip, and the caller needs to know which.
     @discardableResult
