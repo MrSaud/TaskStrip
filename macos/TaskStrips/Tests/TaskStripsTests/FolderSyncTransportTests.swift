@@ -21,7 +21,7 @@ final class FolderSyncTransportTests: XCTestCase {
 
     private func record(_ id: String, _ text: String, at seconds: TimeInterval) -> SyncNoteRecord {
         SyncNoteRecord(
-            id: id, title: "", text: text,
+            id: id, text: text,
             updatedAt: Date(timeIntervalSince1970: seconds), isDeleted: false
         )
     }

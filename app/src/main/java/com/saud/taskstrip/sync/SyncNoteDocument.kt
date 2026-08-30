@@ -11,7 +11,7 @@ import org.json.JSONObject
  * Mac's is a SwiftData object, and neither means anything on the other machine. */
 data class SyncNoteRecord(
     val id: String,
-    val title: String = "",
+    /** The whole note. A synced note is one text with no title of its own. */
     val text: String = "",
     val updatedAt: Long = System.currentTimeMillis(),
     /** A deleted note stays in the document as a tombstone. Dropping the row instead would make a
@@ -19,11 +19,10 @@ data class SyncNoteRecord(
      * would come back from the dead on the next sync. */
     val isDeleted: Boolean = false
 ) {
-    /** What to call it in a list. Mirrors SyncNoteRecord.displayTitle on the Mac exactly. */
+    /** What to call it in a list: its first non-blank line. Mirrors SyncNoteRecord.displayTitle
+     * on the Mac exactly. */
     val displayTitle: String
         get() {
-            val trimmedTitle = title.trim()
-            if (trimmedTitle.isNotEmpty()) return trimmedTitle
             val line = text.lineSequence().firstOrNull { it.isNotBlank() }?.trim().orEmpty()
             if (line.isEmpty()) return "Untitled"
             return if (line.length <= 80) line else line.take(80)
@@ -42,7 +41,26 @@ data class SyncNoteRecord(
 object SyncNoteDocument {
     const val FILE_NAME = "sync_notes.json"
     const val MIME_TYPE = "application/json"
-    const val VERSION = 1
+
+    /** 2 dropped the per-note `title` in favour of one text whose first line names it.
+     *
+     * Nothing reads this number to decide how to parse — a v1 document parses correctly under
+     * these rules, because [fromJson] still folds a title it finds into the text, and a v2
+     * document parses correctly under v1's rules too, because a missing title simply falls back
+     * to the first line there as well. It is written so the file says which app wrote it. */
+    const val VERSION = 2
+
+    /** A note written before the title was dropped, as one text.
+     *
+     * The title becomes the first line, which is the position the name is now read from — so a
+     * note called "Groceries" is still called "Groceries" afterwards. Must stay byte-identical to
+     * foldLegacyTitle in SyncNoteDocument.swift: the two devices fold independently and have to
+     * land on the same string, or the merge sees two different texts and picks a winner forever. */
+    fun foldLegacyTitle(title: String, text: String): String = when {
+        title.isBlank() -> text
+        text.isBlank() -> title
+        else -> "$title\n$text"
+    }
 
     // ---- Reading and writing ----
 
@@ -52,7 +70,6 @@ object SyncNoteDocument {
             array.put(
                 JSONObject().apply {
                     put("id", note.id)
-                    put("title", note.title)
                     put("text", note.text)
                     put("updatedAt", note.updatedAt)
                     put("deleted", note.isDeleted)
@@ -78,8 +95,7 @@ object SyncNoteDocument {
             if (id.isNullOrEmpty()) return@mapNotNull null
             SyncNoteRecord(
                 id = id,
-                title = obj.optString("title", ""),
-                text = obj.optString("text", ""),
+                text = foldLegacyTitle(obj.optString("title", ""), obj.optString("text", "")),
                 updatedAt = obj.optLong("updatedAt", 0L),
                 isDeleted = obj.optBoolean("deleted", false)
             )
@@ -109,7 +125,6 @@ object SyncNoteDocument {
         if (a.updatedAt != b.updatedAt) return if (a.updatedAt > b.updatedAt) a else b
         if (a.isDeleted != b.isDeleted) return if (a.isDeleted) a else b
         if (a.text != b.text) return if (isGreater(a.text, b.text)) a else b
-        if (a.title != b.title) return if (isGreater(a.title, b.title)) a else b
         return a
     }
 

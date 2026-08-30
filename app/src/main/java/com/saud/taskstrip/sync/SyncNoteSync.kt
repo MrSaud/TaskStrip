@@ -76,7 +76,7 @@ object SyncNoteSync {
 }
 
 fun SyncNoteEntity.toRecord(): SyncNoteRecord =
-    SyncNoteRecord(id = id, title = title, text = text, updatedAt = updatedAt, isDeleted = isDeleted)
+    SyncNoteRecord(id = id, text = text, updatedAt = updatedAt, isDeleted = isDeleted)
 
 fun SyncNoteRecord.toEntity(): SyncNoteEntity =
-    SyncNoteEntity(id = id, title = title, text = text, updatedAt = updatedAt, isDeleted = isDeleted)
+    SyncNoteEntity(id = id, text = text, updatedAt = updatedAt, isDeleted = isDeleted)

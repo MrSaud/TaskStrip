@@ -200,9 +200,49 @@ val MIGRATION_23_24 = object : Migration(23, 24) {
     }
 }
 
+// A synced note is one text now, so its title column goes. SQLite only learned DROP COLUMN in
+// 3.35, which is newer than the SQLite on the oldest devices this app runs on (minSdk 26), so the
+// table is rebuilt instead — the portable way to do this, and what Room itself generates.
+//
+// The title is folded into the top of the text rather than dropped with the column. It was the
+// note's name, the new first-line rule reads a name from exactly that position, and a migration
+// that silently threw away the only name a note had would be a migration that loses data.
+val MIGRATION_24_25 = object : Migration(24, 25) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS sync_notes_new (" +
+                "id TEXT PRIMARY KEY NOT NULL, " +
+                "text TEXT NOT NULL DEFAULT '', " +
+                "updatedAt INTEGER NOT NULL, " +
+                "isDeleted INTEGER NOT NULL DEFAULT 0)"
+        )
+        // A folded row is stamped as edited now, and one that had no title keeps the timestamp it
+        // had. Without that stamp the fold would not survive contact with the Mac: the Mac drops
+        // its own titles in the same release and cannot fold them back (its store has no migration
+        // hook to read them from), so it arrives holding the same note, the same updatedAt and the
+        // shorter text — and the merge's byte tie-break happens to prefer that shorter text, which
+        // would hand the loss straight back to the phone. A real edit deserves a real timestamp
+        // anyway; this is one.
+        val now = System.currentTimeMillis()
+        db.execSQL(
+            "INSERT INTO sync_notes_new (id, text, updatedAt, isDeleted) " +
+                "SELECT id, " +
+                "CASE " +
+                "WHEN title = '' THEN text " +
+                "WHEN text = '' THEN title " +
+                "ELSE title || char(10) || text " +
+                "END, " +
+                "CASE WHEN title = '' THEN updatedAt ELSE $now END, " +
+                "isDeleted FROM sync_notes"
+        )
+        db.execSQL("DROP TABLE sync_notes")
+        db.execSQL("ALTER TABLE sync_notes_new RENAME TO sync_notes")
+    }
+}
+
 @Database(
     entities = [TaskEntity::class, CredentialEntity::class, NoteEntity::class, ReminderEntity::class, StorageItemEntity::class, SyncNoteEntity::class],
-    version = 24,
+    version = 25,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -225,7 +265,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "taskstrip.db"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25)
                     // Only reached for version jumps with no real user data behind them
                     // (e.g. a stale pre-v3 dev install) — every jump from here on gets a
                     // real Migration above instead, so saved tasks are never silently wiped.

@@ -1,5 +1,7 @@
 package com.saud.taskstrip.ui.screens
 
+import android.os.Build
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material3.AlertDialog
@@ -42,7 +45,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.saud.taskstrip.data.AppDatabase
@@ -71,6 +76,17 @@ fun SyncNotesScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val dao = remember { AppDatabase.getInstance(context).syncNoteDao() }
+    val clipboard = LocalClipboardManager.current
+
+    /** Copying is most of why a text is worth syncing at all — it arrives on this device to be
+     * pasted somewhere else on it. Android 13 and up shows its own confirmation for a copy, so
+     * a toast there would be the second thing to say so. */
+    fun copyToClipboard(text: String) {
+        clipboard.setText(AnnotatedString(text))
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+            Toast.makeText(context, "Copied", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     var notes by remember { mutableStateOf<List<SyncNoteEntity>>(emptyList()) }
     var editing by remember { mutableStateOf<SyncNoteEntity?>(null) }
@@ -191,6 +207,16 @@ fun SyncNotesScreen(onBack: () -> Unit) {
                                 )
                             }
                             Spacer(Modifier.width(8.dp))
+                            IconButton(
+                                onClick = { copyToClipboard(note.text) },
+                                enabled = note.text.isNotEmpty()
+                            ) {
+                                Icon(
+                                    Icons.Default.ContentCopy,
+                                    contentDescription = "Copy ${note.toRecord().displayTitle}",
+                                    tint = Paper.copy(alpha = if (note.text.isEmpty()) 0.25f else 0.6f)
+                                )
+                            }
                             IconButton(onClick = { deleting = note }) {
                                 Icon(
                                     Icons.Default.Delete,
@@ -208,14 +234,14 @@ fun SyncNotesScreen(onBack: () -> Unit) {
     editing?.let { note ->
         SyncNoteEditorDialog(
             note = note,
+            onCopy = ::copyToClipboard,
             onDismiss = { editing = null },
-            onSave = { title, text ->
+            onSave = { text ->
                 editing = null
                 scope.launch {
                     withContext(Dispatchers.IO) {
                         dao.upsert(
                             note.copy(
-                                title = title,
                                 text = text,
                                 updatedAt = System.currentTimeMillis(),
                                 isDeleted = false
@@ -243,7 +269,6 @@ fun SyncNotesScreen(onBack: () -> Unit) {
                         withContext(Dispatchers.IO) {
                             dao.upsert(
                                 note.copy(
-                                    title = "",
                                     text = "",
                                     isDeleted = true,
                                     updatedAt = System.currentTimeMillis()
@@ -260,38 +285,46 @@ fun SyncNotesScreen(onBack: () -> Unit) {
     }
 }
 
+/** One text and nothing else.
+ *
+ * There was a title field above this and it earned its keep nowhere: the list names a note by its
+ * first line whether or not a title was typed, so the field was a second place to write the same
+ * thing and a decision to make before writing anything at all. */
 @Composable
 private fun SyncNoteEditorDialog(
     note: SyncNoteEntity,
+    onCopy: (String) -> Unit,
     onDismiss: () -> Unit,
-    onSave: (String, String) -> Unit
+    onSave: (String) -> Unit
 ) {
-    var title by remember(note.id) { mutableStateOf(note.title) }
     var text by remember(note.id) { mutableStateOf(note.text) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("SYNCED NOTE", style = MaterialTheme.typography.titleMedium) },
-        text = {
-            Column {
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text("Title") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "SYNCED NOTE",
+                    style = MaterialTheme.typography.titleMedium,
+                    modifier = Modifier.weight(1f)
                 )
-                Spacer(Modifier.padding(4.dp))
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    label = { Text("Text") },
-                    minLines = 6,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                // Copies the draft rather than what was last saved, so what lands on the clipboard
+                // is what is on the screen.
+                IconButton(onClick = { onCopy(text) }, enabled = text.isNotEmpty()) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy note text")
+                }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(title, text) }) { Text("SAVE") } },
+        text = {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text("Text") },
+                minLines = 6,
+                modifier = Modifier.fillMaxWidth()
+            )
+        },
+        confirmButton = { TextButton(onClick = { onSave(text) }) { Text("SAVE") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("CANCEL") } }
     )
 }

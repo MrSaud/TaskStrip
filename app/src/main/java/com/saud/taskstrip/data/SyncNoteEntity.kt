@@ -15,7 +15,8 @@ import java.util.UUID
 @Entity(tableName = "sync_notes")
 data class SyncNoteEntity(
     @PrimaryKey val id: String = UUID.randomUUID().toString(),
-    val title: String = "",
+    /** The whole note. There is no separate title: a synced note is one text, and what a list
+     * needs to call it is its first line — see SyncNoteRecord.displayTitle. */
     val text: String = "",
     val updatedAt: Long = System.currentTimeMillis(),
     /** Kept as a tombstone so the delete can reach the other device. */

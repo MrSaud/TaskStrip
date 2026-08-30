@@ -12,7 +12,8 @@ final class SyncNote {
     /// The shared identity — see SyncNoteRecord. Not the SwiftData object id, which means nothing
     /// on a phone.
     @Attribute(.unique) var syncID: String
-    var title: String
+    /// The whole note. There is no separate title: a synced note is one text, and what a list
+    /// needs to call it is its first line — see `SyncNoteRecord.displayTitle`.
     var text: String
     var updatedAt: Date
     /// Kept as a tombstone until a sync has carried the delete, then it is nothing but a row that
@@ -21,24 +22,21 @@ final class SyncNote {
 
     init(
         syncID: String = UUID().uuidString,
-        title: String = "",
         text: String = "",
         updatedAt: Date = .now,
         isDeleted: Bool = false
     ) {
         self.syncID = syncID
-        self.title = title
         self.text = text
         self.updatedAt = updatedAt
         self.isDeleted = isDeleted
     }
 
     var record: SyncNoteRecord {
-        SyncNoteRecord(id: syncID, title: title, text: text, updatedAt: updatedAt, isDeleted: isDeleted)
+        SyncNoteRecord(id: syncID, text: text, updatedAt: updatedAt, isDeleted: isDeleted)
     }
 
     func apply(_ record: SyncNoteRecord) {
-        title = record.title
         text = record.text
         updatedAt = record.updatedAt
         isDeleted = record.isDeleted

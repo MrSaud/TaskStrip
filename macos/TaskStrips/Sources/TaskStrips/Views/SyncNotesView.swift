@@ -60,6 +60,8 @@ struct SyncNotesView: View {
                     }
                     .tag(note.syncID)
                     .contextMenu {
+                        Button("Copy") { copy(note.text) }
+                            .disabled(note.text.isEmpty)
                         Button("Delete", role: .destructive) { delete(note) }
                     }
                 }
@@ -163,6 +165,18 @@ struct SyncNotesView: View {
         }
         ToolbarItem {
             Button {
+                copy(selected?.text ?? "")
+            } label: {
+                Label("Copy Note", systemImage: "doc.on.doc")
+            }
+            .disabled(selected?.text.isEmpty ?? true)
+            // Not plain ⌘C, which belongs to whatever is selected in the text editor — this copies
+            // the whole note whether or not anything in it is selected, so it needs its own key.
+            .keyboardShortcut("c", modifiers: [.command, .shift])
+            .help("Copy the whole note (⇧⌘C)")
+        }
+        ToolbarItem {
+            Button {
                 Task { await syncNow(quietly: false) }
             } label: {
                 if isSyncing {
@@ -200,10 +214,17 @@ struct SyncNotesView: View {
     private func delete(_ note: SyncNote) {
         note.isDeleted = true
         note.text = ""
-        note.title = ""
         note.updatedAt = .now
         if selection == note.syncID { selection = nil }
         Task { await syncNow(quietly: true) }
+    }
+
+    /// Copying is most of why a text is worth syncing at all — it arrives on this machine to be
+    /// pasted somewhere else on it.
+    private func copy(_ text: String) {
+        guard !text.isEmpty else { return }
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
     }
 
     // MARK: - Syncing
@@ -293,7 +314,6 @@ struct SyncNotesView: View {
             } else {
                 let note = SyncNote(
                     syncID: record.id,
-                    title: record.title,
                     text: record.text,
                     updatedAt: record.updatedAt,
                     isDeleted: record.isDeleted
@@ -305,31 +325,25 @@ struct SyncNotesView: View {
     }
 }
 
-/// The text itself. Kept apart so its draft state belongs to one note and dies with it.
+/// The text itself, and all of it — a synced note has no title field.
+///
+/// There was one above this editor and it earned its keep nowhere: the list names a note by its
+/// first line whether or not a title was typed, so the field was a second place to write the same
+/// thing and a decision to make before writing anything at all.
+///
+/// Kept apart so its draft state belongs to one note and dies with it.
 private struct SyncNoteEditor: View {
     @Bindable var note: SyncNote
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            TextField("Title", text: Binding(
-                get: { note.title },
-                set: { note.title = $0; note.updatedAt = .now }
-            ))
-            .textFieldStyle(.plain)
-            .font(.title2)
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-            .accessibilityIdentifier("syncNoteTitle")
-
-            Divider().padding(.vertical, 12)
-
             TextEditor(text: Binding(
                 get: { note.text },
                 set: { note.text = $0; note.updatedAt = .now }
             ))
             .font(.body)
             .scrollContentBackground(.hidden)
-            .padding(.horizontal, 12)
+            .padding(12)
             .accessibilityIdentifier("syncNoteText")
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

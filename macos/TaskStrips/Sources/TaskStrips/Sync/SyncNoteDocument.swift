@@ -8,7 +8,7 @@ import Foundation
 /// the Mac's is a SwiftData object, and neither means anything on the other machine.
 struct SyncNoteRecord: Identifiable, Equatable {
     var id: String
-    var title: String
+    /// The whole note. A synced note is one text with no title of its own.
     var text: String
     var updatedAt: Date
     /// A deleted note stays in the document as a tombstone. Dropping the row instead would make a
@@ -16,11 +16,9 @@ struct SyncNoteRecord: Identifiable, Equatable {
     /// would come back from the dead on the next sync.
     var isDeleted: Bool
 
+    /// What to call it in a list: its first non-blank line, the same rule the quick-notes
+    /// scratchpad uses to name a strip it promotes.
     var displayTitle: String {
-        let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmed.isEmpty { return trimmed }
-        // Falls back to the first non-blank line, the same rule the quick-notes scratchpad uses
-        // to name a strip it promotes.
         let firstLine = text.split(separator: "\n").first { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         let line = firstLine.map(String.init)?.trimmingCharacters(in: .whitespaces) ?? ""
         if line.isEmpty { return "Untitled" }
@@ -38,7 +36,26 @@ struct SyncNoteRecord: Identifiable, Equatable {
 enum SyncNoteDocument {
     static let fileName = "sync_notes.json"
     static let mimeType = "application/json"
-    static let version = 1
+
+    /// 2 dropped the per-note `title` in favour of one text whose first line names it.
+    ///
+    /// Nothing reads this number to decide how to parse — a v1 document parses correctly under
+    /// these rules, because `notes(from:)` still folds a title it finds into the text, and a v2
+    /// document parses correctly under v1's rules too, because a missing title simply falls back
+    /// to the first line there as well. It is written so the file says which app wrote it.
+    static let version = 2
+
+    /// A note written before the title was dropped, as one text.
+    ///
+    /// The title becomes the first line, which is the position the name is now read from — so a
+    /// note called "Groceries" is still called "Groceries" afterwards. Must stay byte-identical to
+    /// `foldLegacyTitle` in SyncNoteDocument.kt: the two devices fold independently and have to
+    /// land on the same string, or the merge sees two different texts and picks a winner forever.
+    static func foldLegacyTitle(_ title: String, _ text: String) -> String {
+        if title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return text }
+        if text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return title }
+        return title + "\n" + text
+    }
 
     // MARK: - Reading and writing
 
@@ -48,7 +65,6 @@ enum SyncNoteDocument {
         let objects: [[String: Any]] = sorted(notes).map { note in
             [
                 "id": note.id,
-                "title": note.title,
                 "text": note.text,
                 "updatedAt": Int(note.updatedAt.timeIntervalSince1970 * 1000),
                 "deleted": note.isDeleted,
@@ -73,8 +89,10 @@ enum SyncNoteDocument {
             let millis = (object["updatedAt"] as? NSNumber)?.doubleValue ?? 0
             return SyncNoteRecord(
                 id: id,
-                title: object["title"] as? String ?? "",
-                text: object["text"] as? String ?? "",
+                text: foldLegacyTitle(
+                    object["title"] as? String ?? "",
+                    object["text"] as? String ?? ""
+                ),
                 updatedAt: Date(timeIntervalSince1970: millis / 1000),
                 isDeleted: object["deleted"] as? Bool ?? false
             )
@@ -103,7 +121,6 @@ enum SyncNoteDocument {
         if a.updatedAt != b.updatedAt { return a.updatedAt > b.updatedAt ? a : b }
         if a.isDeleted != b.isDeleted { return a.isDeleted ? a : b }
         if a.text != b.text { return isGreater(a.text, b.text) ? a : b }
-        if a.title != b.title { return isGreater(a.title, b.title) ? a : b }
         return a
     }
 

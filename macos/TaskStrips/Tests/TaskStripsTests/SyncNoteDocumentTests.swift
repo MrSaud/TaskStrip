@@ -7,14 +7,12 @@ final class SyncNoteDocumentTests: XCTestCase {
 
     private func note(
         _ id: String,
-        title: String = "",
         text: String = "",
         at seconds: TimeInterval,
         deleted: Bool = false
     ) -> SyncNoteRecord {
         SyncNoteRecord(
             id: id,
-            title: title,
             text: text,
             updatedAt: Date(timeIntervalSince1970: seconds),
             isDeleted: deleted
@@ -24,7 +22,7 @@ final class SyncNoteDocumentTests: XCTestCase {
     // MARK: - The file
 
     func testANoteSurvivesTheRoundTrip() throws {
-        let original = note("a", title: "Groceries", text: "milk\nbread", at: 1_787_000_000)
+        let original = note("a", text: "Groceries\nmilk\nbread", at: 1_787_000_000)
 
         let read = SyncNoteDocument.notes(from: try SyncNoteDocument.data(for: [original]))
 
@@ -39,7 +37,10 @@ final class SyncNoteDocumentTests: XCTestCase {
         let notes = try XCTUnwrap(root["notes"] as? [[String: Any]])
 
         XCTAssertEqual(notes[0]["updatedAt"] as? Int, 1_787_000_000_000)
-        XCTAssertEqual(root["version"] as? Int, 1)
+        // Written as a literal rather than as SyncNoteDocument.version, which would assert nothing:
+        // this is the number Kotlin also writes, and a change to it is a change both apps have to
+        // make together.
+        XCTAssertEqual(root["version"] as? Int, 2)
     }
 
     func testATombstoneIsWrittenOutAsOne() throws {
@@ -177,8 +178,45 @@ final class SyncNoteDocumentTests: XCTestCase {
         XCTAssertEqual(note("a", text: "\n\n  Buy milk\nand bread", at: 1).displayTitle, "Buy milk")
     }
 
-    func testATitleWinsOverTheText() {
-        XCTAssertEqual(note("a", title: "Shopping", text: "Buy milk", at: 1).displayTitle, "Shopping")
+    /// A document written before the title was dropped still has one, and the title was the note's
+    /// name — so it has to come back as the line that now carries the name, not be discarded.
+    func testALegacyTitleBecomesTheFirstLine() throws {
+        let legacy = Data(#"""
+        {"version": 1, "notes": [
+          {"id": "a", "title": "Shopping", "text": "Buy milk", "updatedAt": 1000, "deleted": false}
+        ]}
+        """#.utf8)
+
+        let read = SyncNoteDocument.notes(from: legacy)
+
+        XCTAssertEqual(read.map(\.text), ["Shopping\nBuy milk"])
+        XCTAssertEqual(read.first?.displayTitle, "Shopping")
+    }
+
+    /// The fold has to agree with Kotlin's on every shape, or the two devices hold different text
+    /// for the same note and the merge picks a winner between them forever.
+    func testFoldingALegacyTitleMatchesTheOtherApp() {
+        XCTAssertEqual(SyncNoteDocument.foldLegacyTitle("", "just text"), "just text")
+        XCTAssertEqual(SyncNoteDocument.foldLegacyTitle("   ", "just text"), "just text")
+        XCTAssertEqual(SyncNoteDocument.foldLegacyTitle("just a title", ""), "just a title")
+        XCTAssertEqual(SyncNoteDocument.foldLegacyTitle("just a title", "  "), "just a title")
+        XCTAssertEqual(SyncNoteDocument.foldLegacyTitle("Name", "Body"), "Name\nBody")
+        XCTAssertEqual(SyncNoteDocument.foldLegacyTitle("", ""), "")
+    }
+
+    /// A title the reader folded in must not reappear as a title when the document is written back
+    /// out, or every sync would fold it in again and the note would grow a copy of its own name.
+    func testAFoldedTitleIsNotWrittenBackAsATitle() throws {
+        let legacy = Data(#"""
+        {"version": 1, "notes": [
+          {"id": "a", "title": "Shopping", "text": "Buy milk", "updatedAt": 1000, "deleted": false}
+        ]}
+        """#.utf8)
+
+        let once = SyncNoteDocument.notes(from: legacy)
+        let twice = SyncNoteDocument.notes(from: try SyncNoteDocument.data(for: once))
+
+        XCTAssertEqual(twice, once)
     }
 
     func testANoteWithNothingInItIsStillCalledSomething() {
