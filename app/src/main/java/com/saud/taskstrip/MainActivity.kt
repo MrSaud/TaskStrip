@@ -44,6 +44,7 @@ import com.saud.taskstrip.ui.screens.CredentialEditScreen
 import com.saud.taskstrip.ui.screens.CredentialsScreen
 import com.saud.taskstrip.ui.screens.HomeScreen
 import com.saud.taskstrip.ui.screens.NotesScreen
+import com.saud.taskstrip.ui.screens.SyncNotesScreen
 import com.saud.taskstrip.ui.screens.ReminderEditScreen
 import com.saud.taskstrip.ui.screens.RemindersScreen
 import com.saud.taskstrip.ui.screens.ShareStorageScreen
@@ -263,7 +264,8 @@ class MainActivity : FragmentActivity() {
                                 reminderViewModel.setPendingText(spoken)
                                 navController.navigate("reminder-editor/-1")
                             },
-                            onStorageClick = { navController.navigate("storage") }
+                            onStorageClick = { navController.navigate("storage") },
+                            onSyncNotesClick = { navController.navigate("sync-notes") }
                         )
                     }
                     composable("storage") {
@@ -314,6 +316,9 @@ class MainActivity : FragmentActivity() {
                             viewModel = viewModel,
                             onBack = { navController.popBackStack() }
                         )
+                    }
+                    composable("sync-notes") {
+                        SyncNotesScreen(onBack = { navController.popBackStack() })
                     }
                     composable("notes") {
                         NotesScreen(

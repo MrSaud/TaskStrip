@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudUpload
@@ -136,7 +137,8 @@ fun HomeScreen(
     onRemindersClick: () -> Unit,
     onNewReminderClick: () -> Unit,
     onNewReminderByVoice: (String) -> Unit,
-    onStorageClick: () -> Unit
+    onStorageClick: () -> Unit,
+    onSyncNotesClick: () -> Unit = {}
 ) {
     val tasks by viewModel.tasks.collectAsStateWithLifecycle()
     val quote by viewModel.quote.collectAsStateWithLifecycle()
@@ -426,6 +428,14 @@ fun HomeScreen(
                                 onClick = {
                                     menuExpanded = false
                                     onStorageClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("SYNC NOTES") },
+                                leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    onSyncNotesClick()
                                 }
                             )
                             DropdownMenuItem(

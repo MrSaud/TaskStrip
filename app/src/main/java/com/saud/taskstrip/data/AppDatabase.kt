@@ -185,9 +185,24 @@ val MIGRATION_22_23 = object : Migration(22, 23) {
     }
 }
 
+val MIGRATION_23_24 = object : Migration(23, 24) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // The id is the shared UUID rather than an autoincrementing key: it has to mean the same
+        // note on the Mac, which is the whole point of the table.
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS sync_notes (" +
+                "id TEXT PRIMARY KEY NOT NULL, " +
+                "title TEXT NOT NULL DEFAULT '', " +
+                "text TEXT NOT NULL DEFAULT '', " +
+                "updatedAt INTEGER NOT NULL, " +
+                "isDeleted INTEGER NOT NULL DEFAULT 0)"
+        )
+    }
+}
+
 @Database(
-    entities = [TaskEntity::class, CredentialEntity::class, NoteEntity::class, ReminderEntity::class, StorageItemEntity::class],
-    version = 23,
+    entities = [TaskEntity::class, CredentialEntity::class, NoteEntity::class, ReminderEntity::class, StorageItemEntity::class, SyncNoteEntity::class],
+    version = 24,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -197,6 +212,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
     abstract fun reminderDao(): ReminderDao
     abstract fun storageItemDao(): StorageItemDao
+    abstract fun syncNoteDao(): SyncNoteDao
 
     companion object {
         @Volatile
@@ -209,7 +225,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "taskstrip.db"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24)
                     // Only reached for version jumps with no real user data behind them
                     // (e.g. a stale pre-v3 dev install) — every jump from here on gets a
                     // real Migration above instead, so saved tasks are never silently wiped.

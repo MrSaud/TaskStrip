@@ -120,6 +120,90 @@ object DriveApi {
             }.getOrDefault(false)
         }
 
+    /** One named file inside the folder. The sync document is addressed by name because both apps
+     * have to find the same file without either having been told its Drive id. */
+    suspend fun findFile(accessToken: String, folderId: String, name: String): String? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val query = URLEncoder.encode(
+                    "name='$name' and '$folderId' in parents and trashed=false", "UTF-8"
+                )
+                val url = "$BASE/files?q=$query&spaces=drive&fields=files(id,name)"
+                val connection = connection(url, accessToken, "GET")
+                val body = connection.inputStream.bufferedReader().use { it.readText() }
+                connection.disconnect()
+                val files = JSONObject(body).getJSONArray("files")
+                if (files.length() == 0) null else files.getJSONObject(0).getString("id")
+            }.getOrNull()
+        }
+
+    suspend fun downloadText(accessToken: String, fileId: String): String? =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val connection = connection("$BASE/files/$fileId?alt=media", accessToken, "GET")
+                val body = connection.inputStream.bufferedReader().use { it.readText() }
+                connection.disconnect()
+                body
+            }.getOrNull()
+        }
+
+    /** Creates the file and returns its id. */
+    suspend fun uploadText(
+        accessToken: String,
+        folderId: String,
+        fileName: String,
+        contents: String,
+        mimeType: String
+    ): String? = withContext(Dispatchers.IO) {
+        runCatching {
+            val boundary = "taskstrip-${UUID.randomUUID()}"
+            val metadata = JSONObject().apply {
+                put("name", fileName)
+                put("parents", org.json.JSONArray().put(folderId))
+            }
+            val connection = connection("$UPLOAD_BASE/files?uploadType=multipart&fields=id", accessToken, "POST")
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "multipart/related; boundary=$boundary")
+            connection.outputStream.use { out ->
+                out.write("--$boundary\r\n".toByteArray())
+                out.write("Content-Type: application/json; charset=UTF-8\r\n\r\n".toByteArray())
+                out.write(metadata.toString().toByteArray())
+                out.write("\r\n--$boundary\r\n".toByteArray())
+                out.write("Content-Type: $mimeType; charset=UTF-8\r\n\r\n".toByteArray())
+                out.write(contents.toByteArray(Charsets.UTF_8))
+                out.write("\r\n--$boundary--".toByteArray())
+            }
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            connection.disconnect()
+            JSONObject(body).getString("id")
+        }.getOrNull()
+    }
+
+    /** Replaces a file's contents, keeping its id. A delete-and-recreate would do the same job
+     * until two devices did it at once, and then there would be two sync documents and no way to
+     * say which is the real one. */
+    suspend fun replaceText(
+        accessToken: String,
+        fileId: String,
+        contents: String,
+        mimeType: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            // POST with an override header, not PATCH: HttpURLConnection rejects PATCH outright
+            // with a ProtocolException, and runCatching would have turned that into a silent
+            // "push failed" that looked exactly like a network problem. Google's APIs honour
+            // X-HTTP-Method-Override for precisely this reason.
+            val connection = connection("$UPLOAD_BASE/files/$fileId?uploadType=media", accessToken, "POST")
+            connection.setRequestProperty("X-HTTP-Method-Override", "PATCH")
+            connection.doOutput = true
+            connection.setRequestProperty("Content-Type", "$mimeType; charset=UTF-8")
+            connection.outputStream.use { it.write(contents.toByteArray(Charsets.UTF_8)) }
+            val code = connection.responseCode
+            connection.disconnect()
+            code in 200..299
+        }.getOrDefault(false)
+    }
+
     suspend fun deleteBackup(accessToken: String, fileId: String): Boolean = withContext(Dispatchers.IO) {
         runCatching {
             val connection = connection("$BASE/files/$fileId", accessToken, "DELETE")

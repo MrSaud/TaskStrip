@@ -1,0 +1,45 @@
+name: Android app
+
+# The Android app had no CI at all until the sync notes landed, which meant every Kotlin change in
+# this repo was shipped uncompiled — the Mac half was checked on every push and the phone half was
+# checked by installing it and finding out. This at least compiles it.
+on:
+  push:
+    branches: ["claude/**"]
+    paths:
+      - "app/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle/**"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "app/**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # assembleDebug rather than `build`: it compiles every source file and runs the Room
+      # annotation processor, which is where a bad migration or a missing DAO shows up. There is
+      # no unit-test source set yet, so `test` would pass by having nothing to run.
+      - name: Build
+        run: ./gradlew --no-daemon assembleDebug
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TaskStrip-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn

@@ -102,8 +102,20 @@ enum SyncNoteDocument {
     static func winner(_ a: SyncNoteRecord, _ b: SyncNoteRecord) -> SyncNoteRecord {
         if a.updatedAt != b.updatedAt { return a.updatedAt > b.updatedAt ? a : b }
         if a.isDeleted != b.isDeleted { return a.isDeleted ? a : b }
-        if a.text != b.text { return a.text > b.text ? a : b }
-        return a.title >= b.title ? a : b
+        if a.text != b.text { return isGreater(a.text, b.text) ? a : b }
+        if a.title != b.title { return isGreater(a.title, b.title) ? a : b }
+        return a
+    }
+
+    /// Compares UTF-8 bytes, not Swift strings.
+    ///
+    /// `>` on a Swift String orders grapheme clusters under canonical equivalence; Kotlin's orders
+    /// UTF-16 code units. For ASCII they agree and for Arabic they need not — and a tie-break the
+    /// two platforms disagree about is worse than no tie-break at all, because the devices would
+    /// hand each other opposite answers forever. Bytes are the one ordering both can compute the
+    /// same way without either having to imitate the other's string semantics.
+    static func isGreater(_ a: String, _ b: String) -> Bool {
+        Array(b.utf8).lexicographicallyPrecedes(Array(a.utf8))
     }
 
     /// Newest first, and by id where the times match, so the file's bytes don't churn between
