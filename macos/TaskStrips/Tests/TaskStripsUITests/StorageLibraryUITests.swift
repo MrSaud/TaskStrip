@@ -27,11 +27,11 @@ final class StorageLibraryUITests: XCTestCase {
             app.staticTexts[UITestSupport.libraryFile].waitForExistence(timeout: UITestSupport.timeout),
             "the seeded file should be on the shelf"
         )
-        app.buttons["Done"].click()
+        app.windowButton("Done").click()
     }
 
     func testTheToolbarOpensTheLibraryToo() {
-        let button = app.buttons["Storage library"]
+        let button = app.windowButton("Storage library")
         XCTAssertTrue(button.waitForExistence(timeout: UITestSupport.timeout), "no storage button on the toolbar")
         button.click()
 
@@ -39,7 +39,7 @@ final class StorageLibraryUITests: XCTestCase {
             app.staticTexts[UITestSupport.libraryFile].waitForExistence(timeout: UITestSupport.timeout),
             "the toolbar button should open the same library"
         )
-        app.buttons["Done"].click()
+        app.windowButton("Done").click()
     }
 
     /// The point of the library: a file put there once ends up on a strip without going near the
@@ -47,7 +47,7 @@ final class StorageLibraryUITests: XCTestCase {
     func testAFileCanBeTakenFromTheLibraryOntoAStrip() {
         app.stripRow(titled: UITestSupport.strips[0]).doubleClick()
 
-        let addFromLibrary = app.buttons["Add from Library…"]
+        let addFromLibrary = app.windowButton("Add from Library…")
         XCTAssertTrue(
             addFromLibrary.waitForExistence(timeout: UITestSupport.timeout),
             "the editor's attachments section should offer the library"
@@ -57,7 +57,7 @@ final class StorageLibraryUITests: XCTestCase {
         let row = app.staticTexts[UITestSupport.libraryFile]
         XCTAssertTrue(row.waitForExistence(timeout: UITestSupport.timeout), "the picker never listed the seeded file")
         row.click()
-        app.buttons["Add 1"].click()
+        app.windowButton("Add 1").click()
 
         // The strip's own summary of what's attached, which only counts what it actually holds.
         XCTAssertTrue(

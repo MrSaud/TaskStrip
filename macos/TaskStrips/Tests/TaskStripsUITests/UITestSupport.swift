@@ -43,6 +43,15 @@ extension XCUIApplication {
         return windows.buttons[title].firstMatch
     }
 
+    /// Scoped for the same reason `confirmationButton` is: macOS mirrors buttons onto the Touch
+    /// Bar, so an app-wide lookup can match the same button twice and fail with "multiple
+    /// matching elements" before it ever gets as far as clicking.
+    func windowButton(_ title: String) -> XCUIElement {
+        let inSheet = sheets.buttons[title].firstMatch
+        if inSheet.exists { return inSheet }
+        return windows.buttons[title].firstMatch
+    }
+
     // MARK: - The board
 
     /// Rows show their title uppercased — see TaskRowView.
