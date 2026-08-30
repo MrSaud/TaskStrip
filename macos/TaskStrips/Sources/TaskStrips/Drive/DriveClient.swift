@@ -32,6 +32,9 @@ struct URLSessionTransport: DriveTransport {
 
 /// Talks to Drive's REST API, mirroring DriveApi.kt: one folder named TaskStripBackups, holding
 /// the backup zips, newest first.
+///
+/// The same folder the phone writes to, and reachable from here for the reason recorded on
+/// GoogleOAuth: drive.file is scoped to the Cloud project, so both apps count as one app.
 struct DriveClient {
     static let folderName = "TaskStripBackups"
     static let folderMimeType = "application/vnd.google-apps.folder"

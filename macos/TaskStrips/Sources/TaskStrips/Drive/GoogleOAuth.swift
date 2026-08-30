@@ -12,6 +12,13 @@ import Foundation
 /// No client secret. An OAuth client of type iOS (which covers macOS bundle ids) doesn't issue
 /// one, and a secret shipped inside an app isn't secret anyway; PKCE is what actually protects
 /// the exchange.
+///
+/// One thing worth recording, because Google's documentation doesn't spell it out and getting it
+/// wrong fails silently: `drive.file` grants access per Cloud **project**, not per client id. A
+/// macOS client created alongside the phone's Android client in the same project sees the backups
+/// the phone wrote; a client in a *new* project would sign in perfectly and then show an empty
+/// folder, with nothing anywhere to say why. Confirmed against a real account rather than
+/// inferred — the Mac lists the phone's backups.
 enum GoogleOAuth {
     static let scope = "https://www.googleapis.com/auth/drive.file"
     static let authorizationEndpoint = URL(string: "https://accounts.google.com/o/oauth2/v2/auth")!
