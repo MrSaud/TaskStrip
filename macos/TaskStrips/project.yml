@@ -18,6 +18,8 @@ targets:
         excludes:
           # Generator for the icon set, not something to ship inside the bundle.
           - "Assets.xcassets/make_icon.py"
+          # Signed in, not copied in.
+          - "TaskStrips.entitlements"
     info:
       path: Sources/TaskStrips/Info.plist
       properties:
@@ -32,6 +34,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.saud.taskstrip.mac
         PRODUCT_NAME: TaskStrips
+        # The hardened runtime keeps the microphone shut unless the app is signed with this, and
+        # the failure is silent: recording just produces nothing.
+        CODE_SIGN_ENTITLEMENTS: Sources/TaskStrips/TaskStrips.entitlements
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: true
         MARKETING_VERSION: "0.1"

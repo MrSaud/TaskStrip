@@ -24,5 +24,7 @@
 	<string>public.app-category.productivity</string>
 	<key>NSHumanReadableCopyright</key>
 	<string></string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Task Strips records voice notes onto a strip. Nothing is recorded until you press Record, and the audio stays on this Mac.</string>
 </dict>
 </plist>

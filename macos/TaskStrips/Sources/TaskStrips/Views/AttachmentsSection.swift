@@ -18,6 +18,7 @@ struct AttachmentsSection: View {
 
     @State private var failure: String?
     @State private var isPickingFromLibrary = false
+    @StateObject private var recorder = VoiceRecorder()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -41,6 +42,21 @@ struct AttachmentsSection: View {
                     isPickingFromLibrary = true
                 } label: {
                     Label("Add from Library…", systemImage: "tray.full")
+                }
+                if recorder.isRecording {
+                    Button {
+                        stopRecording()
+                    } label: {
+                        Label("Stop \(AudioDuration.formatted(recorder.elapsed))", systemImage: "stop.circle.fill")
+                    }
+                    .tint(TaskStripTheme.urgent)
+                    Button("Discard") { recorder.cancel() }
+                } else {
+                    Button {
+                        startRecording()
+                    } label: {
+                        Label("Record", systemImage: "mic")
+                    }
                 }
                 Spacer()
                 if !attachments.isEmpty {
@@ -80,6 +96,10 @@ struct AttachmentsSection: View {
                     .truncationMode(.middle)
                 HStack(spacing: 6) {
                     Text(attachment.kind.label)
+                    if attachment.kind == .voiceNote,
+                       let duration = AudioDuration.formatted(of: store.url(for: attachment)) {
+                        Text(duration)
+                    }
                     if !store.exists(attachment) {
                         // An imported backup can name a file the zip didn't carry, and a store
                         // can be moved out from under the app. Better to say so than to show a
@@ -151,6 +171,35 @@ struct AttachmentsSection: View {
         failure = problems.isEmpty
             ? nil
             : "Couldn't copy \(problems.joined(separator: ", ")) from storage."
+    }
+
+    private func startRecording() {
+        Task {
+            do {
+                failure = nil
+                try await recorder.start()
+            } catch {
+                failure = error.localizedDescription
+            }
+        }
+    }
+
+    /// A finished recording joins the strip by exactly the same road a picked file takes, so
+    /// cancelling the sheet cleans it up like anything else.
+    private func stopRecording() {
+        guard let url = recorder.stop() else {
+            failure = "That recording came out empty, so nothing was attached."
+            return
+        }
+        do {
+            let attachment = try store.add(contentsOf: url, kind: .voiceNote)
+            attachments.append(attachment)
+            onAdded(attachment)
+            // The store keeps its own copy; the temporary one has done its job.
+            try? FileManager.default.removeItem(at: url)
+        } catch {
+            failure = error.localizedDescription
+        }
     }
 
     private func pickFiles() {
