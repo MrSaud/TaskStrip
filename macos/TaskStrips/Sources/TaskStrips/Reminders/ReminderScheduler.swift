@@ -34,6 +34,16 @@ final class ReminderScheduler {
         }
     }
 
+    /// Whether the system will refuse whatever we schedule.
+    ///
+    /// Asked rather than assumed: a reminder that was set up months ago goes quiet if
+    /// notifications are later turned off in System Settings, and nothing in the app would
+    /// otherwise say so.
+    func isDenied() async -> Bool {
+        guard isEnabled else { return false }
+        return await center.notificationSettings().authorizationStatus == .denied
+    }
+
     /// Brings the system's idea of this strip's reminder in line with the strip.
     ///
     /// Always clears first, so this doubles as the cancel path: a strip that's been completed,
@@ -65,6 +75,39 @@ final class ReminderScheduler {
         center.removePendingNotificationRequests(withIdentifiers: [taskID.uuidString])
     }
 
+    /// The same contract for a standalone reminder: always clears first, so this is the cancel
+    /// path too. Its identifier is namespaced because a strip and a reminder are different things
+    /// that both have a uuid, and the system's identifiers are one flat namespace.
+    func schedule(for reminder: Reminder) {
+        let identifier = Self.identifier(forReminderID: reminder.id)
+        center.removePendingNotificationRequests(withIdentifiers: [identifier])
+
+        guard isEnabled, let fireAt = ReminderSchedule.fireDate(for: reminder) else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = reminder.text
+        content.body = body(for: reminder)
+        content.sound = .default
+
+        let components = Calendar.current.dateComponents(
+            [.year, .month, .day, .hour, .minute], from: fireAt
+        )
+        let request = UNNotificationRequest(
+            identifier: identifier,
+            content: content,
+            trigger: UNCalendarNotificationTrigger(dateMatching: components, repeats: false)
+        )
+        center.add(request)
+    }
+
+    func cancel(reminderID: UUID) {
+        center.removePendingNotificationRequests(withIdentifiers: [Self.identifier(forReminderID: reminderID)])
+    }
+
+    static func identifier(forReminderID id: UUID) -> String {
+        "reminder-\(id.uuidString)"
+    }
+
     /// Reconciles everything at launch, and after an import.
     ///
     /// Pending notifications live in the system, not the store, so the two drift apart whenever
@@ -74,6 +117,31 @@ final class ReminderScheduler {
     func sync(_ tasks: [TaskItem]) {
         guard isEnabled else { return }
         for task in tasks { schedule(for: task) }
+    }
+
+    /// Same reconciliation for standalone reminders, plus the one thing they need that strips
+    /// don't: a repeating reminder whose moment passed while the app was shut is moved on to its
+    /// next occurrence first. Returns whether anything moved, so the caller knows to save.
+    @discardableResult
+    func sync(_ reminders: [Reminder], now: Date = .now) -> Bool {
+        var moved = false
+        for reminder in reminders {
+            if let next = ReminderSchedule.rolledForward(reminder, now: now) {
+                reminder.triggerAt = next
+                moved = true
+            }
+            schedule(for: reminder)
+        }
+        return moved
+    }
+
+    private func body(for reminder: Reminder) -> String {
+        var parts: [String] = []
+        if !reminder.details.isEmpty { parts.append(reminder.details) }
+        if reminder.isTagged { parts.append(reminder.tagLabel) }
+        return parts.isEmpty
+            ? reminder.triggerAt.formatted(date: .abbreviated, time: .shortened)
+            : parts.joined(separator: " · ")
     }
 
     private func body(for task: TaskItem) -> String {

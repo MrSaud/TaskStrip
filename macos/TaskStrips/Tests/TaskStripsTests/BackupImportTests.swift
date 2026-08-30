@@ -31,7 +31,7 @@ final class BackupImportTests: XCTestCase {
 
     private func makeContext() throws -> ModelContext {
         let container = try ModelContainer(
-            for: TaskItem.self, Note.self, StorageItem.self,
+            for: TaskItem.self, Note.self, StorageItem.self, Reminder.self,
             configurations: ModelConfiguration(isStoredInMemoryOnly: true)
         )
         return ModelContext(container)
@@ -47,6 +47,10 @@ final class BackupImportTests: XCTestCase {
 
     private func library(_ context: ModelContext) throws -> [StorageItem] {
         try context.fetch(FetchDescriptor<StorageItem>(sortBy: [SortDescriptor(\StorageItem.createdAt)]))
+    }
+
+    private func reminders(_ context: ModelContext) throws -> [Reminder] {
+        try context.fetch(FetchDescriptor<Reminder>(sortBy: [SortDescriptor(\Reminder.triggerAt)]))
     }
 
     // MARK: - Parsing
@@ -96,8 +100,9 @@ final class BackupImportTests: XCTestCase {
         let sections = Dictionary(uniqueKeysWithValues: summary.skippedSections.map { ($0.name, $0.count) })
         // Quick notes do come across now, so they're no longer on this list.
         XCTAssertNil(sections["notes"])
-        XCTAssertEqual(sections["standalone reminders"], 1)
-        // The storage library comes across now, so it's no longer on this list either.
+        // Notes, the storage library and the standalone reminders all come across now — only
+        // credentials are still dropped, and the fixture has none.
+        XCTAssertNil(sections["standalone reminders"])
         XCTAssertNil(sections["storage items"])
         // Empty sections aren't worth telling the user about.
         XCTAssertNil(sections["credentials"])
@@ -513,5 +518,93 @@ final class BackupImportTests: XCTestCase {
         )
 
         XCTAssertEqual(try library(context).map(\.name), ["form.jpg", "receipt.pdf", "clip.mp4"])
+    }
+
+    // MARK: - Standalone reminders
+
+    func testReadsTheStandaloneReminders() throws {
+        let summary = try fixtureSummary()
+        XCTAssertEqual(summary.reminders.map(\.text), ["Renew the car registration", "Dentist"])
+
+        let registration = try XCTUnwrap(summary.reminders.first)
+        XCTAssertEqual(registration.details, "Istimara expires this month")
+        XCTAssertEqual(registration.leadMinutesBefore, 1440)
+        XCTAssertEqual(registration.repeatAmount, 1)
+        XCTAssertEqual(registration.repeatUnit, .yearly)
+        XCTAssertEqual(registration.tag, "Documents")
+        XCTAssertEqual(registration.tagEmoji, "📄")
+        XCTAssertFalse(registration.isDone)
+        // createdAt is a real instant, unlike triggerAt below.
+        XCTAssertEqual(registration.createdAt, Date(timeIntervalSince1970: 1_787_000_000))
+    }
+
+    /// triggerAt is the other UTC-pinned wall clock in this format. Read as an instant it would
+    /// drift by the local offset, which is the bug 0718633 fixed for due dates.
+    func testAReminderKeepsTheWallClockItWasSetFor() throws {
+        let riyadh = try XCTUnwrap(TimeZone(identifier: "Asia/Riyadh"))
+        let manifest = try BackupArchive.manifestData(inArchive: Data(contentsOf: try fixtureURL()))
+        let summary = try BackupImport.parse(manifest: manifest, timeZone: riyadh)
+
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC") ?? .gmt
+        let expected = utc.dateComponents(
+            [.year, .month, .day, .hour, .minute],
+            from: Date(timeIntervalSince1970: 1_788_000_000)
+        )
+
+        var local = Calendar(identifier: .gregorian)
+        local.timeZone = riyadh
+        let actual = local.dateComponents(
+            [.year, .month, .day, .hour, .minute],
+            from: try XCTUnwrap(summary.reminders.first).triggerAt
+        )
+        XCTAssertEqual(actual, expected)
+    }
+
+    func testAReminderWithNoRepeatComesAcrossAsOneShot() throws {
+        let dentist = try XCTUnwrap(try fixtureSummary().reminders.last)
+        XCTAssertNil(dentist.repeatAmount)
+        XCTAssertNil(dentist.repeatUnit)
+        XCTAssertNil(dentist.leadMinutesBefore)
+        XCTAssertTrue(dentist.isDone)
+    }
+
+    /// An unknown unit is no unit — a repeat needs both halves, and half of one would schedule
+    /// nothing while claiming to repeat.
+    func testAnUnrecognisedRepeatUnitIsDropped() throws {
+        let manifest = Data(#"{"tasks":[],"reminders":[{"text":"Odd","triggerAt":1788000000000,"repeatAmount":2,"repeatUnit":"FORTNIGHTLY"}]}"#.utf8)
+        let summary = try BackupImport.parse(manifest: manifest)
+        XCTAssertNil(try XCTUnwrap(summary.reminders.first).repeatUnit)
+    }
+
+    func testAddingRemindersKeepsTheOnesAlreadyThere() throws {
+        let context = try makeContext()
+        let existing = Reminder(text: "Mine", triggerAt: Date(timeIntervalSince1970: 1_000))
+        context.insert(existing)
+
+        BackupImport.apply(
+            reminders: try fixtureSummary().reminders,
+            mode: .add,
+            existing: [existing],
+            context: context
+        )
+
+        XCTAssertEqual(try reminders(context).count, 3)
+        XCTAssertEqual(try reminders(context).first?.text, "Mine")
+    }
+
+    func testReplacingClearsTheRemindersFirst() throws {
+        let context = try makeContext()
+        let existing = Reminder(text: "Mine", triggerAt: Date(timeIntervalSince1970: 1_000))
+        context.insert(existing)
+
+        BackupImport.apply(
+            reminders: try fixtureSummary().reminders,
+            mode: .replace,
+            existing: [existing],
+            context: context
+        )
+
+        XCTAssertEqual(try reminders(context).map(\.text), ["Renew the car registration", "Dentist"])
     }
 }

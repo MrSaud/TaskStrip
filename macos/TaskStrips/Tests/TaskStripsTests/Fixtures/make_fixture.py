@@ -128,7 +128,34 @@ MANIFEST = {
         {"text": "Packing list\n[ ] socks\n[x] adapter", "createdAt": 1787500000000},
         {"text": "Ideas", "createdAt": 1787600000000},
     ],
-    "reminders": [{"label": "Standup", "at": 1788000000000}],
+    # Real ReminderEntity shape. triggerAt is a UTC-pinned wall clock like a strip's dueAt;
+    # createdAt beside it is a real instant.
+    "reminders": [
+        {
+            "text": "Renew the car registration",
+            "description": "Istimara expires this month",
+            "triggerAt": 1788000000000,
+            "leadMinutesBefore": 1440,
+            "repeatAmount": 1,
+            "repeatUnit": "YEARLY",
+            "tag": "Documents",
+            "tagEmoji": "\U0001f4c4",
+            "isDone": False,
+            "createdAt": 1787000000000,
+        },
+        {
+            "text": "Dentist",
+            "description": "",
+            "triggerAt": 1788600000000,
+            "leadMinutesBefore": None,
+            "repeatAmount": None,
+            "repeatUnit": None,
+            "tag": "",
+            "tagEmoji": "",
+            "isDone": True,
+            "createdAt": 1787100000000,
+        },
+    ],
     # Real StorageItemEntity shape. Paths are relative to Android's filesDir, exactly like a
     # strip's attachment paths — images/form.jpg is in the archive, the other two are not, so the
     # import has to cope with a library row whose bytes never made it in.

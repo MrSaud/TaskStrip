@@ -65,7 +65,7 @@ enum StorageItemType: String, Codable, CaseIterable, Identifiable {
 /// pick, and a strip takes its own copy when it needs one. `path` is relative to the media root,
 /// the same convention TaskAttachment uses, so the two are interchangeable on disk.
 @Model
-final class StorageItem: Identifiable {
+final class StorageItem: Identifiable, Taggable {
     @Attribute(.unique) var id: UUID
     var name: String
     var path: String
@@ -83,13 +83,6 @@ final class StorageItem: Identifiable {
     var type: StorageItemType {
         get { StorageItemType(rawValue: typeRaw) ?? .document }
         set { typeRaw = newValue.rawValue }
-    }
-
-    var isTagged: Bool { !tag.isEmpty }
-
-    /// "Invoice" with its emoji, for a filter menu or a row.
-    var tagLabel: String {
-        [tagEmoji, tag].filter { !$0.isEmpty }.joined(separator: " ")
     }
 
     init(

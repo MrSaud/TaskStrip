@@ -16,32 +16,20 @@ enum StorageLibrary {
         ("Warranty", "🛡️"),
     ]
 
-    /// Tag to the emoji shown beside it. If two items share a tag with different emoji, the last
-    /// one wins — the same rule Android's filter menu applies rather than showing the tag twice.
-    static func tagEmojis(in items: [StorageItem]) -> [String: String] {
-        var emojis: [String: String] = [:]
-        for item in items where item.isTagged {
-            emojis[item.tag] = item.tagEmoji
-        }
-        return emojis
-    }
+    // The tag rules themselves live in Tagging, since the reminders list runs on the same ones.
 
-    static func availableTags(in items: [StorageItem]) -> [String] {
-        tagEmojis(in: items).keys.sorted()
-    }
+    static func tagEmojis(in items: [StorageItem]) -> [String: String] { Tagging.emojis(in: items) }
 
-    /// A filter whose last item was deleted or retagged stops applying, rather than leaving the
-    /// library filtered down to nothing with no obvious way back.
+    static func availableTags(in items: [StorageItem]) -> [String] { Tagging.availableTags(in: items) }
+
     static func activeTag(_ tag: String?, in items: [StorageItem]) -> String? {
-        guard let tag, availableTags(in: items).contains(tag) else { return nil }
-        return tag
+        Tagging.activeTag(tag, in: items)
     }
 
     /// One filter for the whole library, not one per section: "show me everything tagged Travel"
     /// is the question actually being asked.
     static func visible(_ items: [StorageItem], tag: String?) -> [StorageItem] {
-        guard let tag = activeTag(tag, in: items) else { return items }
-        return items.filter { $0.tag == tag }
+        Tagging.filtered(items, tag: tag)
     }
 
     static func items(_ items: [StorageItem], ofType type: StorageItemType) -> [StorageItem] {

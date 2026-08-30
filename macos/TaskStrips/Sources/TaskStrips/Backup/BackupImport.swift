@@ -64,6 +64,20 @@ struct ImportedNote {
     var createdAt: Date = .now
 }
 
+/// One standalone reminder out of the backup.
+struct ImportedReminder {
+    var text: String = ""
+    var details: String = ""
+    var triggerAt: Date = .now
+    var leadMinutesBefore: Int?
+    var repeatAmount: Int?
+    var repeatUnit: ReminderRepeatUnit?
+    var tag: String = ""
+    var tagEmoji: String = ""
+    var isDone: Bool = false
+    var createdAt: Date = .now
+}
+
 /// One library row out of the backup. Same fields as StorageItemEntity, since the Mac keeps the
 /// library in the same shape.
 struct ImportedStorageItem {
@@ -88,6 +102,7 @@ struct BackupImportSummary: Identifiable {
     var tasks: [ImportedTask] = []
     var notes: [ImportedNote] = []
     var storageItems: [ImportedStorageItem] = []
+    var reminders: [ImportedReminder] = []
     var attachmentCount: Int = 0
     var reminderOnTaskCount: Int = 0
     /// Whole top-level sections of the backup with no Mac equivalent, e.g. "notes": 12.
@@ -114,12 +129,12 @@ enum BackupImport {
     /// Section name in backup.json -> what to call it in the UI. Everything here is a feature the
     /// Android app has and the Mac port doesn't, so it's reported and dropped.
     private static let skippableSections: [(key: String, label: String)] = [
-        ("reminders", "standalone reminders"),
         ("credentials", "credentials"),
     ]
 
-    /// `timeZone` is only used for due dates — see `dueDate(fromAndroidWallClock:in:)` — and is a
-    /// parameter so tests can pin it rather than depending on the machine's.
+    /// `timeZone` is only used for the two wall-clock fields — a strip's dueAt and a reminder's
+    /// triggerAt, see `dueDate(fromAndroidWallClock:in:)` — and is a parameter so tests can pin
+    /// it rather than depending on the machine's.
     static func parse(manifest data: Data, timeZone: TimeZone = .current) throws -> BackupImportSummary {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw BackupImportError.notJSON
@@ -141,6 +156,9 @@ enum BackupImport {
             // A library row with no file behind it points at nothing and can't be opened,
             // tagged, or copied onto a strip.
             .filter { !$0.path.isEmpty }
+        summary.reminders = (root["reminders"] as? [Any] ?? [])
+            .compactMap { $0 as? [String: Any] }
+            .map { reminder(from: $0, timeZone: timeZone) }
         summary.attachmentCount = summary.tasks.reduce(0) { $0 + $1.attachmentCount }
         summary.reminderOnTaskCount = summary.tasks.filter(\.hasReminder).count
         summary.skippedSections = skippableSections.compactMap { section -> (name: String, count: Int)? in
@@ -204,6 +222,25 @@ enum BackupImport {
         return task
     }
 
+    private static func reminder(from object: [String: Any], timeZone: TimeZone) -> ImportedReminder {
+        var reminder = ImportedReminder()
+        reminder.text = stringValue(object, "text")
+        reminder.details = stringValue(object, "description")
+        // triggerAt is the other UTC-pinned wall clock in this format, for the same reason a
+        // strip's dueAt is one: it has to round-trip through Android's date picker unchanged.
+        // createdAt below is a real instant.
+        reminder.triggerAt = numberValue(object, "triggerAt")
+            .map { dueDate(fromAndroidWallClock: $0, in: timeZone) } ?? .now
+        reminder.leadMinutesBefore = intValue(object, "leadMinutesBefore")
+        reminder.repeatAmount = intValue(object, "repeatAmount")
+        reminder.repeatUnit = ReminderRepeatUnit(rawValue: stringValue(object, "repeatUnit"))
+        reminder.tag = stringValue(object, "tag")
+        reminder.tagEmoji = stringValue(object, "tagEmoji")
+        reminder.isDone = boolValue(object, "isDone")
+        reminder.createdAt = dateValue(object, "createdAt") ?? .now
+        return reminder
+    }
+
     private static func storageItem(from object: [String: Any]) -> ImportedStorageItem {
         var item = ImportedStorageItem()
         item.path = stringValue(object, "path")
@@ -219,6 +256,40 @@ enum BackupImport {
         item.tagEmoji = stringValue(object, "tagEmoji")
         item.createdAt = dateValue(object, "createdAt") ?? .now
         return item
+    }
+
+    /// Inserts the backup's standalone reminders, returning how many landed.
+    ///
+    /// Nothing is rescheduled here — the caller syncs the whole set afterwards, which also rolls
+    /// any repeating reminder whose moment has already passed on to its next occurrence. A
+    /// backup is full of those.
+    @discardableResult
+    static func apply(
+        reminders: [ImportedReminder],
+        mode: ImportMode,
+        existing: [Reminder],
+        context: ModelContext
+    ) -> Int {
+        if mode == .replace {
+            for reminder in existing { context.delete(reminder) }
+        }
+        for imported in reminders {
+            context.insert(
+                Reminder(
+                    text: imported.text,
+                    triggerAt: imported.triggerAt,
+                    details: imported.details,
+                    leadMinutesBefore: imported.leadMinutesBefore,
+                    repeatAmount: imported.repeatAmount,
+                    repeatUnit: imported.repeatUnit,
+                    tag: imported.tag,
+                    tagEmoji: imported.tagEmoji,
+                    isDone: imported.isDone,
+                    createdAt: imported.createdAt
+                )
+            )
+        }
+        return reminders.count
     }
 
     /// Inserts the backup's library rows, returning how many landed.

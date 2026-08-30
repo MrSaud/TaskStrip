@@ -21,6 +21,8 @@ struct TaskListView: View {
     @Query private var allNotes: [Note]
     /// Same reason as the notes above: a Replace import needs to know what it's clearing.
     @Query private var allStorageItems: [StorageItem]
+    /// Same again for the standalone reminders.
+    @Query private var allReminders: [Reminder]
 
     @State private var searchText = ""
     @State private var tagFilter: String?
@@ -33,6 +35,7 @@ struct TaskListView: View {
     @State private var showArchive = false
     @State private var showNotes = false
     @State private var showStorage = false
+    @State private var showReminders = false
     @State private var rollUp: RollUp?
     @State private var blockedAlertTask: TaskItem?
     @State private var importSummary: BackupImportSummary?
@@ -162,6 +165,11 @@ struct TaskListView: View {
                     RollUpsView(showing: rollUp, tasks: activeTasks)
                 }
             }
+            .sheet(isPresented: $showReminders) {
+                NavigationStack {
+                    RemindersView()
+                }
+            }
             .sheet(isPresented: $showStorage) {
                 NavigationStack {
                     StorageLibraryView()
@@ -240,6 +248,7 @@ struct TaskListView: View {
         actions.showArchived = { showArchive = true }
         actions.showNotes = { showNotes = true }
         actions.showStorage = { showStorage = true }
+        actions.showReminders = { showReminders = true }
         actions.showRollUp = { rollUp = $0 }
         actions.clearFilters = { clearFilters() }
         actions.setSortMode = { sortMode = $0 }
@@ -425,6 +434,13 @@ struct TaskListView: View {
                     showStorage = true
                 } label: {
                     Label("Storage library", systemImage: "tray.full")
+                }
+            }
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    showReminders = true
+                } label: {
+                    Label("Reminders", systemImage: "bell")
                 }
             }
             ToolbarItem(placement: .navigation) {
@@ -614,8 +630,15 @@ struct TaskListView: View {
             existing: allStorageItems,
             context: modelContext
         )
+        let importedReminders = BackupImport.apply(
+            reminders: summary.reminders,
+            mode: mode,
+            existing: allReminders,
+            context: modelContext
+        )
         importSummary = nil
         ReminderScheduler.shared.sync(allTasks)
+        ReminderScheduler.shared.sync(allReminders)
 
         // SwiftData autosaves, but a failure here is exactly the silent-save class of bug that bit
         // Phase 1 — an import that quietly wrote nothing would look identical to an empty backup.
@@ -630,6 +653,9 @@ struct TaskListView: View {
             }
             if importedFiles > 0 {
                 body += " \(importedFiles) file\(importedFiles == 1 ? "" : "s") joined the storage library."
+            }
+            if importedReminders > 0 {
+                body += " \(importedReminders) standalone reminder\(importedReminders == 1 ? "" : "s") came across."
             }
             if !referenced.isEmpty {
                 body += " Restored \(restored.count) of \(referenced.count) file\(referenced.count == 1 ? "" : "s")."
