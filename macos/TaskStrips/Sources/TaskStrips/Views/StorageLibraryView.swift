@@ -1,4 +1,5 @@
 import AppKit
+import QuickLook
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
@@ -16,7 +17,12 @@ struct StorageLibraryView: View {
     @State private var tagFilter: String?
     @State private var taggingItem: StorageItem?
     @State private var pendingDeletion: StorageItem?
-    @State private var problem: String?
+    @State private var problem: StorageProblem?
+    @State private var selection: UUID?
+    /// Non-nil while the system Quick Look panel is up. Space puts a URL here and takes it away
+    /// again; the panel follows.
+    @State private var previewURL: URL?
+    @FocusState private var libraryHasFocus: Bool
 
     private var store: AttachmentStore { .shared }
     private var availableTags: [String] { StorageLibrary.availableTags(in: items) }
@@ -66,14 +72,17 @@ struct StorageLibraryView: View {
         } message: {
             Text("The file goes for good. Strips that already took a copy of it keep theirs.")
         }
-        .alert("Couldn't add that file", isPresented: Binding(
+        .alert(problem?.title ?? "", isPresented: Binding(
             get: { problem != nil },
             set: { if !$0 { problem = nil } }
         )) {
             Button("OK") { problem = nil }
         } message: {
-            Text(problem ?? "")
+            Text(problem?.message ?? "")
         }
+        // The system panel, not a window of our own: it reads anything the Mac can read, which is
+        // the whole point of asking for it by name.
+        .quickLookPreview($previewURL)
     }
 
     private var empty: some View {
@@ -105,6 +114,14 @@ struct StorageLibraryView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(16)
         }
+        // Focusable so the space bar has somewhere to land. Clicking a file moves focus here, and
+        // the focus ring is suppressed because the selected tile already shows where you are.
+        .focusable()
+        .focusEffectDisabled()
+        .focused($libraryHasFocus)
+        .onKeyPress(.space, action: toggleQuickLook)
+        // Clicking the background is how you stop having something selected.
+        .onTapGesture { selection = nil }
     }
 
     @ViewBuilder
@@ -129,8 +146,14 @@ struct StorageLibraryView: View {
                 thumbnail(for: item)
                     .frame(width: 84, height: 84)
                     .clipShape(RoundedRectangle(cornerRadius: 4))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 4)
+                            .strokeBorder(TaskStripTheme.amber, lineWidth: selection == item.id ? 3 : 0)
+                    }
                     .help(item.name)
-                    .onTapGesture(count: 2) { reveal(item) }
+                    // The count: 2 gesture has to come first, or the single tap swallows it.
+                    .onTapGesture(count: 2) { quickLook(item) }
+                    .onTapGesture { select(item) }
                     .contextMenu { itemMenu(item) }
             }
         }
@@ -191,9 +214,13 @@ struct StorageLibraryView: View {
                 .labelStyle(.iconOnly)
                 .buttonStyle(.borderless)
                 .padding(12)
-                .background(TaskStripTheme.baySurface, in: RoundedRectangle(cornerRadius: 4))
+                .background(
+                    selection == item.id ? TaskStripTheme.amber.opacity(0.25) : TaskStripTheme.baySurface,
+                    in: RoundedRectangle(cornerRadius: 4)
+                )
                 .contentShape(Rectangle())
-                .onTapGesture(count: 2) { reveal(item) }
+                .onTapGesture(count: 2) { quickLook(item) }
+                .onTapGesture { select(item) }
                 .contextMenu { itemMenu(item) }
             }
         }
@@ -201,6 +228,9 @@ struct StorageLibraryView: View {
 
     @ViewBuilder
     private func itemMenu(_ item: StorageItem) -> some View {
+        // Named the way Finder names it, space hint included, because that's where the shortcut
+        // is worth discovering.
+        Button("Quick Look (Space)") { quickLook(item) }
         Button("Show in Finder") { reveal(item) }
         Button(item.isTagged ? "Change Tag…" : "Tag…") { taggingItem = item }
         Divider()
@@ -266,7 +296,10 @@ struct StorageLibraryView: View {
                     )
                 )
             } catch {
-                problem = error.localizedDescription
+                problem = StorageProblem(
+                    title: "Couldn't add that file",
+                    message: error.localizedDescription
+                )
                 return
             }
         }
@@ -274,6 +307,45 @@ struct StorageLibraryView: View {
 
     private func fileSize(of url: URL) -> Int {
         (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+    }
+
+    private func select(_ item: StorageItem) {
+        selection = item.id
+        libraryHasFocus = true
+    }
+
+    private func toggleQuickLook() -> KeyPress.Result {
+        switch StorageLibrary.quickLookAction(
+            selection: selection, in: visible, isPreviewing: previewURL != nil
+        ) {
+        case .close:
+            previewURL = nil
+        case .open(let id):
+            guard let item = visible.first(where: { $0.id == id }) else { return .ignored }
+            quickLook(item)
+        case .nothing:
+            // Nothing selected: hand the key back rather than swallowing it, so space still
+            // pages the list the way it does in every other scroll view on the Mac.
+            return .ignored
+        }
+        return .handled
+    }
+
+    /// Opens the preview, and selects what it's previewing — so space closes it again and the
+    /// next space reopens the same thing.
+    private func quickLook(_ item: StorageItem) {
+        selection = item.id
+        libraryHasFocus = true
+        let url = store.url(forRelativePath: item.path)
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            problem = StorageProblem(
+                title: "Nothing to preview",
+                message: "\"\(item.name)\" is listed here but its file isn't on this Mac. "
+                    + "It may not have come across in a restore."
+            )
+            return
+        }
+        previewURL = url
     }
 
     private func reveal(_ item: StorageItem) {
@@ -284,6 +356,14 @@ struct StorageLibraryView: View {
         store.remove(relativePath: item.path, kind: item.type.attachmentKind)
         modelContext.delete(item)
     }
+}
+
+/// Something that went wrong, with a title that says which thing — adding a file and previewing
+/// one fail for entirely different reasons, and one alert title can't cover both.
+private struct StorageProblem: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
 }
 
 /// Assigns an item's tag and emoji. Clearing both makes it untagged again, which also drops the

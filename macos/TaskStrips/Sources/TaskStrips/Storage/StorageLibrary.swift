@@ -42,6 +42,26 @@ enum StorageLibrary {
         items.sorted { $0.createdAt > $1.createdAt }
     }
 
+    // MARK: - Quick Look
+
+    /// What the space bar should do, given what's selected and whether a preview is already up.
+    ///
+    /// Toggling rather than always opening is Finder's behaviour, and it's the half people
+    /// actually rely on: space to look, space to stop looking, without reaching for the mouse.
+    enum QuickLook: Equatable {
+        case open(UUID)
+        case close
+        case nothing
+    }
+
+    static func quickLookAction(selection: UUID?, in items: [StorageItem], isPreviewing: Bool) -> QuickLook {
+        if isPreviewing { return .close }
+        // A selection can outlive the row it names — the file was deleted, or the tag filter
+        // moved on — and a preview of something no longer on screen would be a small mystery.
+        guard let selection, items.contains(where: { $0.id == selection }) else { return .nothing }
+        return .open(selection)
+    }
+
     /// A size a person can read. Files here run from a scanned receipt to a video, so the unit
     /// has to move with them.
     static func readableSize(_ bytes: Int) -> String {

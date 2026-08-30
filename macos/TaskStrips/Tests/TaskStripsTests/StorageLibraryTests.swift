@@ -19,6 +19,58 @@ final class StorageLibraryTests: XCTestCase {
         )
     }
 
+    // MARK: - Quick Look
+
+    func testSpaceOpensWhateverIsSelected() {
+        let picked = item("invoice.pdf")
+
+        XCTAssertEqual(
+            StorageLibrary.quickLookAction(selection: picked.id, in: [picked], isPreviewing: false),
+            .open(picked.id)
+        )
+    }
+
+    /// Space is a toggle in Finder, and that's the half people rely on: look, then stop looking,
+    /// without reaching for the mouse.
+    func testSpaceAgainClosesIt() {
+        let picked = item("invoice.pdf")
+
+        XCTAssertEqual(
+            StorageLibrary.quickLookAction(selection: picked.id, in: [picked], isPreviewing: true),
+            .close
+        )
+    }
+
+    func testSpaceWithNothingSelectedDoesNothing() {
+        XCTAssertEqual(
+            StorageLibrary.quickLookAction(selection: nil, in: [item("invoice.pdf")], isPreviewing: false),
+            .nothing
+        )
+    }
+
+    /// A selection outlives the row it names when the file is deleted or the tag filter moves on,
+    /// and previewing something no longer on screen would be a small mystery.
+    func testSpaceIgnoresASelectionThatIsNoLongerOnScreen() {
+        let gone = item("deleted.pdf")
+        let shown = item("invoice.pdf")
+
+        XCTAssertEqual(
+            StorageLibrary.quickLookAction(selection: gone.id, in: [shown], isPreviewing: false),
+            .nothing
+        )
+    }
+
+    /// Closing wins over the stale-selection check: a panel that's up has to be closable even if
+    /// what it's showing has just been filtered away underneath it.
+    func testAnOpenPreviewStillClosesWhenItsRowHasGone() {
+        let gone = item("deleted.pdf")
+
+        XCTAssertEqual(
+            StorageLibrary.quickLookAction(selection: gone.id, in: [], isPreviewing: true),
+            .close
+        )
+    }
+
     // MARK: - Which shelf a file lands on
 
     func testAReportedImageTypeWins() {

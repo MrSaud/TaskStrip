@@ -42,6 +42,24 @@ final class StorageLibraryUITests: XCTestCase {
         app.windowButton("Done").click()
     }
 
+    /// The Quick Look panel is a system window a test can't reliably assert on, so what's checked
+    /// here is the entry point: the file offers a preview that isn't "go and find it in Finder".
+    func testAFileOffersAPreviewRatherThanOnlyTheFinder() {
+        app.windowButton("Storage library").click()
+
+        let file = app.staticTexts[UITestSupport.libraryFile]
+        XCTAssertTrue(file.waitForExistence(timeout: UITestSupport.timeout), "the seeded file should be on the shelf")
+        file.rightClick()
+
+        let quickLook = app.menuItems["Quick Look (Space)"]
+        XCTAssertTrue(
+            quickLook.waitForExistence(timeout: UITestSupport.timeout),
+            "no Quick Look entry on a stored file"
+        )
+        app.typeKey(.escape, modifierFlags: [])
+        app.windowButton("Done").click()
+    }
+
     /// The point of the library: a file put there once ends up on a strip without going near the
     /// filesystem again.
     func testAFileCanBeTakenFromTheLibraryOntoAStrip() {
