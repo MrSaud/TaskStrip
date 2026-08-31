@@ -103,6 +103,15 @@ enum ReminderSchedule {
         return result.sorted { newestFirst ? $0.triggerAt > $1.triggerAt : $0.triggerAt < $1.triggerAt }
     }
 
+    /// Past its time and still not done — the thing a row has to shout about.
+    ///
+    /// Its own function rather than a condition inside `summary`, because the row needs the same
+    /// answer to decide what colour to paint the line, and two copies of the rule would be one
+    /// copy too many.
+    static func isOverdue(_ reminder: Reminder, now: Date = .now) -> Bool {
+        !reminder.isDone && reminder.triggerAt < now
+    }
+
     /// Reads back when it's for, and what's about to happen — the two things a row has to answer.
     static func summary(for reminder: Reminder, now: Date = .now) -> String {
         var parts = [reminder.triggerAt.formatted(date: .abbreviated, time: .shortened)]
@@ -112,7 +121,7 @@ enum ReminderSchedule {
         if let repeatLabel = reminder.repeatLabel {
             parts.append(repeatLabel.lowercased())
         }
-        if !reminder.isDone, reminder.triggerAt < now {
+        if isOverdue(reminder, now: now) {
             parts.append("overdue")
         }
         return parts.joined(separator: " · ")

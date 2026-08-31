@@ -161,15 +161,24 @@ struct RemindersView: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                 }
-                HStack(spacing: 8) {
-                    Text(ReminderSchedule.summary(for: reminder))
-                    if reminder.isTagged {
-                        Text(reminder.tagLabel)
-                            .foregroundStyle(TaskStripTheme.amber)
+                // Rebuilt every minute rather than once, so a reminder that falls due while the
+                // window is open turns red on its own instead of waiting for something else to
+                // redraw the list. Same treatment the board's date header gets.
+                TimelineView(.periodic(from: .now, by: 60)) { context in
+                    let overdue = ReminderSchedule.isOverdue(reminder, now: context.date)
+                    HStack(spacing: 8) {
+                        Text(ReminderSchedule.summary(for: reminder, now: context.date))
+                            // Red carries the "overdue" the text already says, so it reads at a
+                            // glance down a list instead of only when you stop to read a row —
+                            // which is what the phone's reminders have always done.
+                            .foregroundStyle(overdue ? TaskStripTheme.urgent : Color.secondary)
+                        if reminder.isTagged {
+                            Text(reminder.tagLabel)
+                                .foregroundStyle(TaskStripTheme.amber)
+                        }
                     }
+                    .font(.caption)
                 }
-                .font(.caption)
-                .foregroundStyle(.secondary)
             }
 
             Spacer(minLength: 0)

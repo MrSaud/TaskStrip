@@ -177,6 +177,17 @@ final class ReminderScheduleTests: XCTestCase {
         XCTAssertFalse(ReminderSchedule.summary(for: done, now: date(2026, 6, 15)).contains("overdue"))
     }
 
+    /// The row paints itself from this, so it has to agree with what the summary says in words.
+    func testOverdueIsTheSameAnswerTheSummaryGives() {
+        let item = reminder(at: date(2026, 6, 10))
+
+        XCTAssertFalse(ReminderSchedule.isOverdue(item, now: date(2026, 6, 1)))
+        XCTAssertTrue(ReminderSchedule.isOverdue(item, now: date(2026, 6, 15)))
+
+        let done = reminder(at: date(2026, 6, 10), done: true)
+        XCTAssertFalse(ReminderSchedule.isOverdue(done, now: date(2026, 6, 15)))
+    }
+
     func testARepeatOfOneReadsAsEveryUnit() {
         XCTAssertEqual(reminder(at: date(2026, 6, 1), amount: 1, unit: .monthly).repeatLabel, "Every month")
         XCTAssertEqual(reminder(at: date(2026, 6, 1), amount: 3, unit: .weekly).repeatLabel, "Every 3 weeks")
