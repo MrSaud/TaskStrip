@@ -20,6 +20,12 @@ targets:
           - "Assets.xcassets/make_icon.py"
           # Signed in, not copied in.
           - "TaskStrips.entitlements"
+      # Compiled into both the app and the widget: it is the format they agree on.
+      - path: Sources/Shared
+    dependencies:
+      - target: TaskStripsWidget
+        embed: true
+        codeSign: true
     # The one source of truth for the app's Info.plist, which XcodeGen writes from this on every
     # generate. It used to be checked in as well, and the two drifted in both directions at once:
     # CFBundleIconName was here but not in the file, so a build from the file had no Dock icon;
@@ -54,6 +60,31 @@ targets:
         # @testable import TaskStrips in the test target needs this.
         Debug:
           ENABLE_TESTABILITY: true
+  # The desktop half of the phone's home-screen widget. It shows what that shows — the top active
+  # strips with their priority colour and due time, then the next reminders — and reads it from a
+  # snapshot the app writes, because a sandboxed extension cannot open the app's store.
+  TaskStripsWidget:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Sources/TaskStripsWidget
+        excludes:
+          - "TaskStripsWidget.entitlements"
+      - path: Sources/Shared
+    info:
+      path: Sources/TaskStripsWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Task Strips
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.saud.taskstrip.mac.widget
+        PRODUCT_NAME: TaskStripsWidget
+        CODE_SIGN_ENTITLEMENTS: Sources/TaskStripsWidget/TaskStripsWidget.entitlements
+        ENABLE_HARDENED_RUNTIME: true
+        SKIP_INSTALL: true
+
   TaskStripsTests:
     type: bundle.unit-test
     platform: macOS

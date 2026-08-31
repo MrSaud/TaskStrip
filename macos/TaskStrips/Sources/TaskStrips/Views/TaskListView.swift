@@ -124,6 +124,13 @@ struct TaskListView: View {
                     RemindersView(isEmbedded: true)
                 }
             }
+            // The widget is handed a rendering rather than the data, so something has to hand it
+            // over — this is that. Keyed on the snapshot itself, which compares only what the
+            // widget shows, so an edit that changes nothing visible doesn't spend a reload.
+            .task { WidgetPublisher.publish(tasks: allTasks, reminders: allReminders) }
+            .onChange(of: WidgetPublisher.snapshot(tasks: allTasks, reminders: allReminders)) { _, _ in
+                WidgetPublisher.publish(tasks: allTasks, reminders: allReminders)
+            }
             .modifier(HorizontalSwipe { forward in
                 guard let target = forward ? page.next : page.previous else { return }
                 withAnimation(.easeInOut(duration: 0.18)) {
