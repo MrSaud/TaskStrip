@@ -95,7 +95,6 @@ fun RemindersScreen(
 ) {
     val context = LocalContext.current
     val reminders by viewModel.reminders.collectAsStateWithLifecycle()
-    var pendingDelete by remember { mutableStateOf<ReminderEntity?>(null) }
     var newReminderMenuExpanded by remember { mutableStateOf(false) }
     var searchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -115,26 +114,6 @@ fun RemindersScreen(
         reminders.filter { it.tag.isNotBlank() }.associate { it.tag to it.tagEmoji }
     }
     val availableTags = remember(tagEmojis) { tagEmojis.keys.sorted() }
-
-    val visibleReminders = remember(reminders, searchQuery, sortDescending, tagFilter) {
-        var filtered = if (searchQuery.isBlank()) {
-            reminders
-        } else {
-            reminders.filter { it.text.contains(searchQuery, ignoreCase = true) }
-        }
-        tagFilter?.let { tag -> filtered = filtered.filter { it.tag == tag } }
-        if (sortDescending) filtered.sortedByDescending { it.triggerAt } else filtered.sortedBy { it.triggerAt }
-    }
-
-    // Ticks the countdown labels every second while this screen is open, so the seconds digit
-    // visibly animates rather than jumping in coarse steps.
-    var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(Unit) {
-        while (true) {
-            nowMillis = System.currentTimeMillis()
-            delay(1_000)
-        }
-    }
 
     val voiceLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
@@ -302,37 +281,88 @@ fun RemindersScreen(
             }
         }
     ) { padding ->
-        if (reminders.isEmpty()) {
-            Box(Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    text = "NO REMINDERS SET",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Paper.copy(alpha = 0.5f)
-                )
-            }
-        } else if (visibleReminders.isEmpty()) {
-            Box(Modifier.padding(padding).fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(
-                    text = "NO MATCHES",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Paper.copy(alpha = 0.5f)
-                )
-            }
+        RemindersList(
+            viewModel = viewModel,
+            searchQuery = searchQuery,
+            sortDescending = sortDescending,
+            tagFilter = tagFilter,
+            onEditClick = onEditClick,
+            modifier = Modifier.padding(padding)
+        )
+    }
+}
+
+/** The reminders themselves, with no screen around them.
+ *
+ * Pulled out of [RemindersScreen] so the board's Reminders page and this standalone screen — still
+ * where a tapped notification lands — show the same list rather than two that drift apart. The
+ * filtering, the once-a-second tick and the delete confirmation belong to the list, so they live
+ * here; searching and sorting are driven from whichever toolbar is above it, so they are passed in.
+ */
+@Composable
+fun RemindersList(
+    viewModel: ReminderViewModel,
+    searchQuery: String,
+    sortDescending: Boolean,
+    tagFilter: String?,
+    onEditClick: (Long) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val reminders by viewModel.reminders.collectAsStateWithLifecycle()
+    var pendingDelete by remember { mutableStateOf<ReminderEntity?>(null) }
+
+    val visibleReminders = remember(reminders, searchQuery, sortDescending, tagFilter) {
+        var filtered = if (searchQuery.isBlank()) {
+            reminders
         } else {
-            LazyColumn(
-                modifier = Modifier.padding(padding).fillMaxSize(),
-                contentPadding = PaddingValues(12.dp)
-            ) {
-                items(visibleReminders, key = { it.id }) { reminder ->
-                    ReminderRow(
-                        reminder = reminder,
-                        nowMillis = nowMillis,
-                        onClick = { onEditClick(reminder.id) },
-                        onToggleDone = { viewModel.toggleDone(reminder) },
-                        onDeleteRequest = { pendingDelete = reminder }
-                    )
-                    Spacer(Modifier.height(10.dp))
-                }
+            reminders.filter { it.text.contains(searchQuery, ignoreCase = true) }
+        }
+        tagFilter?.let { tag -> filtered = filtered.filter { it.tag == tag } }
+        if (sortDescending) filtered.sortedByDescending { it.triggerAt } else filtered.sortedBy { it.triggerAt }
+    }
+
+    // Ticks the countdown labels every second while this list is on screen, so the seconds digit
+    // visibly animates rather than jumping in coarse steps.
+    var nowMillis by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            nowMillis = System.currentTimeMillis()
+            delay(1_000)
+        }
+    }
+
+    if (reminders.isEmpty()) {
+        Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                text = "NO REMINDERS SET",
+                style = MaterialTheme.typography.titleMedium,
+                color = Paper.copy(alpha = 0.5f)
+            )
+        }
+    } else if (visibleReminders.isEmpty()) {
+        Box(modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                text = "NO MATCHES",
+                style = MaterialTheme.typography.titleMedium,
+                color = Paper.copy(alpha = 0.5f)
+            )
+        }
+    } else {
+        LazyColumn(
+            modifier = modifier.fillMaxSize(),
+            // Floating buttons sit on top of this list rather than resizing it, same as the
+            // strips page — pad past their footprint so the last reminder isn't stuck behind them.
+            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 96.dp)
+        ) {
+            items(visibleReminders, key = { it.id }) { reminder ->
+                ReminderRow(
+                    reminder = reminder,
+                    nowMillis = nowMillis,
+                    onClick = { onEditClick(reminder.id) },
+                    onToggleDone = { viewModel.toggleDone(reminder) },
+                    onDeleteRequest = { pendingDelete = reminder }
+                )
+                Spacer(Modifier.height(10.dp))
             }
         }
     }

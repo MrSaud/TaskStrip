@@ -7,6 +7,7 @@ import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -23,12 +24,15 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Archive
@@ -64,6 +68,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -77,6 +83,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -93,6 +100,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.saud.taskstrip.TaskViewModel
+import com.saud.taskstrip.ReminderViewModel
 import com.saud.taskstrip.data.Priority
 import com.saud.taskstrip.data.TaskActionLogEntry
 import com.saud.taskstrip.data.TaskEntity
@@ -118,15 +126,18 @@ import com.saud.taskstrip.ui.theme.Paper
 import com.saud.taskstrip.ui.theme.tabColor
 import com.saud.taskstrip.voice.VoiceCommandParser
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private enum class ProgressSort { ASCENDING, DESCENDING }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     viewModel: TaskViewModel,
+    reminderViewModel: ReminderViewModel,
     onAddClick: () -> Unit,
+    onReminderEditClick: (Long) -> Unit,
     onTaskClick: (Long) -> Unit,
     onArchiveClick: () -> Unit,
     onSketchesClick: () -> Unit,
@@ -155,6 +166,20 @@ fun HomeScreen(
     var menuExpanded by remember { mutableStateOf(false) }
     var newStripMenuExpanded by remember { mutableStateOf(false) }
     var reminderMenuExpanded by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(pageCount = { BOARD_PAGE_COUNT })
+    // The reminders half of the toolbar. Search is deliberately not here: one search box serves
+    // whichever page is showing, because "find the thing I typed" is the same question on both.
+    var reminderSortDescending by remember { mutableStateOf(false) }
+    var reminderTagFilter by remember { mutableStateOf<String?>(null) }
+    var reminderSortMenuExpanded by remember { mutableStateOf(false) }
+    var reminderTagMenuExpanded by remember { mutableStateOf(false) }
+    val reminders by reminderViewModel.reminders.collectAsStateWithLifecycle()
+    val reminderTagEmojis = remember(reminders) {
+        reminders.filter { it.tag.isNotBlank() }.associate { it.tag to it.tagEmoji }
+    }
+    val reminderTags = remember(reminderTagEmojis) { reminderTagEmojis.keys.sorted() }
+
     var searchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var filterMenuExpanded by remember { mutableStateOf(false) }
@@ -301,6 +326,10 @@ fun HomeScreen(
                         IconButton(onClick = { searchActive = true }) {
                             Icon(Icons.Default.Search, contentDescription = "Search", tint = Paper)
                         }
+                        // The two pages ask different questions of their contents, so they get
+                        // different controls. Search is above this and shared: "find what I typed"
+                        // means the same thing on both.
+                        if (pagerState.currentPage == PAGE_STRIPS) {
                         IconButton(onClick = { todayOnly = !todayOnly }) {
                             Icon(
                                 Icons.Default.Today,
@@ -392,6 +421,84 @@ fun HomeScreen(
                                     sortMenuExpanded = false
                                 }
                             )
+                        }
+                        } else {
+                            IconButton(onClick = { reminderSortMenuExpanded = true }) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Sort,
+                                    contentDescription = "Sort by time",
+                                    tint = Paper
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = reminderSortMenuExpanded,
+                                onDismissRequest = { reminderSortMenuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("SOONEST FIRST") },
+                                    trailingIcon = {
+                                        if (!reminderSortDescending) {
+                                            Icon(Icons.Default.Check, contentDescription = null, tint = AmberTab)
+                                        }
+                                    },
+                                    onClick = {
+                                        reminderSortDescending = false
+                                        reminderSortMenuExpanded = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("LATEST FIRST") },
+                                    trailingIcon = {
+                                        if (reminderSortDescending) {
+                                            Icon(Icons.Default.Check, contentDescription = null, tint = AmberTab)
+                                        }
+                                    },
+                                    onClick = {
+                                        reminderSortDescending = true
+                                        reminderSortMenuExpanded = false
+                                    }
+                                )
+                            }
+                            if (reminderTags.isNotEmpty()) {
+                                IconButton(onClick = { reminderTagMenuExpanded = true }) {
+                                    Icon(
+                                        Icons.Default.FilterList,
+                                        contentDescription = "Filter by tag",
+                                        tint = if (reminderTagFilter != null) AmberTab else Paper
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = reminderTagMenuExpanded,
+                                    onDismissRequest = { reminderTagMenuExpanded = false }
+                                ) {
+                                    reminderTags.forEach { tag ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                val emoji = reminderTagEmojis[tag].orEmpty()
+                                                Text(if (emoji.isBlank()) tag.uppercase() else "$emoji ${tag.uppercase()}")
+                                            },
+                                            trailingIcon = {
+                                                if (reminderTagFilter == tag) {
+                                                    Icon(Icons.Default.Check, contentDescription = null, tint = AmberTab)
+                                                }
+                                            },
+                                            onClick = {
+                                                reminderTagFilter = if (reminderTagFilter == tag) null else tag
+                                                reminderTagMenuExpanded = false
+                                            }
+                                        )
+                                    }
+                                    if (reminderTagFilter != null) {
+                                        DropdownMenuItem(
+                                            text = { Text("CLEAR FILTER") },
+                                            onClick = {
+                                                reminderTagFilter = null
+                                                reminderTagMenuExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
                         }
                         IconButton(onClick = { menuExpanded = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = "Menu", tint = Paper)
@@ -527,7 +634,7 @@ fun HomeScreen(
                             leadingIcon = { Icon(Icons.Default.Alarm, contentDescription = null) },
                             onClick = {
                                 reminderMenuExpanded = false
-                                onRemindersClick()
+                                scope.launch { pagerState.animateScrollToPage(PAGE_REMINDERS) }
                             }
                         )
                         DropdownMenuItem(
@@ -567,11 +674,24 @@ fun HomeScreen(
                 Spacer(Modifier.width(10.dp))
                 Box {
                     SmallFloatingActionButton(
-                        onClick = { newStripMenuExpanded = true },
+                        onClick = {
+                            if (pagerState.currentPage == PAGE_REMINDERS) {
+                                reminderMenuExpanded = true
+                            } else {
+                                newStripMenuExpanded = true
+                            }
+                        },
                         containerColor = BaySurface,
                         contentColor = Paper
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "New strip")
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = if (pagerState.currentPage == PAGE_REMINDERS) {
+                                "New reminder"
+                            } else {
+                                "New strip"
+                            }
+                        )
                     }
                     DropdownMenu(expanded = newStripMenuExpanded, onDismissRequest = { newStripMenuExpanded = false }) {
                         DropdownMenuItem(
@@ -609,7 +729,7 @@ fun HomeScreen(
         Column(Modifier.padding(padding).fillMaxSize()) {
             BoardDateStrip(nowMillis)
             quote?.let { QuoteOfDayCard(it) }
-            if (allTags.isNotEmpty()) {
+            if (allTags.isNotEmpty() && pagerState.currentPage == PAGE_STRIPS) {
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
@@ -630,7 +750,21 @@ fun HomeScreen(
                     }
                 }
             }
-            Box(Modifier.weight(1f)) {
+            BoardPageTabs(
+                current = pagerState.currentPage,
+                onSelect = { page -> scope.launch { pagerState.animateScrollToPage(page) } }
+            )
+            HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { page ->
+                if (page == PAGE_REMINDERS) {
+                    RemindersList(
+                        viewModel = reminderViewModel,
+                        searchQuery = if (searchActive) searchQuery else "",
+                        sortDescending = reminderSortDescending,
+                        tagFilter = reminderTagFilter,
+                        onEditClick = onReminderEditClick
+                    )
+                } else {
+                    Box(Modifier.fillMaxSize()) {
                 if (tasks.isEmpty()) {
                     EmptyBoard()
                 } else if (visibleTasks.isEmpty()) {
@@ -747,6 +881,8 @@ fun HomeScreen(
     }
     }
     }
+    }
+    }
 
         SmallFloatingActionButton(
             onClick = onNotesClick,
@@ -809,6 +945,40 @@ fun HomeScreen(
             dismissButton = {
                 TextButton(onClick = { pendingArchive = null }) { Text("CANCEL") }
             }
+        )
+    }
+}
+
+const val PAGE_STRIPS = 0
+const val PAGE_REMINDERS = 1
+private const val BOARD_PAGE_COUNT = 2
+
+/** The two faces of the board.
+ *
+ * Reminders used to be somewhere you navigated to and came back from. It asks the same question a
+ * strip does — what do I have to deal with — about things that happen at a time rather than things
+ * that sit in a queue, so it reads better as the board's other page than as another screen.
+ */
+@Composable
+private fun BoardPageTabs(current: Int, onSelect: (Int) -> Unit) {
+    TabRow(
+        selectedTabIndex = current,
+        containerColor = BayBackground,
+        contentColor = AmberTab
+    ) {
+        Tab(
+            selected = current == PAGE_STRIPS,
+            onClick = { onSelect(PAGE_STRIPS) },
+            text = { Text("STRIPS", style = MaterialTheme.typography.labelLarge) },
+            selectedContentColor = AmberTab,
+            unselectedContentColor = Paper.copy(alpha = 0.5f)
+        )
+        Tab(
+            selected = current == PAGE_REMINDERS,
+            onClick = { onSelect(PAGE_REMINDERS) },
+            text = { Text("REMINDERS", style = MaterialTheme.typography.labelLarge) },
+            selectedContentColor = AmberTab,
+            unselectedContentColor = Paper.copy(alpha = 0.5f)
         )
     }
 }

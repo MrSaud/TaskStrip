@@ -249,7 +249,9 @@ class MainActivity : FragmentActivity() {
                     composable("home") {
                         HomeScreen(
                             viewModel = viewModel,
+                            reminderViewModel = reminderViewModel,
                             onAddClick = { navController.navigate("editor/-1") },
+                            onReminderEditClick = { id -> navController.navigate("reminder-editor/$id") },
                             onTaskClick = { id -> navController.navigate("editor/$id") },
                             onArchiveClick = { navController.navigate("archive") },
                             onSketchesClick = { navController.navigate("sketches") },
