@@ -7,6 +7,10 @@ import SwiftUI
 /// narrows by title, one tag filter narrows the rest, and the sort flips between soonest and
 /// latest first.
 struct RemindersView: View {
+    /// Set when this is the board's Reminders page rather than a sheet over it. A page has nothing
+    /// to dismiss, so it drops the Done button; everything else about the view is the same.
+    var isEmbedded = false
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Query(sort: \Reminder.triggerAt) private var reminders: [Reminder]
@@ -240,7 +244,9 @@ struct RemindersView: View {
                 }
             }
             ToolbarItem(placement: .confirmationAction) {
-                Button("Done") { dismiss() }
+                if !isEmbedded {
+                    Button("Done") { dismiss() }
+                }
             }
         }
     }

@@ -38,7 +38,6 @@ struct TaskListView: View {
     @State private var showArchive = false
     @State private var showNotes = false
     @State private var showStorage = false
-    @State private var showReminders = false
     @State private var showCredentials = false
     @State private var showSketches = false
     @State private var showSyncNotes = false
@@ -62,6 +61,7 @@ struct TaskListView: View {
     @AppStorage(AppSettingsKey.lastAutoBackup) private var lastAutoBackup: Double = 0
     @AppStorage(AppSettingsKey.showQuote) private var showQuote = true
     @State private var quote: Quote?
+    @State private var page: BoardPage = .strips
 
     private var activeTasks: [TaskItem] { allTasks.filter { !$0.isArchived } }
 
@@ -107,14 +107,49 @@ struct TaskListView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                // Fixed: the board's identity and today's date belong to both pages.
                 dateHeader
                 if showQuote, let quote {
                     QuoteOfDayCard(quote: quote)
                 }
-                reorderNotice
-                board
+                pagePicker
+                // Only the list below changes. Each page brings its own toolbar and its own
+                // search field with it, because the two ask different things of their contents —
+                // the same split the phone makes.
+                switch page {
+                case .strips:
+                    reorderNotice
+                    board
+                case .reminders:
+                    RemindersView(isEmbedded: true)
+                }
+            }
+            .modifier(HorizontalSwipe { forward in
+                guard let target = forward ? page.next : page.previous else { return }
+                withAnimation(.easeInOut(duration: 0.18)) {
+                    page = target
+                }
+            })
+        }
+    }
+
+    /// The board's two faces.
+    ///
+    /// Reminders used to open as a sheet — a thing on top of the board, dismissed to get back to
+    /// it. It asks the same question a strip does, about things that happen at a time rather than
+    /// things that sit in a queue, so it reads better as the board's other page.
+    private var pagePicker: some View {
+        Picker("Page", selection: $page) {
+            ForEach(BoardPage.allCases) { candidate in
+                Text(candidate.title).tag(candidate)
             }
         }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(TaskStripTheme.baySurfaceFaded)
     }
 
     /// Today in both calendars, with how long each month runs.
@@ -219,11 +254,6 @@ struct TaskListView: View {
             }
             .sheet(isPresented: $showSyncNotes) {
                 SyncNotesView()
-            }
-            .sheet(isPresented: $showReminders) {
-                NavigationStack {
-                    RemindersView()
-                }
             }
             .sheet(isPresented: $showStorage) {
                 NavigationStack {
@@ -350,7 +380,7 @@ struct TaskListView: View {
         actions.showArchived = { showArchive = true }
         actions.showNotes = { showNotes = true }
         actions.showStorage = { showStorage = true }
-        actions.showReminders = { showReminders = true }
+        actions.showReminders = { page = .reminders }
         actions.showCredentials = { showCredentials = true }
         actions.showSketches = { showSketches = true }
         actions.showSyncNotes = { showSyncNotes = true }
@@ -580,11 +610,11 @@ struct TaskListView: View {
             }
             ToolbarItem(placement: .navigation) {
                 Button {
-                    showReminders = true
+                    page = .reminders
                 } label: {
                     Label("Reminders", systemImage: "bell")
                 }
-                .help("Reminders — the ones that belong to no strip (⇧⌘Y)")
+                .help("Reminders — the board's other page (⇧⌘Y)")
             }
             ToolbarItem(placement: .navigation) {
                 Button {
