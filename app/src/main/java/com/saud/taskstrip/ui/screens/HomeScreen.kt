@@ -802,6 +802,8 @@ fun HomeScreen(
                             viewModel.updateTask(task.copy(actionLog = task.actionLog + TaskActionLogEntry(text, System.currentTimeMillis())))
                         },
                         onDelete = { viewModel.deleteTask(task) },
+                        // The leftward swipe belongs to the pager here — see FlightStripRow.
+                        enableSwipeToDelete = false,
                         blockerTask = task.blockedByTaskId?.let { id -> tasks.find { it.id == id } },
                         modifier = Modifier
                             .graphicsLayer { translationY = visualOffset }
@@ -864,6 +866,8 @@ fun HomeScreen(
                                 viewModel.updateTask(task.copy(actionLog = task.actionLog + TaskActionLogEntry(text, System.currentTimeMillis())))
                             },
                             onDelete = { viewModel.deleteTask(task) },
+                        // The leftward swipe belongs to the pager here — see FlightStripRow.
+                        enableSwipeToDelete = false,
                             trailingActions = {
                                 IconButton(onClick = { pendingArchive = task }) {
                                     Icon(
