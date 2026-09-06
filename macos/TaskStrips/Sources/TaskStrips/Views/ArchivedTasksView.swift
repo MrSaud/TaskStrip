@@ -33,7 +33,7 @@ struct ArchivedTasksView: View {
                     }
                     Button(role: .destructive) {
                         ReminderScheduler.shared.cancel(taskID: task.id)
-                        modelContext.delete(task)
+                        modelContext.tombstone(task)
                     } label: {
                         Image(systemName: "trash")
                     }

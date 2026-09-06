@@ -9,7 +9,8 @@ import SwiftUI
 struct CredentialsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @Query(sort: \Credential.title) private var credentials: [Credential]
+    @Query(filter: #Predicate<Credential> { !$0.isTombstoned }, sort: \Credential.title)
+    private var credentials: [Credential]
 
     @State private var search = ""
     @State private var editing: Credential?
@@ -268,6 +269,6 @@ struct CredentialsView: View {
     private func delete(_ credential: Credential) {
         store.removePassword(for: credential.id)
         revealed[credential.id] = nil
-        modelContext.delete(credential)
+        modelContext.tombstone(credential)
     }
 }

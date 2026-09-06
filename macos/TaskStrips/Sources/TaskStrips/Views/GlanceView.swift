@@ -9,8 +9,9 @@ import SwiftUI
 /// and three reminders.
 struct GlanceView: View {
     @Environment(\.openWindow) private var openWindow
-    @Query(sort: \TaskItem.orderIndex) private var allTasks: [TaskItem]
-    @Query private var allReminders: [Reminder]
+    @Query(filter: #Predicate<TaskItem> { !$0.isTombstoned }, sort: \TaskItem.orderIndex)
+    private var allTasks: [TaskItem]
+    @Query(filter: #Predicate<Reminder> { !$0.isTombstoned }) private var allReminders: [Reminder]
 
     private var strips: [TaskItem] { GlancePlan.strips(from: allTasks) }
     private var reminders: [Reminder] { GlancePlan.reminders(from: allReminders) }

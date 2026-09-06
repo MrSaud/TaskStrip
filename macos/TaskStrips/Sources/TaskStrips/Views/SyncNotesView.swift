@@ -22,7 +22,7 @@ struct SyncNotesView: View {
     @State private var folderName = SyncNotesView.currentFolderName()
 
     /// Tombstones are how a delete travels; they are not notes.
-    private var notes: [SyncNote] { stored.filter { !$0.isDeleted } }
+    private var notes: [SyncNote] { stored.filter { !$0.isTombstoned } }
     private var selected: SyncNote? { notes.first { $0.syncID == selection } }
 
     var body: some View {
@@ -212,7 +212,7 @@ struct SyncNotesView: View {
     /// A delete is a tombstone, not a removal: the row has to survive long enough to tell the
     /// other device the note is gone, or the next sync brings it straight back.
     private func delete(_ note: SyncNote) {
-        note.isDeleted = true
+        note.isTombstoned = true
         note.text = ""
         note.updatedAt = .now
         if selection == note.syncID { selection = nil }
@@ -316,7 +316,7 @@ struct SyncNotesView: View {
                     syncID: record.id,
                     text: record.text,
                     updatedAt: record.updatedAt,
-                    isDeleted: record.isDeleted
+                    isTombstoned: record.isDeleted
                 )
                 modelContext.insert(note)
                 byID[record.id] = note

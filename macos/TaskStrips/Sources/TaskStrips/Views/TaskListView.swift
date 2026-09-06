@@ -15,16 +15,17 @@ enum ProgressSort: String, CaseIterable, Identifiable {
 
 struct TaskListView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query(sort: \TaskItem.orderIndex) private var allTasks: [TaskItem]
+    @Query(filter: #Predicate<TaskItem> { !$0.isTombstoned }, sort: \TaskItem.orderIndex)
+    private var allTasks: [TaskItem]
     /// Only needed so a Replace import knows what it's clearing — the notes sheet runs its own
     /// query.
     @Query private var allNotes: [Note]
     /// Same reason as the notes above: a Replace import needs to know what it's clearing.
-    @Query private var allStorageItems: [StorageItem]
+    @Query(filter: #Predicate<StorageItem> { !$0.isTombstoned }) private var allStorageItems: [StorageItem]
     /// Same again for the standalone reminders.
-    @Query private var allReminders: [Reminder]
+    @Query(filter: #Predicate<Reminder> { !$0.isTombstoned }) private var allReminders: [Reminder]
     /// And the credentials, whose passwords a Replace has to clear from the keychain as well.
-    @Query private var allCredentials: [Credential]
+    @Query(filter: #Predicate<Credential> { !$0.isTombstoned }) private var allCredentials: [Credential]
 
     @State private var searchText = ""
     @State private var tagFilter: String?
@@ -910,7 +911,7 @@ struct TaskListView: View {
         // would grow the media folder forever.
         for attachment in task.attachments { AttachmentStore.shared.remove(attachment) }
         ReminderScheduler.shared.cancel(taskID: id)
-        modelContext.delete(task)
+        modelContext.tombstone(task)
         cleanUpDanglingBlockers(deletedID: id)
     }
 

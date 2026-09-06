@@ -48,15 +48,28 @@ final class TaskItem: Identifiable {
     /// Also the id both devices agree on. Android mints a matching one per row in its own
     /// `syncId` column; here the model's own key already is a UUID, so it serves as both.
     @Attribute(.unique) var id: UUID
-    /// Last edit. The merge's first and strongest question: newer wins.
+    /// Last edit, and optional purely so the store can migrate.
     ///
-    /// Defaulted so SwiftData can add it to an existing store without a migration plan; every
-    /// write path stamps it.
-    var updatedAt: Date = Date.now
-    /// Kept as a tombstone so a delete can reach the other device. Removing the row instead would
-    /// make a delete indistinguishable from "they haven't heard of this yet", and it would come
-    /// back from the dead on the next sync.
-    var isDeleted: Bool = false
+    /// SwiftData can give a new non-optional attribute a default only when the Swift initialiser
+    /// is a literal it can encode into the model. `Date.now` is not one, so declaring this
+    /// non-optional produced a mandatory attribute with no default and Core Data refused to
+    /// migrate an existing store at all — "missing attribute values on mandatory destination
+    /// attribute", which is a launch that fails rather than a field that misbehaves.
+    ///
+    /// Nil means "never edited since it was filed", which is what [lastEditedAt] reads it as.
+    var updatedAt: Date?
+    /// Tombstoned: deleted here, and kept only so the delete can reach the other device.
+    ///
+    /// Deliberately not called `isDeleted`. SwiftData's own PersistentModel already has one of
+    /// those, meaning "removed from the context", and a stored property of that name shadows it —
+    /// a #Predicate binds to ours while plain Swift `model.isDeleted` silently reads theirs. That
+    /// split is invisible at the call site and was caught only by a test that fetched a tombstoned
+    /// row and asked it whether it was gone. The name is the fix.
+    var isTombstoned: Bool = false
+
+    /// When this was last edited, falling back to when it was filed — a row
+    /// nobody has touched is exactly as old as its filing.
+    var lastEditedAt: Date { updatedAt ?? createdAt }
     var title: String
     var notes: String
     var notesRtl: Bool

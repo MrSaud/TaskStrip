@@ -16,29 +16,36 @@ final class SyncNote {
     /// needs to call it is its first line — see `SyncNoteRecord.displayTitle`.
     var text: String
     var updatedAt: Date
-    /// Kept as a tombstone until a sync has carried the delete, then it is nothing but a row that
-    /// says "this is gone" — which is exactly what the other device needs to hear.
-    var isDeleted: Bool
+    /// Tombstoned: kept until a sync has carried the delete, then nothing but a row that says
+    /// "this is gone" — which is exactly what the other device needs to hear.
+    ///
+    /// Renamed off `isDeleted`, which SwiftData's own PersistentModel already defines as "removed
+    /// from the context". A stored property of that name shadows it and the two disagree, so the
+    /// list's filter was reading SwiftData's answer — always false — rather than this one.
+    /// Defaulted, unlike the property it replaced. Renaming makes this a *new* attribute as far
+    /// as the store is concerned, and a new non-optional one with no default is a store that
+    /// refuses to migrate — the app then fails to launch rather than misbehaving quietly.
+    var isTombstoned: Bool = false
 
     init(
         syncID: String = UUID().uuidString,
         text: String = "",
         updatedAt: Date = .now,
-        isDeleted: Bool = false
+        isTombstoned: Bool = false
     ) {
         self.syncID = syncID
         self.text = text
         self.updatedAt = updatedAt
-        self.isDeleted = isDeleted
+        self.isTombstoned = isTombstoned
     }
 
     var record: SyncNoteRecord {
-        SyncNoteRecord(id: syncID, text: text, updatedAt: updatedAt, isDeleted: isDeleted)
+        SyncNoteRecord(id: syncID, text: text, updatedAt: updatedAt, isDeleted: isTombstoned)
     }
 
     func apply(_ record: SyncNoteRecord) {
         text = record.text
         updatedAt = record.updatedAt
-        isDeleted = record.isDeleted
+        isTombstoned = record.isDeleted
     }
 }

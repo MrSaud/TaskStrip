@@ -12,7 +12,8 @@ import UniformTypeIdentifiers
 struct StorageLibraryView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @Query(sort: \StorageItem.createdAt, order: .reverse) private var items: [StorageItem]
+    @Query(filter: #Predicate<StorageItem> { !$0.isTombstoned }, sort: \StorageItem.createdAt, order: .reverse)
+    private var items: [StorageItem]
 
     @State private var tagFilter: String?
     @State private var taggingItem: StorageItem?
@@ -388,7 +389,7 @@ struct StorageLibraryView: View {
 
     private func delete(_ item: StorageItem) {
         store.remove(relativePath: item.path, kind: item.type.attachmentKind)
-        modelContext.delete(item)
+        modelContext.tombstone(item)
     }
 }
 

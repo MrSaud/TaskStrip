@@ -7,7 +7,8 @@ import SwiftUI
 /// lists. The Mac editor keeps one, so this shows the whole library with a filter across the top
 /// — same choice, one dialog instead of three.
 struct StoragePickerSheet: View {
-    @Query(sort: \StorageItem.createdAt, order: .reverse) private var items: [StorageItem]
+    @Query(filter: #Predicate<StorageItem> { !$0.isTombstoned }, sort: \StorageItem.createdAt, order: .reverse)
+    private var items: [StorageItem]
     let store: AttachmentStore
     let onAdd: ([StorageItem]) -> Void
     let onCancel: () -> Void

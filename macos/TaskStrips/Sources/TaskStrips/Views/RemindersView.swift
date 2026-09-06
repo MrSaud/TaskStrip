@@ -13,7 +13,8 @@ struct RemindersView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
-    @Query(sort: \Reminder.triggerAt) private var reminders: [Reminder]
+    @Query(filter: #Predicate<Reminder> { !$0.isTombstoned }, sort: \Reminder.triggerAt)
+    private var reminders: [Reminder]
 
     @State private var search = ""
     @State private var tagFilter: String?
@@ -299,6 +300,6 @@ struct RemindersView: View {
 
     private func delete(_ reminder: Reminder) {
         ReminderScheduler.shared.cancel(reminderID: reminder.id)
-        modelContext.delete(reminder)
+        modelContext.tombstone(reminder)
     }
 }
