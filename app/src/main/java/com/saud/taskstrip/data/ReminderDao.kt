@@ -9,14 +9,18 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface ReminderDao {
-    @Query("SELECT * FROM reminders ORDER BY triggerAt ASC")
+    @Query("SELECT * FROM reminders WHERE isDeleted = 0 ORDER BY triggerAt ASC")
     fun observeAll(): Flow<List<ReminderEntity>>
 
-    @Query("SELECT * FROM reminders WHERE id = :id")
+    @Query("SELECT * FROM reminders WHERE isDeleted = 0 AND id = :id")
     suspend fun getById(id: Long): ReminderEntity?
 
-    @Query("SELECT * FROM reminders")
+    @Query("SELECT * FROM reminders WHERE isDeleted = 0")
     suspend fun getAllOnce(): List<ReminderEntity>
+
+    /** Tombstones included — see TaskDao.getAllForSync. */
+    @Query("SELECT * FROM reminders")
+    suspend fun getAllForSync(): List<ReminderEntity>
 
     @Insert
     suspend fun insert(reminder: ReminderEntity): Long

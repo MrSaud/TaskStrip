@@ -28,12 +28,20 @@ class CredentialRepository(private val dao: CredentialDao) {
                 username = username,
                 encryptedPassword = if (password.isBlank()) existing.encryptedPassword else CredentialCrypto.encrypt(password),
                 url = url,
-                notes = notes
+                notes = notes,
+                // Stamped here, like every other edit — see TaskRepository.updateTask.
+                updatedAt = System.currentTimeMillis()
             )
         )
     }
 
-    suspend fun delete(credential: CredentialEntity) = dao.delete(credential)
+    /** A tombstone, not a removal — see TaskRepository.deleteTask. */
+    suspend fun delete(credential: CredentialEntity) = dao.update(
+        credential.copy(isDeleted = true, updatedAt = System.currentTimeMillis())
+    )
+
+    /** What the sync sends: live credentials and the tombstones of dead ones. */
+    suspend fun getAllForSync(): List<CredentialEntity> = dao.getAllForSync()
 
     suspend fun getById(id: Long): CredentialEntity? = dao.getById(id)
 

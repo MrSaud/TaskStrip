@@ -51,13 +51,22 @@ class ReminderRepository(private val dao: ReminderDao) {
             repeatUnit = repeatUnit,
             tag = tag,
             tagEmoji = tagEmoji,
-            isDone = isDone
+            isDone = isDone,
+            // Stamped here for the same reason TaskRepository.updateTask stamps: a write that
+            // forgets it doesn't fail, it just never reaches the other device.
+            updatedAt = System.currentTimeMillis()
         )
         dao.update(updated)
         return updated
     }
 
-    suspend fun delete(reminder: ReminderEntity) = dao.delete(reminder)
+    /** A tombstone, not a removal — see TaskRepository.deleteTask. */
+    suspend fun delete(reminder: ReminderEntity) = dao.update(
+        reminder.copy(isDeleted = true, updatedAt = System.currentTimeMillis())
+    )
+
+    /** What the sync sends: live reminders and the tombstones of dead ones. */
+    suspend fun getAllForSync(): List<ReminderEntity> = dao.getAllForSync()
 
     suspend fun getById(id: Long): ReminderEntity? = dao.getById(id)
 }
