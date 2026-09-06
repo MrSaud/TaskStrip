@@ -4,6 +4,7 @@ import android.content.Context
 import java.io.File
 import java.time.Instant
 import java.time.ZoneId
+import java.util.UUID
 import java.time.format.DateTimeFormatter
 
 /** A sketch note is a folder of one or more page PNGs (sketches/<note>/page1.png, page2.png, …)
@@ -100,9 +101,63 @@ object SketchStorage {
 
     fun createdLabel(note: File): String = formatDate(getCreatedAt(note))
 
-    fun deleteNote(note: File) {
-        runCatching { note.deleteRecursively() }
+    // ---- Syncing ----
+
+    // The third dotfile, alongside .name and .created and hidden the same way. A sketch is the one
+    // thing this app keeps that has no row anywhere, so its shared id has to live beside it.
+    private fun syncIdFile(note: File): File = File(note, ".syncid")
+
+    // A folder whose pages are gone but which still says "this existed and was deleted". Kept so
+    // the delete can reach the other device, the same reason a tombstoned strip keeps its row.
+    private fun deletedFile(note: File): File = File(note, ".deleted")
+
+    /** The id both devices know this sketch by, minted the first time it is asked for.
+     *
+     * On demand rather than at creation: sketches drawn before any of this existed have no id, and
+     * the first sync should carry them across rather than skip them for being old. */
+    fun getOrCreateSyncId(note: File): String {
+        val file = syncIdFile(note)
+        if (file.exists()) {
+            file.readText().trim().takeIf { it.isNotEmpty() }?.let { return it }
+        }
+        val minted = UUID.randomUUID().toString()
+        note.mkdirs()
+        file.writeText(minted)
+        return minted
     }
+
+    fun setSyncId(note: File, syncId: String) {
+        note.mkdirs()
+        syncIdFile(note).writeText(syncId)
+    }
+
+    fun isDeleted(note: File): Boolean = deletedFile(note).exists()
+
+    /** When it was deleted, so the merge can tell a fresh delete from a stale one. */
+    fun getDeletedAt(note: File): Long =
+        deletedFile(note).takeIf { it.exists() }?.readText()?.trim()?.toLongOrNull() ?: 0L
+
+    /** A tombstone, not a removal.
+     *
+     * The pages go — they are the bulk, and nothing should point at them once the note is gone —
+     * but the folder stays, holding the id and the moment of the delete. Removed outright, the
+     * note would be indistinguishable from one the other device has never seen, and the next sync
+     * would draw it again. listNotes already ignores what is left behind, because it only lists
+     * folders that still have pages.
+     */
+    fun deleteNote(note: File) {
+        runCatching {
+            // Minted before the pages go, so a note deleted having never synced still has a name
+            // to be deleted by.
+            getOrCreateSyncId(note)
+            listPages(note).forEach { it.delete() }
+            deletedFile(note).writeText(System.currentTimeMillis().toString())
+        }
+    }
+
+    /** Every folder the sync cares about: live notes and the tombstones of dead ones. */
+    fun listAllForSync(context: Context): List<File> =
+        sketchesDir(context).listFiles { f -> f.isDirectory }?.toList() ?: emptyList()
 
     fun deletePage(page: File) {
         runCatching { page.delete() }
