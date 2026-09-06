@@ -45,7 +45,18 @@ struct TaskActionLogEntry: Codable, Hashable, Identifiable {
 // keeps deletion simple — see TaskListView.delete(_:), which clears any dangling references.
 @Model
 final class TaskItem: Identifiable {
+    /// Also the id both devices agree on. Android mints a matching one per row in its own
+    /// `syncId` column; here the model's own key already is a UUID, so it serves as both.
     @Attribute(.unique) var id: UUID
+    /// Last edit. The merge's first and strongest question: newer wins.
+    ///
+    /// Defaulted so SwiftData can add it to an existing store without a migration plan; every
+    /// write path stamps it.
+    var updatedAt: Date = Date.now
+    /// Kept as a tombstone so a delete can reach the other device. Removing the row instead would
+    /// make a delete indistinguishable from "they haven't heard of this yet", and it would come
+    /// back from the dead on the next sync.
+    var isDeleted: Bool = false
     var title: String
     var notes: String
     var notesRtl: Bool

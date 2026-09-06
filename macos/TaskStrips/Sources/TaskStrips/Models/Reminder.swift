@@ -38,7 +38,17 @@ enum ReminderRepeatUnit: String, Codable, CaseIterable, Identifiable {
 /// service due, a document that expires.
 @Model
 final class Reminder: Identifiable, Taggable {
+    /// Also the id both devices agree on — see TaskItem.
     @Attribute(.unique) var id: UUID
+    /// Last edit. The merge's first and strongest question: newer wins.
+    ///
+    /// Defaulted so SwiftData can add it to an existing store without a migration plan; every
+    /// write path stamps it.
+    var updatedAt: Date = Date.now
+    /// Kept as a tombstone so a delete can reach the other device. Removing the row instead would
+    /// make a delete indistinguishable from "they haven't heard of this yet", and it would come
+    /// back from the dead on the next sync.
+    var isDeleted: Bool = false
     /// The one-line title. Android calls this column `text` and kept the name through the
     /// addition of `description` below, so a backup uses it too.
     var text: String

@@ -240,9 +240,43 @@ val MIGRATION_24_25 = object : Migration(24, 25) {
     }
 }
 
+// Strips and reminders learn the three things a merge needs of them: a name both devices know
+// them by, when they were last touched, and a way to say "deleted" out loud.
+//
+// syncId is backfilled per row rather than left empty. SQLite has no uuid(), and hex(randomblob())
+// is the portable way to get 16 random bytes; the dashes are put back by hand so the value is the
+// same shape both apps parse. Rows that already exist get one now, so the first sync treats them
+// as strips it has never seen rather than skipping them.
+//
+// updatedAt seeds from createdAt, not from now: a row nobody has touched since it was filed is
+// exactly as old as its filing, and stamping everything with the migration's own clock would make
+// every strip on this device look newer than its counterpart on the other one and win every tie.
+val MIGRATION_25_26 = object : Migration(25, 26) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        for (table in listOf("tasks", "reminders")) {
+            db.execSQL("ALTER TABLE $table ADD COLUMN syncId TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE $table ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE $table ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0")
+            db.execSQL(
+                "UPDATE $table SET syncId = " +
+                    "lower(substr(hex(randomblob(4)),1,8) || '-' || " +
+                    "substr(hex(randomblob(2)),1,4) || '-' || " +
+                    "substr(hex(randomblob(2)),1,4) || '-' || " +
+                    "substr(hex(randomblob(2)),1,4) || '-' || " +
+                    "substr(hex(randomblob(6)),1,12)) " +
+                    "WHERE syncId = ''"
+            )
+            db.execSQL("UPDATE $table SET updatedAt = createdAt WHERE updatedAt = 0")
+        }
+        // Two rows must never share a name, or the merge would fold them into one.
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_tasks_syncId ON tasks(syncId)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_reminders_syncId ON reminders(syncId)")
+    }
+}
+
 @Database(
     entities = [TaskEntity::class, CredentialEntity::class, NoteEntity::class, ReminderEntity::class, StorageItemEntity::class, SyncNoteEntity::class],
-    version = 25,
+    version = 26,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -265,7 +299,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "taskstrip.db"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26)
                     // Only reached for version jumps with no real user data behind them
                     // (e.g. a stale pre-v3 dev install) — every jump from here on gets a
                     // real Migration above instead, so saved tasks are never silently wiped.
