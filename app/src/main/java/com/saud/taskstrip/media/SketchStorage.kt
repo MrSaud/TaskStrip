@@ -151,6 +151,10 @@ object SketchStorage {
             // to be deleted by.
             getOrCreateSyncId(note)
             listPages(note).forEach { it.delete() }
+            // The name goes with the pages. A tombstone is only a name to be deleted by and the
+            // moment it happened — keeping the title of a note nobody can open would be keeping
+            // the one part of it that still reads like content.
+            nameFile(note).delete()
             deletedFile(note).writeText(System.currentTimeMillis().toString())
         }
     }

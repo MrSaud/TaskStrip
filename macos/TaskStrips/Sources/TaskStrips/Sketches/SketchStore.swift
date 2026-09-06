@@ -31,6 +31,12 @@ struct SketchStore {
 
     private static let nameFile = ".name"
     private static let createdFile = ".created"
+    // The third dotfile, hidden the same way and for the same reason. A sketch is the only thing
+    // this app keeps with no row anywhere, so its shared id has to live beside it. Mirrors
+    // SketchStorage.kt.
+    private static let syncIDFile = ".syncid"
+    // A folder whose pages are gone but which still says "this existed and was deleted".
+    private static let deletedFile = ".deleted"
 
     /// Android formats these with "dd MMM yyyy, HH:mm", and the two apps show the same sketch.
     private static let labelFormat: Date.FormatStyle = .dateTime
@@ -163,7 +169,68 @@ struct SketchStore {
         try? FileManager.default.removeItem(at: url)
     }
 
+    /// A tombstone, not a removal.
+    ///
+    /// The pages go — they are the bulk, and nothing should point at them once the note is gone —
+    /// but the folder stays, holding the id and the moment of the delete. Removed outright, the
+    /// note would be indistinguishable from one the other device has never seen, and the next sync
+    /// would draw it again. `notes()` never shows what is left, because it only lists folders that
+    /// still have pages.
     func deleteNote(_ id: String) {
-        try? FileManager.default.removeItem(at: folder(of: id))
+        // Minted before the pages go, so a note deleted having never synced still has a name to be
+        // deleted by.
+        _ = syncID(of: id)
+        for page in pages(of: id) { try? FileManager.default.removeItem(at: page) }
+        // The name goes with the pages. A tombstone is only a name to be deleted by and the moment
+        // it happened — keeping the title of a note nobody can open would be keeping the one part
+        // of it that still reads like content.
+        try? FileManager.default.removeItem(at: folder(of: id).appending(path: Self.nameFile))
+        let marker = folder(of: id).appending(path: Self.deletedFile)
+        try? String(Int(Date.now.timeIntervalSince1970 * 1000)).write(to: marker, atomically: true, encoding: .utf8)
+    }
+
+    // MARK: - Syncing
+
+    /// The id both devices know this sketch by, minted the first time it is asked for.
+    ///
+    /// On demand rather than at creation: sketches drawn before any of this existed have no id,
+    /// and the first sync should carry them across rather than skip them for being old.
+    func syncID(of id: String) -> String {
+        let url = folder(of: id).appending(path: Self.syncIDFile)
+        if let text = try? String(contentsOf: url, encoding: .utf8) {
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { return trimmed }
+        }
+        let minted = UUID().uuidString
+        setSyncID(minted, of: id)
+        return minted
+    }
+
+    func setSyncID(_ syncID: String, of id: String) {
+        try? FileManager.default.createDirectory(at: folder(of: id), withIntermediateDirectories: true)
+        try? syncID.write(to: folder(of: id).appending(path: Self.syncIDFile), atomically: true, encoding: .utf8)
+    }
+
+    func isDeleted(_ id: String) -> Bool {
+        FileManager.default.fileExists(atPath: folder(of: id).appending(path: Self.deletedFile).path)
+    }
+
+    /// When it was deleted, so the merge can tell a fresh delete from a stale one.
+    func deletedAt(of id: String) -> Int64 {
+        let url = folder(of: id).appending(path: Self.deletedFile)
+        guard let text = try? String(contentsOf: url, encoding: .utf8),
+              let millis = Int64(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        else { return 0 }
+        return millis
+    }
+
+    /// Every folder the sync cares about: live notes and the tombstones of dead ones.
+    func allIDsForSync() -> [String] {
+        let contents = try? FileManager.default.contentsOfDirectory(
+            at: root, includingPropertiesForKeys: [.isDirectoryKey], options: [.skipsHiddenFiles]
+        )
+        return (contents ?? []).filter { url in
+            (try? url.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true
+        }.map(\.lastPathComponent)
     }
 }

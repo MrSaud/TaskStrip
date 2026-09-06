@@ -175,13 +175,25 @@ final class SketchStoreTests: XCTestCase {
         XCTAssertEqual(store.pages(of: "note_1").map(\.lastPathComponent), ["page2.png"])
     }
 
-    func testDeletingANoteTakesItsNameWithIt() throws {
+    /// Deleting takes the drawing and its name, and leaves a tombstone.
+    ///
+    /// The folder survives on purpose: removed outright, the note would be indistinguishable from
+    /// one the other device has never seen, and the next sync would draw it again. What is left is
+    /// only a name to be deleted by and the moment it happened — never anything that still reads
+    /// like content.
+    func testDeletingANoteTakesItsPagesAndItsNameButLeavesATombstone() throws {
         try writePage("page1.png", in: "note_1")
         store.setName("Kitchen plan", of: "note_1")
+        let id = store.syncID(of: "note_1")
 
         store.deleteNote("note_1")
 
-        XCTAssertFalse(FileManager.default.fileExists(atPath: store.folder(of: "note_1").path))
+        XCTAssertTrue(store.pages(of: "note_1").isEmpty)
+        XCTAssertNil(store.name(of: "note_1"))
         XCTAssertTrue(store.notes().isEmpty)
+        // But the sync can still say what went and when.
+        XCTAssertTrue(store.isDeleted("note_1"))
+        XCTAssertEqual(store.syncID(of: "note_1"), id)
+        XCTAssertGreaterThan(store.deletedAt(of: "note_1"), 0)
     }
 }
