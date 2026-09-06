@@ -42,10 +42,16 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       # assembleDebug rather than `build`: it compiles every source file and runs the Room
-      # annotation processor, which is where a bad migration or a missing DAO shows up. There is
-      # no unit-test source set yet, so `test` would pass by having nothing to run.
+      # annotation processor, which is where a bad migration or a missing DAO shows up.
       - name: Build
         run: ./gradlew --no-daemon assembleDebug
+
+      # There is a unit-test source set now, and what it holds is the half of the sync contract
+      # this side owns: the merge rules are written once in Kotlin and once in Swift, and two
+      # devices that answer a merge differently disagree with each other forever. The Mac runs its
+      # copy of these same cases on every push; this runs ours.
+      - name: Test
+        run: ./gradlew --no-daemon testDebugUnitTest
 
       - name: Upload the APK
         uses: actions/upload-artifact@v4
