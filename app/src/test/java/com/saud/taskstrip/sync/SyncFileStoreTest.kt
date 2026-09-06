@@ -48,13 +48,13 @@ class SyncFileStoreTest {
 
     @Test
     fun `remote names round trip`() {
-        assertEquals("files/$hashOfAbc", SyncFileStore.remoteName(hashOfAbc))
-        assertEquals(hashOfAbc, SyncFileStore.hashFromRemoteName("files/$hashOfAbc"))
-        assertTrue(SyncFileStore.isStoreName("files/$hashOfAbc"))
+        assertEquals("file-$hashOfAbc", SyncFileStore.remoteName(hashOfAbc))
+        assertEquals(hashOfAbc, SyncFileStore.hashFromRemoteName("file-$hashOfAbc"))
+        assertTrue(SyncFileStore.isStoreName("file-$hashOfAbc"))
         assertFalse(SyncFileStore.isStoreName("sync_board.json"))
         assertNull(SyncFileStore.hashFromRemoteName("sync_board.json"))
         // The prefix alone names nothing.
-        assertNull(SyncFileStore.hashFromRemoteName("files/"))
+        assertNull(SyncFileStore.hashFromRemoteName("file-"))
     }
 
     @Test

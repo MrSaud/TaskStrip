@@ -22,9 +22,14 @@ import java.security.MessageDigest
  */
 object SyncFileStore {
 
-    /** One flat folder rather than a tree. Content addresses collide only when the content is the
-     * same, so there is nothing for a hierarchy to disambiguate. */
-    const val PREFIX = "files/"
+    /** A name prefix, not a folder.
+     *
+     * Both devices write into the same shared folder — the phone through Drive's API, the Mac
+     * through the same folder mounted in Finder — so the layout has to be one thing. A real
+     * subfolder would mean teaching both Drive clients to make and find one; a prefix on the name
+     * needs nothing either of them can't already do. There is nothing for a hierarchy to
+     * disambiguate anyway: content addresses collide only when the content is the same. */
+    const val PREFIX = "file-"
 
     /** Read in blocks rather than whole: a video attachment can be hundreds of megabytes, and a
      * phone that reads one into memory to hash it is a phone that stops. */

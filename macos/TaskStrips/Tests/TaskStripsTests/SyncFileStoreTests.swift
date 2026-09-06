@@ -51,13 +51,13 @@ final class SyncFileStoreTests: XCTestCase {
     }
 
     func testRemoteNamesRoundTrip() {
-        XCTAssertEqual(SyncFileStore.remoteName(hashOfABC), "files/\(hashOfABC)")
-        XCTAssertEqual(SyncFileStore.hash(fromRemoteName: "files/\(hashOfABC)"), hashOfABC)
-        XCTAssertTrue(SyncFileStore.isStoreName("files/\(hashOfABC)"))
+        XCTAssertEqual(SyncFileStore.remoteName(hashOfABC), "file-\(hashOfABC)")
+        XCTAssertEqual(SyncFileStore.hash(fromRemoteName: "file-\(hashOfABC)"), hashOfABC)
+        XCTAssertTrue(SyncFileStore.isStoreName("file-\(hashOfABC)"))
         XCTAssertFalse(SyncFileStore.isStoreName("sync_board.json"))
         XCTAssertNil(SyncFileStore.hash(fromRemoteName: "sync_board.json"))
         // The prefix alone names nothing.
-        XCTAssertNil(SyncFileStore.hash(fromRemoteName: "files/"))
+        XCTAssertNil(SyncFileStore.hash(fromRemoteName: "file-"))
     }
 
     func testOnlyFilesThisDeviceHoldsAndTheFolderLacksAreUploaded() {
