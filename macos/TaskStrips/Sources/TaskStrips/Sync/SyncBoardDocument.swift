@@ -26,6 +26,9 @@ struct SyncTaskRecord: Equatable, Identifiable {
     var waitingOnFollowUpDays: Int?
     var reminderMinutesBefore: Int?
     var repeatIntervalDays: Int?
+    /// The linked sketch's shared id. The local column holds a folder name, which names nothing on
+    /// the other device — the same reason `blockedBySyncID` exists.
+    var linkedSketchSyncID: String?
     var tags: [String] = []
     var links: [SyncLink] = []
     var actionLog: [SyncLogEntry] = []
@@ -47,6 +50,25 @@ struct SyncReminderRecord: Equatable, Identifiable {
     var tag = ""
     var tagEmoji = ""
     var isDone = false
+    var createdAt: Int64 = 0
+}
+
+/// A sketch note, as it travels.
+///
+/// A note is a folder of ordered pages on both platforms — sketches/<note>/page1.png, page2.png —
+/// so the record carries the pages in order, each by the hash of its bytes. Order is the record's
+/// to state rather than something to re-derive from filenames on the far side: page numbering is a
+/// local detail, and two devices that renumbered differently would otherwise disagree about what
+/// page two is.
+///
+/// Merged whole rather than page by page. A drawing edited on both devices has no sensible
+/// half-and-half, and the newest one is the one that was drawn last.
+struct SyncSketchRecord: Equatable, Identifiable {
+    var id: String
+    var updatedAt: Int64 = 0
+    var isDeleted = false
+    var name = ""
+    var pages: [String] = []
     var createdAt: Int64 = 0
 }
 
@@ -122,7 +144,8 @@ enum SyncBoardDocument {
         tasks: [SyncTaskRecord],
         reminders: [SyncReminderRecord],
         storage: [SyncStorageRecord] = [],
-        credentials: [SyncCredentialRecord] = []
+        credentials: [SyncCredentialRecord] = [],
+        sketches: [SyncSketchRecord] = []
     ) throws -> Data {
         let root: [String: Any] = [
             "version": version,
@@ -130,6 +153,7 @@ enum SyncBoardDocument {
             "reminders": sorted(reminders).map(json(for:)),
             "storageItems": sorted(storage).map(json(for:)),
             "credentials": sorted(credentials).map(json(for:)),
+            "sketches": sorted(sketches).map(json(for:)),
         ]
         return try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
     }
@@ -161,6 +185,7 @@ enum SyncBoardDocument {
                 waitingOnFollowUpDays: int(object["waitingOnFollowUpDays"]),
                 reminderMinutesBefore: int(object["reminderMinutesBefore"]),
                 repeatIntervalDays: int(object["repeatIntervalDays"]),
+                linkedSketchSyncID: string(object["linkedSketch"]),
                 tags: (object["tags"] as? [String] ?? []).filter { !$0.isEmpty },
                 links: (object["links"] as? [[String: Any]] ?? []).map {
                     SyncLink(url: $0["url"] as? String ?? "", label: $0["label"] as? String ?? "")
@@ -252,6 +277,22 @@ enum SyncBoardDocument {
         }
     }
 
+    static func sketches(from data: Data) -> [SyncSketchRecord] {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let array = root["sketches"] as? [[String: Any]] else { return [] }
+        return array.compactMap { object in
+            guard let id = object["id"] as? String, !id.isEmpty else { return nil }
+            return SyncSketchRecord(
+                id: id,
+                updatedAt: int64(object["updatedAt"]) ?? 0,
+                isDeleted: object["deleted"] as? Bool ?? false,
+                name: object["name"] as? String ?? "",
+                pages: (object["pages"] as? [String] ?? []).filter { !$0.isEmpty },
+                createdAt: int64(object["createdAt"]) ?? 0
+            )
+        }
+    }
+
     // MARK: - Merging
 
     static func merge(local: [SyncTaskRecord], remote: [SyncTaskRecord]) -> [SyncTaskRecord] {
@@ -337,6 +378,28 @@ enum SyncBoardDocument {
         return a
     }
 
+    static func merge(local: [SyncSketchRecord], remote: [SyncSketchRecord]) -> [SyncSketchRecord] {
+        var byID: [String: SyncSketchRecord] = [:]
+        for record in local + remote {
+            byID[record.id] = byID[record.id].map { winner($0, record) } ?? record
+        }
+        return sorted(Array(byID.values))
+    }
+
+    static func winner(_ a: SyncSketchRecord, _ b: SyncSketchRecord) -> SyncSketchRecord {
+        if a.updatedAt != b.updatedAt { return a.updatedAt > b.updatedAt ? a : b }
+        if a.isDeleted != b.isDeleted { return a.isDeleted ? a : b }
+        if a.name != b.name { return isGreater(a.name, b.name) ? a : b }
+        // A note with more pages beats one with fewer at the same instant: the longer drawing is
+        // the one that had work added to it, and dropping pages would be losing the work.
+        if a.pages.count != b.pages.count { return a.pages.count > b.pages.count ? a : b }
+        return a
+    }
+
+    static func sorted(_ items: [SyncSketchRecord]) -> [SyncSketchRecord] { items.sorted { $0.id < $1.id } }
+
+    static func visible(_ items: [SyncSketchRecord]) -> [SyncSketchRecord] { items.filter { !$0.isDeleted } }
+
     static func sorted(_ items: [SyncStorageRecord]) -> [SyncStorageRecord] { items.sorted { $0.id < $1.id } }
     static func sorted(_ items: [SyncCredentialRecord]) -> [SyncCredentialRecord] {
         items.sorted { $0.id < $1.id }
@@ -362,11 +425,13 @@ enum SyncBoardDocument {
     /// Every file the board still points at. What isn't in here is an orphan and can go.
     static func referencedHashes(
         _ tasks: [SyncTaskRecord],
-        storage: [SyncStorageRecord] = []
+        storage: [SyncStorageRecord] = [],
+        sketches: [SyncSketchRecord] = []
     ) -> Set<String> {
         let fromStrips = tasks.filter { !$0.isDeleted }.flatMap(\.attachments).map(\.hash)
         let fromLibrary = storage.filter { !$0.isDeleted }.map(\.hash)
-        return Set((fromStrips + fromLibrary).filter { !$0.isEmpty })
+        let fromSketches = sketches.filter { !$0.isDeleted }.flatMap(\.pages)
+        return Set((fromStrips + fromLibrary + fromSketches).filter { !$0.isEmpty })
     }
 
     // MARK: - JSON plumbing
@@ -392,12 +457,24 @@ enum SyncBoardDocument {
             "waitingOnFollowUpDays": task.waitingOnFollowUpDays as Any? ?? NSNull(),
             "reminderMinutesBefore": task.reminderMinutesBefore as Any? ?? NSNull(),
             "repeatIntervalDays": task.repeatIntervalDays as Any? ?? NSNull(),
+            "linkedSketch": task.linkedSketchSyncID as Any? ?? NSNull(),
             "tags": task.tags,
             "links": task.links.map { ["url": $0.url, "label": $0.label] },
             "actionLog": task.actionLog.map { ["text": $0.text, "timestamp": $0.timestamp] },
             "contacts": task.contacts.map { ["name": $0.name, "email": $0.email, "phone": $0.phone] },
             "attachments": task.attachments.map { ["hash": $0.hash, "name": $0.name, "kind": $0.kind] },
             "createdAt": task.createdAt,
+        ]
+    }
+
+    private static func json(for sketch: SyncSketchRecord) -> [String: Any] {
+        [
+            "id": sketch.id,
+            "updatedAt": sketch.updatedAt,
+            "deleted": sketch.isDeleted,
+            "name": sketch.name,
+            "pages": sketch.pages,
+            "createdAt": sketch.createdAt,
         ]
     }
 

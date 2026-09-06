@@ -29,6 +29,9 @@ data class SyncTaskRecord(
     val waitingOnFollowUpDays: Int? = null,
     val reminderMinutesBefore: Int? = null,
     val repeatIntervalDays: Int? = null,
+    /** The linked sketch's shared id. The local column holds a folder name, which names nothing
+     * on the other device — the same reason blockedBySyncId exists. */
+    val linkedSketchSyncId: String? = null,
     val tags: List<String> = emptyList(),
     val links: List<SyncLink> = emptyList(),
     val actionLog: List<SyncLogEntry> = emptyList(),
@@ -50,6 +53,25 @@ data class SyncReminderRecord(
     val tag: String = "",
     val tagEmoji: String = "",
     val isDone: Boolean = false,
+    val createdAt: Long = 0L
+)
+
+/** A sketch note, as it travels.
+ *
+ * A note is a folder of ordered pages on both platforms — sketches/<note>/page1.png, page2.png —
+ * so the record carries the pages in order, each by the hash of its bytes. Order is the record's
+ * to state rather than something to re-derive from filenames on the far side: page numbering is a
+ * local detail, and two devices that renumbered differently would otherwise disagree about what
+ * page two is.
+ *
+ * Merged whole rather than page by page. A drawing edited on both devices has no sensible
+ * half-and-half, and the newest one is the one that was drawn last. */
+data class SyncSketchRecord(
+    val id: String,
+    val updatedAt: Long = 0L,
+    val isDeleted: Boolean = false,
+    val name: String = "",
+    val pages: List<String> = emptyList(),
     val createdAt: Long = 0L
 )
 
@@ -128,7 +150,8 @@ object SyncBoardDocument {
         tasks: List<SyncTaskRecord>,
         reminders: List<SyncReminderRecord>,
         storage: List<SyncStorageRecord> = emptyList(),
-        credentials: List<SyncCredentialRecord> = emptyList()
+        credentials: List<SyncCredentialRecord> = emptyList(),
+        sketches: List<SyncSketchRecord> = emptyList()
     ): String {
         val root = JSONObject()
         root.put("version", VERSION)
@@ -136,6 +159,7 @@ object SyncBoardDocument {
         root.put("reminders", JSONArray().apply { sortedReminders(reminders).forEach { put(reminderToJson(it)) } })
         root.put("storageItems", JSONArray().apply { sortedStorage(storage).forEach { put(storageToJson(it)) } })
         root.put("credentials", JSONArray().apply { sortedCredentials(credentials).forEach { put(credentialToJson(it)) } })
+        root.put("sketches", JSONArray().apply { sortedSketches(sketches).forEach { put(sketchToJson(it)) } })
         return root.toString(2)
     }
 
@@ -168,6 +192,7 @@ object SyncBoardDocument {
                 waitingOnFollowUpDays = obj.optIntOrNull("waitingOnFollowUpDays"),
                 reminderMinutesBefore = obj.optIntOrNull("reminderMinutesBefore"),
                 repeatIntervalDays = obj.optIntOrNull("repeatIntervalDays"),
+                linkedSketchSyncId = obj.optStringOrNull("linkedSketch"),
                 tags = obj.stringList("tags"),
                 links = obj.objectList("links") { SyncLink(it.optString("url", ""), it.optString("label", "")) },
                 actionLog = obj.objectList("actionLog") { SyncLogEntry(it.optString("text", ""), it.optLong("timestamp", 0L)) },
@@ -245,6 +270,23 @@ object SyncBoardDocument {
                 passwordSalt = obj.optStringOrNull("passwordSalt"),
                 passwordIv = obj.optStringOrNull("passwordIv"),
                 passwordCipher = obj.optStringOrNull("passwordCipher"),
+                createdAt = obj.optLong("createdAt", 0L)
+            )
+        }
+    }.getOrDefault(emptyList())
+
+    fun sketchesFromJson(json: String): List<SyncSketchRecord> = runCatching {
+        val array = JSONObject(json).optJSONArray("sketches") ?: return emptyList()
+        (0 until array.length()).mapNotNull { i ->
+            val obj = array.optJSONObject(i) ?: return@mapNotNull null
+            val id = obj.optString("id")
+            if (id.isNullOrEmpty()) return@mapNotNull null
+            SyncSketchRecord(
+                id = id,
+                updatedAt = obj.optLong("updatedAt", 0L),
+                isDeleted = obj.optBoolean("deleted", false),
+                name = obj.optString("name", ""),
+                pages = obj.stringList("pages"),
                 createdAt = obj.optLong("createdAt", 0L)
             )
         }
@@ -351,6 +393,30 @@ object SyncBoardDocument {
         return a
     }
 
+    fun mergeSketches(local: List<SyncSketchRecord>, remote: List<SyncSketchRecord>): List<SyncSketchRecord> {
+        val byId = LinkedHashMap<String, SyncSketchRecord>()
+        (local + remote).forEach { record ->
+            val existing = byId[record.id]
+            byId[record.id] = if (existing == null) record else winner(existing, record)
+        }
+        return sortedSketches(byId.values.toList())
+    }
+
+    fun winner(a: SyncSketchRecord, b: SyncSketchRecord): SyncSketchRecord {
+        if (a.updatedAt != b.updatedAt) return if (a.updatedAt > b.updatedAt) a else b
+        if (a.isDeleted != b.isDeleted) return if (a.isDeleted) a else b
+        if (a.name != b.name) return if (isGreater(a.name, b.name)) a else b
+        // A note with more pages beats one with fewer at the same instant: the longer drawing is
+        // the one that had work added to it, and dropping pages would be losing the work.
+        if (a.pages.size != b.pages.size) return if (a.pages.size > b.pages.size) a else b
+        return a
+    }
+
+    fun sortedSketches(items: List<SyncSketchRecord>): List<SyncSketchRecord> = items.sortedBy { it.id }
+
+    fun visibleSketches(items: List<SyncSketchRecord>): List<SyncSketchRecord> =
+        items.filter { !it.isDeleted }
+
     fun sortedStorage(items: List<SyncStorageRecord>): List<SyncStorageRecord> = items.sortedBy { it.id }
 
     fun sortedCredentials(items: List<SyncCredentialRecord>): List<SyncCredentialRecord> =
@@ -378,11 +444,13 @@ object SyncBoardDocument {
     /** Every file the board still points at. What isn't in here is an orphan and can go. */
     fun referencedHashes(
         tasks: List<SyncTaskRecord>,
-        storage: List<SyncStorageRecord> = emptyList()
+        storage: List<SyncStorageRecord> = emptyList(),
+        sketches: List<SyncSketchRecord> = emptyList()
     ): Set<String> {
         val fromStrips = tasks.filter { !it.isDeleted }.flatMap { task -> task.attachments.map { it.hash } }
         val fromLibrary = storage.filter { !it.isDeleted }.map { it.hash }
-        return (fromStrips + fromLibrary).filter { it.isNotEmpty() }.toSet()
+        val fromSketches = sketches.filter { !it.isDeleted }.flatMap { it.pages }
+        return (fromStrips + fromLibrary + fromSketches).filter { it.isNotEmpty() }.toSet()
     }
 
     // ---- JSON plumbing ----
@@ -407,6 +475,7 @@ object SyncBoardDocument {
         putOrNull("waitingOnFollowUpDays", task.waitingOnFollowUpDays)
         putOrNull("reminderMinutesBefore", task.reminderMinutesBefore)
         putOrNull("repeatIntervalDays", task.repeatIntervalDays)
+        putOrNull("linkedSketch", task.linkedSketchSyncId)
         put("tags", JSONArray(task.tags))
         put("links", JSONArray().apply {
             task.links.forEach { put(JSONObject().put("url", it.url).put("label", it.label)) }
@@ -425,6 +494,15 @@ object SyncBoardDocument {
             }
         })
         put("createdAt", task.createdAt)
+    }
+
+    private fun sketchToJson(sketch: SyncSketchRecord) = JSONObject().apply {
+        put("id", sketch.id)
+        put("updatedAt", sketch.updatedAt)
+        put("deleted", sketch.isDeleted)
+        put("name", sketch.name)
+        put("pages", JSONArray(sketch.pages))
+        put("createdAt", sketch.createdAt)
     }
 
     private fun storageToJson(item: SyncStorageRecord) = JSONObject().apply {

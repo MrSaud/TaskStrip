@@ -300,6 +300,62 @@ class SyncBoardDocumentTest {
         )
     }
 
+    // ---- Sketches ----
+
+    @Test
+    fun `a sketch survives the round trip with its pages in order`() {
+        val original = SyncSketchRecord(
+            id = "k",
+            updatedAt = 12,
+            name = "Wiring plan",
+            pages = listOf("hashOne", "hashTwo", "hashThree"),
+            createdAt = 3
+        )
+
+        val read = SyncBoardDocument.sketchesFromJson(
+            SyncBoardDocument.toJson(emptyList(), emptyList(), sketches = listOf(original))
+        )
+
+        assertEquals(listOf(original), read)
+        // Order is the record's to state — page numbering is a local detail on each device.
+        assertEquals(listOf("hashOne", "hashTwo", "hashThree"), read.first().pages)
+    }
+
+    /**
+     * At the same instant, the longer drawing is the one that had work added to it. Dropping pages
+     * would be losing that work.
+     */
+    @Test
+    fun `at a tie the sketch with more pages wins`() {
+        val longer = SyncSketchRecord(id = "k", updatedAt = 5, pages = listOf("a", "b", "c"))
+        val shorter = SyncSketchRecord(id = "k", updatedAt = 5, pages = listOf("a"))
+
+        assertEquals(3, SyncBoardDocument.winner(longer, shorter).pages.size)
+        assertEquals(3, SyncBoardDocument.winner(shorter, longer).pages.size)
+    }
+
+    @Test
+    fun `a strip remembers its sketch by the shared id`() {
+        val strip = SyncTaskRecord(id = "a", updatedAt = 1, linkedSketchSyncId = "k")
+
+        val read = SyncBoardDocument.tasksFromJson(
+            SyncBoardDocument.toJson(listOf(strip), emptyList())
+        )
+
+        assertEquals("k", read.first().linkedSketchSyncId)
+    }
+
+    @Test
+    fun `the sweep counts sketch pages too`() {
+        val sketch = SyncSketchRecord(id = "k", updatedAt = 1, pages = listOf("p1", "p2"))
+        val binned = SyncSketchRecord(id = "j", updatedAt = 1, isDeleted = true, pages = listOf("gone"))
+
+        assertEquals(
+            setOf("p1", "p2"),
+            SyncBoardDocument.referencedHashes(emptyList(), emptyList(), listOf(sketch, binned))
+        )
+    }
+
     @Test
     fun `tombstones are bookkeeping not rows`() {
         val rows = listOf(task("a", title = "Here", at = 1), task("b", at = 1, deleted = true))

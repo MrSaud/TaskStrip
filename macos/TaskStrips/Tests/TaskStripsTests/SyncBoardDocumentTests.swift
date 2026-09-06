@@ -225,6 +225,51 @@ final class SyncBoardDocumentTests: XCTestCase {
         )
     }
 
+    // MARK: - Sketches
+
+    func testASketchSurvivesTheRoundTripWithItsPagesInOrder() throws {
+        let original = SyncSketchRecord(
+            id: "k", updatedAt: 12, name: "Wiring plan",
+            pages: ["hashOne", "hashTwo", "hashThree"], createdAt: 3
+        )
+
+        let read = SyncBoardDocument.sketches(
+            from: try SyncBoardDocument.data(tasks: [], reminders: [], sketches: [original])
+        )
+
+        XCTAssertEqual(read, [original])
+        // Order is the record's to state — page numbering is a local detail on each device.
+        XCTAssertEqual(read.first?.pages, ["hashOne", "hashTwo", "hashThree"])
+    }
+
+    /// At the same instant, the longer drawing is the one that had work added to it. Dropping
+    /// pages would be losing that work.
+    func testAtATieTheSketchWithMorePagesWins() {
+        let longer = SyncSketchRecord(id: "k", updatedAt: 5, pages: ["a", "b", "c"])
+        let shorter = SyncSketchRecord(id: "k", updatedAt: 5, pages: ["a"])
+
+        XCTAssertEqual(SyncBoardDocument.winner(longer, shorter).pages.count, 3)
+        XCTAssertEqual(SyncBoardDocument.winner(shorter, longer).pages.count, 3)
+    }
+
+    func testAStripRemembersItsSketchByTheSharedId() throws {
+        let strip = SyncTaskRecord(id: "a", updatedAt: 1, linkedSketchSyncID: "k")
+
+        let read = SyncBoardDocument.tasks(from: try SyncBoardDocument.data(tasks: [strip], reminders: []))
+
+        XCTAssertEqual(read.first?.linkedSketchSyncID, "k")
+    }
+
+    func testTheSweepCountsSketchPagesToo() {
+        let sketch = SyncSketchRecord(id: "k", updatedAt: 1, pages: ["p1", "p2"])
+        let binned = SyncSketchRecord(id: "j", updatedAt: 1, isDeleted: true, pages: ["gone"])
+
+        XCTAssertEqual(
+            SyncBoardDocument.referencedHashes([], storage: [], sketches: [sketch, binned]),
+            ["p1", "p2"]
+        )
+    }
+
     func testTombstonesAreBookkeepingNotRows() {
         let rows = [task("a", title: "Here", at: 1), task("b", at: 1, deleted: true)]
 
