@@ -1,7 +1,9 @@
 package com.saud.taskstrip.data
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.util.UUID
 
 // The "type" values this app writes/reads — kept as a plain String column (not a Room enum
 // converter) to match the lighter-weight convention already used for ReminderEntity.repeatUnit.
@@ -15,9 +17,19 @@ object StorageItemType {
 // directly here — that any strip can later pull a copy of into its own attachments. The physical
 // file lives in the same images/videos/documents directories strips already use (see
 // MediaStorage), so this row is just the library's index over a subset of those files.
-@Entity(tableName = "storage_items")
+@Entity(
+    tableName = "storage_items",
+    indices = [Index(value = ["syncId"], unique = true)]
+)
 data class StorageItemEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** The id both devices agree on — see TaskEntity.syncId. */
+    val syncId: String = UUID.randomUUID().toString(),
+    /** Last edit, as milliseconds. The merge's first and strongest question: newer wins. */
+    val updatedAt: Long = System.currentTimeMillis(),
+    /** A tombstone, so a delete can reach the other device instead of looking like a row it
+     * simply hasn't heard of yet. */
+    val isDeleted: Boolean = false,
     val name: String,
     val path: String,
     val type: String,

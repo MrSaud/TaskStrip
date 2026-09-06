@@ -199,6 +199,107 @@ class SyncBoardDocumentTest {
         assertEquals(setOf("keep"), SyncBoardDocument.referencedHashes(listOf(live, buried)))
     }
 
+    // ---- The library and the credentials ----
+
+    @Test
+    fun `a library file survives the round trip`() {
+        val original = SyncStorageRecord(
+            id = "s",
+            updatedAt = 9,
+            name = "Policy.pdf",
+            type = "DOCUMENT",
+            mimeType = "application/pdf",
+            sizeBytes = 4096,
+            tag = "Insurance",
+            tagEmoji = "📄",
+            hash = "deadbeef",
+            createdAt = 4
+        )
+
+        val read = SyncBoardDocument.storageFromJson(
+            SyncBoardDocument.toJson(emptyList(), emptyList(), storage = listOf(original))
+        )
+
+        assertEquals(listOf(original), read)
+    }
+
+    @Test
+    fun `a credential survives the round trip`() {
+        val original = SyncCredentialRecord(
+            id = "c",
+            updatedAt = 9,
+            title = "Router",
+            username = "admin",
+            url = "https://192.168.1.1",
+            notes = "Upstairs",
+            passwordSalt = "salt",
+            passwordIv = "iv",
+            passwordCipher = "cipher",
+            createdAt = 4
+        )
+
+        val read = SyncBoardDocument.credentialsFromJson(
+            SyncBoardDocument.toJson(emptyList(), emptyList(), credentials = listOf(original))
+        )
+
+        assertEquals(listOf(original), read)
+        assertTrue(read.first().hasPassword)
+    }
+
+    /**
+     * A credential with no passphrase to hand travels without its secret rather than in the clear,
+     * and must come back with nothing where the password was — not with empty strings that would
+     * later be mistaken for a password of no characters.
+     */
+    @Test
+    fun `a credential with no password carries none at all`() {
+        val original = SyncCredentialRecord(id = "c", updatedAt = 1, title = "Router", username = "admin")
+
+        val read = SyncBoardDocument.credentialsFromJson(
+            SyncBoardDocument.toJson(emptyList(), emptyList(), credentials = listOf(original))
+        )
+
+        assertNull(read.first().passwordSalt)
+        assertNull(read.first().passwordCipher)
+        assertFalse(read.first().hasPassword)
+    }
+
+    /**
+     * The devices can legitimately disagree about whether a password is present — only one of them
+     * had the passphrase. Losing the secret to a coin toss would be losing data.
+     */
+    @Test
+    fun `at a tie the side holding the password wins`() {
+        val withSecret = SyncCredentialRecord(
+            id = "c", updatedAt = 5, title = "Router",
+            passwordSalt = "s", passwordIv = "i", passwordCipher = "c"
+        )
+        val without = SyncCredentialRecord(id = "c", updatedAt = 5, title = "Router")
+
+        assertTrue(SyncBoardDocument.winner(withSecret, without).hasPassword)
+        assertTrue(SyncBoardDocument.winner(without, withSecret).hasPassword)
+    }
+
+    /**
+     * The sweep has to see the library too, or every file in it would look like an orphan the
+     * first time a cleanup ran.
+     */
+    @Test
+    fun `the sweep counts library files as well as attachments`() {
+        val strip = SyncTaskRecord(
+            id = "a",
+            updatedAt = 1,
+            attachments = listOf(SyncAttachment("onstrip", "a.jpg", "image"))
+        )
+        val filed = SyncStorageRecord(id = "s", updatedAt = 1, hash = "inlibrary")
+        val binned = SyncStorageRecord(id = "t", updatedAt = 1, isDeleted = true, hash = "gone")
+
+        assertEquals(
+            setOf("onstrip", "inlibrary"),
+            SyncBoardDocument.referencedHashes(listOf(strip), listOf(filed, binned))
+        )
+    }
+
     @Test
     fun `tombstones are bookkeeping not rows`() {
         val rows = listOf(task("a", title = "Here", at = 1), task("b", at = 1, deleted = true))

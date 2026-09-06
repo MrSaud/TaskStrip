@@ -50,6 +50,49 @@ struct SyncReminderRecord: Equatable, Identifiable {
     var createdAt: Int64 = 0
 }
 
+/// A file in the storage library, as it travels. The bytes go by content hash, same as a strip's
+/// attachments — see SyncAttachment.
+struct SyncStorageRecord: Equatable, Identifiable {
+    var id: String
+    var updatedAt: Int64 = 0
+    var isDeleted = false
+    var name = ""
+    var type = ""
+    var mimeType = ""
+    var sizeBytes: Int64 = 0
+    var tag = ""
+    var tagEmoji = ""
+    var hash = ""
+    var createdAt: Int64 = 0
+}
+
+/// A credential, as it travels — and deliberately without the password unless one can be carried
+/// safely.
+///
+/// The stored password is tied to the device's own keystore or keychain: it does not survive a
+/// reinstall and means nothing on the other machine. So it is decrypted locally and re-encrypted
+/// under a passphrase the user holds, exactly as the backup already does it, and the three fields
+/// below are that ciphertext. With no passphrase they are absent — a password is never written in
+/// the clear, and a credential without one still syncs the parts that are useful without it.
+struct SyncCredentialRecord: Equatable, Identifiable {
+    var id: String
+    var updatedAt: Int64 = 0
+    var isDeleted = false
+    var title = ""
+    var username = ""
+    var url = ""
+    var notes = ""
+    var passwordSalt: String?
+    var passwordIv: String?
+    var passwordCipher: String?
+    var createdAt: Int64 = 0
+
+    /// True when this record is carrying a password at all.
+    var hasPassword: Bool {
+        !(passwordSalt ?? "").isEmpty && !(passwordIv ?? "").isEmpty && !(passwordCipher ?? "").isEmpty
+    }
+}
+
 struct SyncLink: Equatable { var url = ""; var label = "" }
 struct SyncLogEntry: Equatable { var text = ""; var timestamp: Int64 = 0 }
 struct SyncContact: Equatable { var name = ""; var email = ""; var phone = "" }
@@ -75,11 +118,18 @@ enum SyncBoardDocument {
 
     // MARK: - Reading and writing
 
-    static func data(tasks: [SyncTaskRecord], reminders: [SyncReminderRecord]) throws -> Data {
+    static func data(
+        tasks: [SyncTaskRecord],
+        reminders: [SyncReminderRecord],
+        storage: [SyncStorageRecord] = [],
+        credentials: [SyncCredentialRecord] = []
+    ) throws -> Data {
         let root: [String: Any] = [
             "version": version,
             "tasks": sorted(tasks).map(json(for:)),
             "reminders": sorted(reminders).map(json(for:)),
+            "storageItems": sorted(storage).map(json(for:)),
+            "credentials": sorted(credentials).map(json(for:)),
         ]
         return try JSONSerialization.data(withJSONObject: root, options: [.prettyPrinted, .sortedKeys])
     }
@@ -160,6 +210,48 @@ enum SyncBoardDocument {
         }
     }
 
+    static func storage(from data: Data) -> [SyncStorageRecord] {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let array = root["storageItems"] as? [[String: Any]] else { return [] }
+        return array.compactMap { object in
+            guard let id = object["id"] as? String, !id.isEmpty else { return nil }
+            return SyncStorageRecord(
+                id: id,
+                updatedAt: int64(object["updatedAt"]) ?? 0,
+                isDeleted: object["deleted"] as? Bool ?? false,
+                name: object["name"] as? String ?? "",
+                type: object["type"] as? String ?? "",
+                mimeType: object["mimeType"] as? String ?? "",
+                sizeBytes: int64(object["sizeBytes"]) ?? 0,
+                tag: object["tag"] as? String ?? "",
+                tagEmoji: object["tagEmoji"] as? String ?? "",
+                hash: object["hash"] as? String ?? "",
+                createdAt: int64(object["createdAt"]) ?? 0
+            )
+        }
+    }
+
+    static func credentials(from data: Data) -> [SyncCredentialRecord] {
+        guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let array = root["credentials"] as? [[String: Any]] else { return [] }
+        return array.compactMap { object in
+            guard let id = object["id"] as? String, !id.isEmpty else { return nil }
+            return SyncCredentialRecord(
+                id: id,
+                updatedAt: int64(object["updatedAt"]) ?? 0,
+                isDeleted: object["deleted"] as? Bool ?? false,
+                title: object["title"] as? String ?? "",
+                username: object["username"] as? String ?? "",
+                url: object["url"] as? String ?? "",
+                notes: object["notes"] as? String ?? "",
+                passwordSalt: string(object["passwordSalt"]),
+                passwordIv: string(object["passwordIv"]),
+                passwordCipher: string(object["passwordCipher"]),
+                createdAt: int64(object["createdAt"]) ?? 0
+            )
+        }
+    }
+
     // MARK: - Merging
 
     static func merge(local: [SyncTaskRecord], remote: [SyncTaskRecord]) -> [SyncTaskRecord] {
@@ -208,6 +300,53 @@ enum SyncBoardDocument {
         return x.count > y.count
     }
 
+    static func merge(local: [SyncStorageRecord], remote: [SyncStorageRecord]) -> [SyncStorageRecord] {
+        var byID: [String: SyncStorageRecord] = [:]
+        for record in local + remote {
+            byID[record.id] = byID[record.id].map { winner($0, record) } ?? record
+        }
+        return sorted(Array(byID.values))
+    }
+
+    static func merge(local: [SyncCredentialRecord], remote: [SyncCredentialRecord]) -> [SyncCredentialRecord] {
+        var byID: [String: SyncCredentialRecord] = [:]
+        for record in local + remote {
+            byID[record.id] = byID[record.id].map { winner($0, record) } ?? record
+        }
+        return sorted(Array(byID.values))
+    }
+
+    static func winner(_ a: SyncStorageRecord, _ b: SyncStorageRecord) -> SyncStorageRecord {
+        if a.updatedAt != b.updatedAt { return a.updatedAt > b.updatedAt ? a : b }
+        if a.isDeleted != b.isDeleted { return a.isDeleted ? a : b }
+        if a.name != b.name { return isGreater(a.name, b.name) ? a : b }
+        if a.hash != b.hash { return isGreater(a.hash, b.hash) ? a : b }
+        return a
+    }
+
+    /// Same rules as everything else, with one addition: at equal time, a record carrying a
+    /// password beats one that isn't. The two devices can legitimately disagree about that —
+    /// whichever had the passphrase to hand wrote the secret and the other could not — and losing
+    /// a password to a tie would be losing data, while keeping it never is.
+    static func winner(_ a: SyncCredentialRecord, _ b: SyncCredentialRecord) -> SyncCredentialRecord {
+        if a.updatedAt != b.updatedAt { return a.updatedAt > b.updatedAt ? a : b }
+        if a.isDeleted != b.isDeleted { return a.isDeleted ? a : b }
+        if a.hasPassword != b.hasPassword { return a.hasPassword ? a : b }
+        if a.title != b.title { return isGreater(a.title, b.title) ? a : b }
+        if a.username != b.username { return isGreater(a.username, b.username) ? a : b }
+        return a
+    }
+
+    static func sorted(_ items: [SyncStorageRecord]) -> [SyncStorageRecord] { items.sorted { $0.id < $1.id } }
+    static func sorted(_ items: [SyncCredentialRecord]) -> [SyncCredentialRecord] {
+        items.sorted { $0.id < $1.id }
+    }
+
+    static func visible(_ items: [SyncStorageRecord]) -> [SyncStorageRecord] { items.filter { !$0.isDeleted } }
+    static func visible(_ items: [SyncCredentialRecord]) -> [SyncCredentialRecord] {
+        items.filter { !$0.isDeleted }
+    }
+
     /// Ordered by id alone, so the file's bytes don't churn between syncs that changed nothing.
     static func sorted(_ tasks: [SyncTaskRecord]) -> [SyncTaskRecord] { tasks.sorted { $0.id < $1.id } }
     static func sorted(_ reminders: [SyncReminderRecord]) -> [SyncReminderRecord] {
@@ -221,8 +360,13 @@ enum SyncBoardDocument {
     }
 
     /// Every file the board still points at. What isn't in here is an orphan and can go.
-    static func referencedHashes(_ tasks: [SyncTaskRecord]) -> Set<String> {
-        Set(tasks.filter { !$0.isDeleted }.flatMap(\.attachments).map(\.hash).filter { !$0.isEmpty })
+    static func referencedHashes(
+        _ tasks: [SyncTaskRecord],
+        storage: [SyncStorageRecord] = []
+    ) -> Set<String> {
+        let fromStrips = tasks.filter { !$0.isDeleted }.flatMap(\.attachments).map(\.hash)
+        let fromLibrary = storage.filter { !$0.isDeleted }.map(\.hash)
+        return Set((fromStrips + fromLibrary).filter { !$0.isEmpty })
     }
 
     // MARK: - JSON plumbing
@@ -254,6 +398,38 @@ enum SyncBoardDocument {
             "contacts": task.contacts.map { ["name": $0.name, "email": $0.email, "phone": $0.phone] },
             "attachments": task.attachments.map { ["hash": $0.hash, "name": $0.name, "kind": $0.kind] },
             "createdAt": task.createdAt,
+        ]
+    }
+
+    private static func json(for item: SyncStorageRecord) -> [String: Any] {
+        [
+            "id": item.id,
+            "updatedAt": item.updatedAt,
+            "deleted": item.isDeleted,
+            "name": item.name,
+            "type": item.type,
+            "mimeType": item.mimeType,
+            "sizeBytes": item.sizeBytes,
+            "tag": item.tag,
+            "tagEmoji": item.tagEmoji,
+            "hash": item.hash,
+            "createdAt": item.createdAt,
+        ]
+    }
+
+    private static func json(for credential: SyncCredentialRecord) -> [String: Any] {
+        [
+            "id": credential.id,
+            "updatedAt": credential.updatedAt,
+            "deleted": credential.isDeleted,
+            "title": credential.title,
+            "username": credential.username,
+            "url": credential.url,
+            "notes": credential.notes,
+            "passwordSalt": credential.passwordSalt as Any? ?? NSNull(),
+            "passwordIv": credential.passwordIv as Any? ?? NSNull(),
+            "passwordCipher": credential.passwordCipher as Any? ?? NSNull(),
+            "createdAt": credential.createdAt,
         ]
     }
 

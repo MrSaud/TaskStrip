@@ -11,6 +11,11 @@ import SwiftData
 @Model
 final class Credential: Identifiable {
     @Attribute(.unique) var id: UUID
+    /// Last edit. The merge's first and strongest question: newer wins.
+    var updatedAt: Date = Date.now
+    /// A tombstone, so a delete can reach the other device instead of looking like a row it
+    /// simply hasn't heard of yet.
+    var isDeleted: Bool = false
     var title: String
     var username: String
     var url: String

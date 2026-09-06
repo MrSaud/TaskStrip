@@ -150,6 +150,81 @@ final class SyncBoardDocumentTests: XCTestCase {
         XCTAssertEqual(SyncBoardDocument.referencedHashes([live, buried]), ["keep"])
     }
 
+    // MARK: - The library and the credentials
+
+    func testALibraryFileSurvivesTheRoundTrip() throws {
+        let original = SyncStorageRecord(
+            id: "s", updatedAt: 9, name: "Policy.pdf", type: "DOCUMENT",
+            mimeType: "application/pdf", sizeBytes: 4096, tag: "Insurance", tagEmoji: "📄",
+            hash: "deadbeef", createdAt: 4
+        )
+
+        let read = SyncBoardDocument.storage(
+            from: try SyncBoardDocument.data(tasks: [], reminders: [], storage: [original])
+        )
+
+        XCTAssertEqual(read, [original])
+    }
+
+    func testACredentialSurvivesTheRoundTrip() throws {
+        let original = SyncCredentialRecord(
+            id: "c", updatedAt: 9, title: "Router", username: "admin",
+            url: "https://192.168.1.1", notes: "Upstairs",
+            passwordSalt: "salt", passwordIv: "iv", passwordCipher: "cipher", createdAt: 4
+        )
+
+        let read = SyncBoardDocument.credentials(
+            from: try SyncBoardDocument.data(tasks: [], reminders: [], credentials: [original])
+        )
+
+        XCTAssertEqual(read, [original])
+        XCTAssertTrue(read[0].hasPassword)
+    }
+
+    /// A credential with no passphrase to hand travels without its secret rather than in the
+    /// clear, and must come back with nothing where the password was — not with empty strings
+    /// that would later be mistaken for a password of no characters.
+    func testACredentialWithNoPasswordCarriesNoneAtAll() throws {
+        let original = SyncCredentialRecord(id: "c", updatedAt: 1, title: "Router", username: "admin")
+
+        let read = SyncBoardDocument.credentials(
+            from: try SyncBoardDocument.data(tasks: [], reminders: [], credentials: [original])
+        )
+
+        XCTAssertNil(read.first?.passwordSalt)
+        XCTAssertNil(read.first?.passwordCipher)
+        XCTAssertFalse(read[0].hasPassword)
+    }
+
+    /// The devices can legitimately disagree about whether a password is present — only one of
+    /// them had the passphrase. Losing the secret to a coin toss would be losing data.
+    func testAtATieTheSideHoldingThePasswordWins() {
+        let withSecret = SyncCredentialRecord(
+            id: "c", updatedAt: 5, title: "Router",
+            passwordSalt: "s", passwordIv: "i", passwordCipher: "c"
+        )
+        let without = SyncCredentialRecord(id: "c", updatedAt: 5, title: "Router")
+
+        XCTAssertTrue(SyncBoardDocument.winner(withSecret, without).hasPassword)
+        XCTAssertTrue(SyncBoardDocument.winner(without, withSecret).hasPassword)
+    }
+
+    /// The sweep has to see the library too, or every file in it would look like an orphan the
+    /// first time a cleanup ran.
+    func testTheSweepCountsLibraryFilesAsWellAsAttachments() {
+        let strip = SyncTaskRecord(
+            id: "a", updatedAt: 1,
+            attachments: [SyncAttachment(hash: "onstrip", name: "a.jpg", kind: "image")]
+        )
+        let filed = SyncStorageRecord(id: "s", updatedAt: 1, hash: "inlibrary")
+        let binned = SyncStorageRecord(id: "t", updatedAt: 1, isDeleted: true, hash: "gone")
+
+        XCTAssertEqual(
+            SyncBoardDocument.referencedHashes([strip], storage: [filed, binned]),
+            ["onstrip", "inlibrary"]
+        )
+    }
+
     func testTombstonesAreBookkeepingNotRows() {
         let rows = [task("a", title: "Here", at: 1), task("b", at: 1, deleted: true)]
 

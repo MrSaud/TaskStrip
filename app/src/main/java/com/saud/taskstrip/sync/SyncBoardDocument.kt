@@ -53,6 +53,49 @@ data class SyncReminderRecord(
     val createdAt: Long = 0L
 )
 
+/** A file in the storage library, as it travels. The bytes go by content hash, same as a strip's
+ * attachments — see SyncAttachment. */
+data class SyncStorageRecord(
+    val id: String,
+    val updatedAt: Long = 0L,
+    val isDeleted: Boolean = false,
+    val name: String = "",
+    val type: String = "",
+    val mimeType: String = "",
+    val sizeBytes: Long = 0L,
+    val tag: String = "",
+    val tagEmoji: String = "",
+    val hash: String = "",
+    val createdAt: Long = 0L
+)
+
+/** A credential, as it travels — and deliberately without the password unless one can be carried
+ * safely.
+ *
+ * The stored password column is tied to the device's own keystore: it does not survive a
+ * reinstall, and it means nothing on the other machine. So the password is decrypted locally and
+ * re-encrypted under a passphrase the user holds, exactly as BackupHelper already does it, and the
+ * three fields below are that ciphertext. With no passphrase they are simply absent — a password
+ * is never written in the clear, and a credential without one still syncs its title, username and
+ * URL, which are the parts that are useful without the secret anyway. */
+data class SyncCredentialRecord(
+    val id: String,
+    val updatedAt: Long = 0L,
+    val isDeleted: Boolean = false,
+    val title: String = "",
+    val username: String = "",
+    val url: String = "",
+    val notes: String = "",
+    val passwordSalt: String? = null,
+    val passwordIv: String? = null,
+    val passwordCipher: String? = null,
+    val createdAt: Long = 0L
+) {
+    /** True when this record is carrying a password at all. */
+    val hasPassword: Boolean
+        get() = !passwordSalt.isNullOrEmpty() && !passwordIv.isNullOrEmpty() && !passwordCipher.isNullOrEmpty()
+}
+
 data class SyncLink(val url: String = "", val label: String = "")
 data class SyncLogEntry(val text: String = "", val timestamp: Long = 0L)
 data class SyncContact(val name: String = "", val email: String = "", val phone: String = "")
@@ -81,11 +124,18 @@ object SyncBoardDocument {
 
     // ---- Reading and writing ----
 
-    fun toJson(tasks: List<SyncTaskRecord>, reminders: List<SyncReminderRecord>): String {
+    fun toJson(
+        tasks: List<SyncTaskRecord>,
+        reminders: List<SyncReminderRecord>,
+        storage: List<SyncStorageRecord> = emptyList(),
+        credentials: List<SyncCredentialRecord> = emptyList()
+    ): String {
         val root = JSONObject()
         root.put("version", VERSION)
         root.put("tasks", JSONArray().apply { sortedTasks(tasks).forEach { put(taskToJson(it)) } })
         root.put("reminders", JSONArray().apply { sortedReminders(reminders).forEach { put(reminderToJson(it)) } })
+        root.put("storageItems", JSONArray().apply { sortedStorage(storage).forEach { put(storageToJson(it)) } })
+        root.put("credentials", JSONArray().apply { sortedCredentials(credentials).forEach { put(credentialToJson(it)) } })
         return root.toString(2)
     }
 
@@ -156,6 +206,50 @@ object SyncBoardDocument {
         }
     }.getOrDefault(emptyList())
 
+    fun storageFromJson(json: String): List<SyncStorageRecord> = runCatching {
+        val array = JSONObject(json).optJSONArray("storageItems") ?: return emptyList()
+        (0 until array.length()).mapNotNull { i ->
+            val obj = array.optJSONObject(i) ?: return@mapNotNull null
+            val id = obj.optString("id")
+            if (id.isNullOrEmpty()) return@mapNotNull null
+            SyncStorageRecord(
+                id = id,
+                updatedAt = obj.optLong("updatedAt", 0L),
+                isDeleted = obj.optBoolean("deleted", false),
+                name = obj.optString("name", ""),
+                type = obj.optString("type", ""),
+                mimeType = obj.optString("mimeType", ""),
+                sizeBytes = obj.optLong("sizeBytes", 0L),
+                tag = obj.optString("tag", ""),
+                tagEmoji = obj.optString("tagEmoji", ""),
+                hash = obj.optString("hash", ""),
+                createdAt = obj.optLong("createdAt", 0L)
+            )
+        }
+    }.getOrDefault(emptyList())
+
+    fun credentialsFromJson(json: String): List<SyncCredentialRecord> = runCatching {
+        val array = JSONObject(json).optJSONArray("credentials") ?: return emptyList()
+        (0 until array.length()).mapNotNull { i ->
+            val obj = array.optJSONObject(i) ?: return@mapNotNull null
+            val id = obj.optString("id")
+            if (id.isNullOrEmpty()) return@mapNotNull null
+            SyncCredentialRecord(
+                id = id,
+                updatedAt = obj.optLong("updatedAt", 0L),
+                isDeleted = obj.optBoolean("deleted", false),
+                title = obj.optString("title", ""),
+                username = obj.optString("username", ""),
+                url = obj.optString("url", ""),
+                notes = obj.optString("notes", ""),
+                passwordSalt = obj.optStringOrNull("passwordSalt"),
+                passwordIv = obj.optStringOrNull("passwordIv"),
+                passwordCipher = obj.optStringOrNull("passwordCipher"),
+                createdAt = obj.optLong("createdAt", 0L)
+            )
+        }
+    }.getOrDefault(emptyList())
+
     // ---- Merging ----
 
     fun mergeTasks(local: List<SyncTaskRecord>, remote: List<SyncTaskRecord>): List<SyncTaskRecord> {
@@ -215,6 +309,59 @@ object SyncBoardDocument {
         return x.size > y.size
     }
 
+    fun mergeStorage(local: List<SyncStorageRecord>, remote: List<SyncStorageRecord>): List<SyncStorageRecord> {
+        val byId = LinkedHashMap<String, SyncStorageRecord>()
+        (local + remote).forEach { record ->
+            val existing = byId[record.id]
+            byId[record.id] = if (existing == null) record else winner(existing, record)
+        }
+        return sortedStorage(byId.values.toList())
+    }
+
+    fun mergeCredentials(
+        local: List<SyncCredentialRecord>,
+        remote: List<SyncCredentialRecord>
+    ): List<SyncCredentialRecord> {
+        val byId = LinkedHashMap<String, SyncCredentialRecord>()
+        (local + remote).forEach { record ->
+            val existing = byId[record.id]
+            byId[record.id] = if (existing == null) record else winner(existing, record)
+        }
+        return sortedCredentials(byId.values.toList())
+    }
+
+    fun winner(a: SyncStorageRecord, b: SyncStorageRecord): SyncStorageRecord {
+        if (a.updatedAt != b.updatedAt) return if (a.updatedAt > b.updatedAt) a else b
+        if (a.isDeleted != b.isDeleted) return if (a.isDeleted) a else b
+        if (a.name != b.name) return if (isGreater(a.name, b.name)) a else b
+        if (a.hash != b.hash) return if (isGreater(a.hash, b.hash)) a else b
+        return a
+    }
+
+    /** Same rules as everything else, with one addition: at equal time, a record carrying a
+     * password beats one that isn't. The two devices can legitimately disagree about that —
+     * whichever one had the passphrase to hand wrote the secret and the other could not — and
+     * losing a password to a tie would be losing data, while keeping it never is. */
+    fun winner(a: SyncCredentialRecord, b: SyncCredentialRecord): SyncCredentialRecord {
+        if (a.updatedAt != b.updatedAt) return if (a.updatedAt > b.updatedAt) a else b
+        if (a.isDeleted != b.isDeleted) return if (a.isDeleted) a else b
+        if (a.hasPassword != b.hasPassword) return if (a.hasPassword) a else b
+        if (a.title != b.title) return if (isGreater(a.title, b.title)) a else b
+        if (a.username != b.username) return if (isGreater(a.username, b.username)) a else b
+        return a
+    }
+
+    fun sortedStorage(items: List<SyncStorageRecord>): List<SyncStorageRecord> = items.sortedBy { it.id }
+
+    fun sortedCredentials(items: List<SyncCredentialRecord>): List<SyncCredentialRecord> =
+        items.sortedBy { it.id }
+
+    fun visibleStorage(items: List<SyncStorageRecord>): List<SyncStorageRecord> =
+        items.filter { !it.isDeleted }
+
+    fun visibleCredentials(items: List<SyncCredentialRecord>): List<SyncCredentialRecord> =
+        items.filter { !it.isDeleted }
+
     /** Ordered by id alone, so the file's bytes don't churn between syncs that changed nothing.
      * A strip's own orderIndex is what the board reads; this is only the document's order. */
     fun sortedTasks(tasks: List<SyncTaskRecord>): List<SyncTaskRecord> = tasks.sortedBy { it.id }
@@ -229,10 +376,14 @@ object SyncBoardDocument {
         reminders.filter { !it.isDeleted }
 
     /** Every file the board still points at. What isn't in here is an orphan and can go. */
-    fun referencedHashes(tasks: List<SyncTaskRecord>): Set<String> =
-        tasks.filter { !it.isDeleted }.flatMap { task -> task.attachments.map { it.hash } }
-            .filter { it.isNotEmpty() }
-            .toSet()
+    fun referencedHashes(
+        tasks: List<SyncTaskRecord>,
+        storage: List<SyncStorageRecord> = emptyList()
+    ): Set<String> {
+        val fromStrips = tasks.filter { !it.isDeleted }.flatMap { task -> task.attachments.map { it.hash } }
+        val fromLibrary = storage.filter { !it.isDeleted }.map { it.hash }
+        return (fromStrips + fromLibrary).filter { it.isNotEmpty() }.toSet()
+    }
 
     // ---- JSON plumbing ----
 
@@ -274,6 +425,34 @@ object SyncBoardDocument {
             }
         })
         put("createdAt", task.createdAt)
+    }
+
+    private fun storageToJson(item: SyncStorageRecord) = JSONObject().apply {
+        put("id", item.id)
+        put("updatedAt", item.updatedAt)
+        put("deleted", item.isDeleted)
+        put("name", item.name)
+        put("type", item.type)
+        put("mimeType", item.mimeType)
+        put("sizeBytes", item.sizeBytes)
+        put("tag", item.tag)
+        put("tagEmoji", item.tagEmoji)
+        put("hash", item.hash)
+        put("createdAt", item.createdAt)
+    }
+
+    private fun credentialToJson(credential: SyncCredentialRecord) = JSONObject().apply {
+        put("id", credential.id)
+        put("updatedAt", credential.updatedAt)
+        put("deleted", credential.isDeleted)
+        put("title", credential.title)
+        put("username", credential.username)
+        put("url", credential.url)
+        put("notes", credential.notes)
+        putOrNull("passwordSalt", credential.passwordSalt)
+        putOrNull("passwordIv", credential.passwordIv)
+        putOrNull("passwordCipher", credential.passwordCipher)
+        put("createdAt", credential.createdAt)
     }
 
     private fun reminderToJson(reminder: SyncReminderRecord) = JSONObject().apply {

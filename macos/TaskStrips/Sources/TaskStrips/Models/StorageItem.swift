@@ -67,6 +67,11 @@ enum StorageItemType: String, Codable, CaseIterable, Identifiable {
 @Model
 final class StorageItem: Identifiable, Taggable {
     @Attribute(.unique) var id: UUID
+    /// Last edit. The merge's first and strongest question: newer wins.
+    var updatedAt: Date = Date.now
+    /// A tombstone, so a delete can reach the other device instead of looking like a row it
+    /// simply hasn't heard of yet.
+    var isDeleted: Bool = false
     var name: String
     var path: String
     var typeRaw: String

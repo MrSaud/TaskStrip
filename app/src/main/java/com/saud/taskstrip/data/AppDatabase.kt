@@ -274,9 +274,34 @@ val MIGRATION_25_26 = object : Migration(25, 26) {
     }
 }
 
+// Credentials and the storage library join the sync, so they need the same three columns strips
+// and reminders got in MIGRATION_25_26 — and for the same reasons, including seeding updatedAt
+// from createdAt rather than from the migration's own clock.
+val MIGRATION_26_27 = object : Migration(26, 27) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        for (table in listOf("credentials", "storage_items")) {
+            db.execSQL("ALTER TABLE $table ADD COLUMN syncId TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE $table ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE $table ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0")
+            db.execSQL(
+                "UPDATE $table SET syncId = " +
+                    "lower(substr(hex(randomblob(4)),1,8) || '-' || " +
+                    "substr(hex(randomblob(2)),1,4) || '-' || " +
+                    "substr(hex(randomblob(2)),1,4) || '-' || " +
+                    "substr(hex(randomblob(2)),1,4) || '-' || " +
+                    "substr(hex(randomblob(6)),1,12)) " +
+                    "WHERE syncId = ''"
+            )
+            db.execSQL("UPDATE $table SET updatedAt = createdAt WHERE updatedAt = 0")
+        }
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_credentials_syncId ON credentials(syncId)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_storage_items_syncId ON storage_items(syncId)")
+    }
+}
+
 @Database(
     entities = [TaskEntity::class, CredentialEntity::class, NoteEntity::class, ReminderEntity::class, StorageItemEntity::class, SyncNoteEntity::class],
-    version = 26,
+    version = 27,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -299,7 +324,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "taskstrip.db"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27)
                     // Only reached for version jumps with no real user data behind them
                     // (e.g. a stale pre-v3 dev install) — every jump from here on gets a
                     // real Migration above instead, so saved tasks are never silently wiped.
