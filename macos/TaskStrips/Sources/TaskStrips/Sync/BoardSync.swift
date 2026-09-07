@@ -39,8 +39,12 @@ struct BoardSyncOutcome: Equatable {
     var uploaded: [String] = []
     var downloaded: [String] = []
     var sweptAway: [String] = []
+    /// Set when the sync couldn't run at all — no folder chosen, not signed in — as opposed to
+    /// running and finding nothing to do. Those are different things to tell somebody.
+    var failureReason: String?
 
     var summary: String {
+        if let failureReason { return failureReason }
         if stance == .adopt { return "Took the other device's board." }
         switch (pulled, pushed) {
         case (true, true): return "Sent your changes and took theirs."
