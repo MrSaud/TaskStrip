@@ -105,6 +105,7 @@ import com.saud.taskstrip.data.Priority
 import com.saud.taskstrip.data.TaskActionLogEntry
 import com.saud.taskstrip.data.TaskEntity
 import com.saud.taskstrip.notifications.DigestPrefs
+import com.saud.taskstrip.sync.BoardSyncService
 import com.saud.taskstrip.notifications.DigestScheduler
 import com.saud.taskstrip.notifications.WeeklyDigestPrefs
 import com.saud.taskstrip.notifications.WeeklyDigestScheduler
@@ -173,6 +174,10 @@ fun HomeScreen(
     var reminderSortDescending by remember { mutableStateOf(false) }
     var reminderTagFilter by remember { mutableStateOf<String?>(null) }
     var reminderSortMenuExpanded by remember { mutableStateOf(false) }
+    // The board sync runs from the menu and reports into a dialog. Deliberately not silent: it can
+    // move every strip on the board, and something that big should say what it did.
+    var boardSyncing by remember { mutableStateOf(false) }
+    var boardSyncResult by remember { mutableStateOf<String?>(null) }
     var reminderTagMenuExpanded by remember { mutableStateOf(false) }
     val reminders by reminderViewModel.reminders.collectAsStateWithLifecycle()
     val reminderTagEmojis = remember(reminders) {
@@ -537,6 +542,20 @@ fun HomeScreen(
                                 }
                             )
                             DropdownMenuItem(
+                                text = { Text("SYNC BOARD") },
+                                leadingIcon = { Icon(Icons.Default.Sync, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    if (!boardSyncing) {
+                                        boardSyncing = true
+                                        scope.launch {
+                                            boardSyncResult = BoardSyncService.run(context).summary
+                                            boardSyncing = false
+                                        }
+                                    }
+                                }
+                            )
+                            DropdownMenuItem(
                                 text = { Text("BACKUP & RESTORE") },
                                 leadingIcon = { Icon(Icons.Default.CloudUpload, contentDescription = null) },
                                 onClick = {
@@ -728,6 +747,11 @@ fun HomeScreen(
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             BoardDateStrip(nowMillis)
+            BoardSyncDialogs(
+                running = boardSyncing,
+                result = boardSyncResult,
+                onDismissResult = { boardSyncResult = null }
+            )
             quote?.let { QuoteOfDayCard(it) }
             if (allTags.isNotEmpty() && pagerState.currentPage == PAGE_STRIPS) {
                 LazyRow(
@@ -963,6 +987,34 @@ private const val BOARD_PAGE_COUNT = 2
  * strip does — what do I have to deal with — about things that happen at a time rather than things
  * that sit in a queue, so it reads better as the board's other page than as another screen.
  */
+/** What the board sync is doing, and what it did.
+ *
+ * A dialog rather than a quiet line somewhere, because this can move every strip on the board and
+ * that is not something to discover later. The running one can't be dismissed: half a sync is not
+ * a state worth leaving someone in the middle of.
+ */
+@Composable
+private fun BoardSyncDialogs(running: Boolean, result: String?, onDismissResult: () -> Unit) {
+    if (running) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text("SYNCING THE BOARD", style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Text("Reading the shared folder, sending what changed here, fetching what changed there.")
+            },
+            confirmButton = {}
+        )
+    }
+    result?.let { summary ->
+        AlertDialog(
+            onDismissRequest = onDismissResult,
+            title = { Text("BOARD SYNC", style = MaterialTheme.typography.titleMedium) },
+            text = { Text(summary) },
+            confirmButton = { TextButton(onClick = onDismissResult) { Text("OK") } }
+        )
+    }
+}
+
 @Composable
 private fun BoardPageTabs(current: Int, onSelect: (Int) -> Unit) {
     TabRow(
