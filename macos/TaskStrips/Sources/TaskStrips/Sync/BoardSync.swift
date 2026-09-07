@@ -42,6 +42,12 @@ struct BoardSyncOutcome: Equatable {
     /// Set when the sync couldn't run at all — no folder chosen, not signed in — as opposed to
     /// running and finding nothing to do. Those are different things to tell somebody.
     var failureReason: String?
+    /// Whether the folder actually held a board this time.
+    ///
+    /// Not the same question as "did this sync run". A first sync into an empty folder runs
+    /// perfectly well and meets nothing, and treating that as this device's first sync spends the
+    /// one chance it had to adopt — see BoardSyncService.
+    var metRemoteBoard = false
 
     var summary: String {
         if let failureReason { return failureReason }
@@ -103,6 +109,7 @@ struct BoardSync {
             pushed: merged != remote.normalised,
             pulled: merged != local.normalised
         )
+        outcome.metRemoteBoard = !remote.isEmpty
 
         let referenced = merged.referencedHashes
         let remoteHashes = try await transport.remoteHashes()

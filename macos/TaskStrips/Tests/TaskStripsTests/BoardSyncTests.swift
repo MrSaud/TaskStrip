@@ -200,6 +200,30 @@ final class BoardSyncTests: XCTestCase {
         XCTAssertEqual(outcome.summary, "Took the other device's board.")
     }
 
+    /// A sync into an empty folder meets nothing, and must not be counted as this device's first
+    /// meeting with the other board.
+    ///
+    /// This is the bug that duplicated a real board. Syncing before the phone ever had left the
+    /// folder empty; the guard correctly refused to adopt nothing, but the sync was recorded as
+    /// having happened, which spent the single chance to adopt. When the phone's board turned up
+    /// next time, it was merged alongside instead of replacing — two of everything.
+    func testASyncIntoAnEmptyFolderHasNotMetTheOtherBoard() async throws {
+        let folder = FakeFolder()
+
+        let outcome = try await run(folder, local: BoardSnapshot(tasks: [strip("a", "Mine", at: 5)]))
+
+        XCTAssertFalse(outcome.metRemoteBoard)
+    }
+
+    func testASyncThatFindsABoardHasMetIt() async throws {
+        let folder = FakeFolder()
+        folder.document = try SyncBoardDocument.data(tasks: [strip("a", "Theirs", at: 9)], reminders: [])
+
+        let outcome = try await run(folder, local: BoardSnapshot())
+
+        XCTAssertTrue(outcome.metRemoteBoard)
+    }
+
     /// The guard that matters: a first sync against an empty folder must not read "nothing" as the
     /// truth and wipe the board it was meant to protect.
     func testAdoptingAgainstAnEmptyFolderKeepsThisBoard() async throws {

@@ -50,10 +50,17 @@ enum BoardSyncService {
             ).run(hasSyncedBefore: hasSyncedBefore, adoptsOnFirstSync: true)
 
             try context.save()
-            // Only a sync that got somewhere counts as one. Marking a failure would tell the
-            // first-sync rule this machine has synced when it hasn't — and that rule is the only
-            // thing standing between an unreachable folder and a board replaced by nothing.
-            UserDefaults.standard.set(true, forKey: hasSyncedKey)
+            // Recorded only when there was actually a board on the other side.
+            //
+            // This flag exists for one purpose: to spend this machine's single chance to adopt the
+            // phone's board. A sync into an empty folder meets nothing to adopt, so it must not
+            // count — otherwise syncing before the phone ever has silently burns the adopt, and
+            // when the phone's board does turn up it gets merged alongside this machine's instead
+            // of replacing it, which is two of everything. That is exactly what happened the first
+            // time this ran.
+            if outcome.metRemoteBoard {
+                UserDefaults.standard.set(true, forKey: hasSyncedKey)
+            }
             UserDefaults.standard.set(outcome.summary, forKey: lastSummaryKey)
             return outcome
         } catch {

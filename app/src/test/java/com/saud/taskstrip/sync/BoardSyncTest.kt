@@ -224,6 +224,34 @@ class BoardSyncTest {
         assertEquals("Took the other device's board.", outcome.summary)
     }
 
+    /**
+     * A sync into an empty folder meets nothing, and must not be counted as this device's first
+     * meeting with the other board.
+     *
+     * This is the bug that duplicated a real board. The Mac synced before the phone ever had, so
+     * the folder was empty; the guard correctly refused to adopt nothing, but the sync was recorded
+     * as having happened, which spent the single chance to adopt. When the phone's board turned up
+     * next time it was merged alongside instead of replacing — two of everything.
+     */
+    @Test
+    fun `a sync into an empty folder has not met the other board`() {
+        val folder = FakeFolder()
+
+        val outcome = sync(folder, BoardSnapshot(tasks = listOf(strip("a", "Mine", 5))))
+
+        assertFalse(outcome.metRemoteBoard)
+    }
+
+    @Test
+    fun `a sync that finds a board has met it`() {
+        val folder = FakeFolder()
+        folder.document = SyncBoardDocument.toJson(listOf(strip("a", "Theirs", 9)), emptyList())
+
+        val outcome = sync(folder, BoardSnapshot())
+
+        assertTrue(outcome.metRemoteBoard)
+    }
+
     /** The guard that matters: a first sync against an empty folder must not read "nothing" as the
      * truth and wipe the board it was meant to protect. */
     @Test

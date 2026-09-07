@@ -38,6 +38,11 @@ data class BoardSyncOutcome(
     val uploaded: List<String> = emptyList(),
     val downloaded: List<String> = emptyList(),
     val sweptAway: List<String> = emptyList(),
+    /** Whether the folder actually held a board this time.
+     *
+     * Not the same question as "did this sync run". A first sync into an empty folder runs
+     * perfectly well and meets nothing. */
+    val metRemoteBoard: Boolean = false,
     val failure: String? = null
 ) {
     val summary: String
@@ -148,7 +153,8 @@ class BoardSync(private val transport: BoardTransport) {
             pulled = pulled,
             uploaded = uploaded,
             downloaded = downloaded,
-            sweptAway = swept
+            sweptAway = swept,
+            metRemoteBoard = !remote.isEmpty
         )
     }
 

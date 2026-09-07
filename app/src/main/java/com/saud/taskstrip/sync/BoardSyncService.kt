@@ -35,10 +35,13 @@ object BoardSyncService {
             BoardSyncOutcome(failure = error.message ?: "Sync failed.")
         }
 
-        // Only a sync that got somewhere counts as one. Marking a failure would tell the first-sync
-        // rule that this device has synced when it hasn't, and that rule is what protects a board
-        // from being replaced by an empty folder.
-        if (outcome.failure == null) BoardSyncPrefs.markSynced(context, outcome.summary)
+        // Recorded only when the sync got somewhere *and* there was a board on the other side.
+        // The phone never adopts, so this changes nothing here — but the two services answer the
+        // same question and should answer it the same way. See BoardSyncService.swift, where
+        // getting this wrong cost the Mac its one chance to adopt.
+        if (outcome.failure == null && outcome.metRemoteBoard) {
+            BoardSyncPrefs.markSynced(context, outcome.summary)
+        }
         outcome
     }
 }
