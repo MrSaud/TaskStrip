@@ -13,8 +13,15 @@ struct BoardPlan<T>: Equatable where T: Equatable {
     var update: [T] = []
     /// Shared ids whose rows are tombstoned and should go from this machine.
     var delete: [String] = []
+    /// Rows this machine holds that the board it is adopting simply doesn't have.
+    ///
+    /// Kept apart from `delete` because it means something different: a delete is news from the
+    /// other device, and this is this machine's own row being discarded because its board is being
+    /// replaced. Nothing is told about it — the other device never knew these ids — so they go
+    /// rather than becoming tombstones nobody can use.
+    var discard: [String] = []
 
-    var isEmpty: Bool { insert.isEmpty && update.isEmpty && delete.isEmpty }
+    var isEmpty: Bool { insert.isEmpty && update.isEmpty && delete.isEmpty && discard.isEmpty }
 }
 
 /// How this machine should treat what it finds in the shared folder.
@@ -51,11 +58,21 @@ enum SyncBoardPlan {
     ///
     /// A row identical on both sides appears in none of the three lists — a sync that changed
     /// nothing must write nothing, or every sync churns the store and every view watching it.
+    /// - Parameter removingMissing: what to do with a row this machine holds that `merged` doesn't
+    ///   mention. False for a merge, where the result is a union and a missing row means the other
+    ///   device simply hasn't heard of it yet — removing those would delete everything this machine
+    ///   had that the other one didn't. True for an adopt, where the result is the other board
+    ///   *instead of* this one, and a row it doesn't have should no longer exist here.
+    ///
+    ///   Getting this wrong is not subtle: an adopt that leaves them behind keeps this machine's
+    ///   whole board and adds the other one to it, which is two of everything and gets worse with
+    ///   every sync after it.
     static func plan<T: Equatable>(
         localByID: [String: T],
         merged: [T],
         id: (T) -> String,
-        isDeleted: (T) -> Bool
+        isDeleted: (T) -> Bool,
+        removingMissing: Bool = false
     ) -> BoardPlan<T> {
         var plan = BoardPlan<T>()
         for record in merged {
@@ -70,6 +87,10 @@ enum SyncBoardPlan {
             } else if local != record {
                 plan.update.append(record)
             }
+        }
+        if removingMissing {
+            let kept = Set(merged.map(id))
+            plan.discard = localByID.keys.filter { !kept.contains($0) }.sorted()
         }
         return plan
     }

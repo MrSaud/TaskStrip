@@ -120,20 +120,22 @@ struct BoardSyncRunner {
         relativeByHash: [String: String],
         folderBySketchSyncID: [String: String]
     ) {
+        let adopting = outcome.stance == .adopt
         applyTasks(local: local, outcome: outcome, relativeByHash: relativeByHash,
-                   folderBySketchSyncID: folderBySketchSyncID)
-        applyReminders(local: local, outcome: outcome)
-        applyStorage(local: local, outcome: outcome, relativeByHash: relativeByHash)
-        applyCredentials(local: local, outcome: outcome)
+                   folderBySketchSyncID: folderBySketchSyncID, adopting: adopting)
+        applyReminders(local: local, outcome: outcome, adopting: adopting)
+        applyStorage(local: local, outcome: outcome, relativeByHash: relativeByHash, adopting: adopting)
+        applyCredentials(local: local, outcome: outcome, adopting: adopting)
         applySketches(local: local, outcome: outcome, pathsByHash: pathsByHash,
-                      folderBySketchSyncID: folderBySketchSyncID)
+                      folderBySketchSyncID: folderBySketchSyncID, adopting: adopting)
     }
 
     private func applyTasks(
         local: BoardSnapshot,
         outcome: BoardSyncOutcome,
         relativeByHash: [String: String],
-        folderBySketchSyncID: [String: String]
+        folderBySketchSyncID: [String: String],
+        adopting: Bool
     ) {
         let existing = Dictionary(
             (try? context.fetch(FetchDescriptor<TaskItem>()))?.map { ($0.id.uuidString, $0) } ?? [],
@@ -143,7 +145,8 @@ struct BoardSyncRunner {
             localByID: Dictionary(uniqueKeysWithValues: local.tasks.map { ($0.id, $0) }),
             merged: outcome.merged.tasks,
             id: { $0.id },
-            isDeleted: { $0.isDeleted }
+            isDeleted: { $0.isDeleted },
+            removingMissing: adopting
         )
 
         for record in plan.insert + plan.update {
@@ -176,9 +179,12 @@ struct BoardSyncRunner {
             // device about the delete too.
             existing[id].map { $0.isTombstoned = true }
         }
+        // Discarded, not tombstoned: this machine's board is being replaced, and the other device
+        // never knew these ids, so a tombstone would be news to nobody.
+        for id in plan.discard { existing[id].map { context.delete($0) } }
     }
 
-    private func applyReminders(local: BoardSnapshot, outcome: BoardSyncOutcome) {
+    private func applyReminders(local: BoardSnapshot, outcome: BoardSyncOutcome, adopting: Bool) {
         let existing = Dictionary(
             (try? context.fetch(FetchDescriptor<Reminder>()))?.map { ($0.id.uuidString, $0) } ?? [],
             uniquingKeysWith: { first, _ in first }
@@ -187,7 +193,8 @@ struct BoardSyncRunner {
             localByID: Dictionary(uniqueKeysWithValues: local.reminders.map { ($0.id, $0) }),
             merged: outcome.merged.reminders,
             id: { $0.id },
-            isDeleted: { $0.isDeleted }
+            isDeleted: { $0.isDeleted },
+            removingMissing: adopting
         )
         for record in plan.insert + plan.update {
             if let here = existing[record.id] {
@@ -198,12 +205,20 @@ struct BoardSyncRunner {
             }
         }
         for id in plan.delete { existing[id].map { $0.isTombstoned = true } }
+        // Discarded, not tombstoned: this machine's board is being replaced, and the other device
+        // never knew these ids, so a tombstone would be news to nobody.
+        for id in plan.discard { existing[id].map { context.delete($0) } }
     }
 
     /// A library item is only worth a row once its bytes are somewhere: one whose file hasn't
     /// landed is skipped rather than written with a path that opens nothing — written, the row
     /// would look up to date and no later sync would fix it.
-    private func applyStorage(local: BoardSnapshot, outcome: BoardSyncOutcome, relativeByHash: [String: String]) {
+    private func applyStorage(
+        local: BoardSnapshot,
+        outcome: BoardSyncOutcome,
+        relativeByHash: [String: String],
+        adopting: Bool
+    ) {
         let existing = Dictionary(
             (try? context.fetch(FetchDescriptor<StorageItem>()))?.map { ($0.id.uuidString, $0) } ?? [],
             uniquingKeysWith: { first, _ in first }
@@ -212,7 +227,8 @@ struct BoardSyncRunner {
             localByID: Dictionary(uniqueKeysWithValues: local.storage.map { ($0.id, $0) }),
             merged: outcome.merged.storage,
             id: { $0.id },
-            isDeleted: { $0.isDeleted }
+            isDeleted: { $0.isDeleted },
+            removingMissing: adopting
         )
         for record in plan.insert + plan.update {
             if let here = existing[record.id] {
@@ -233,13 +249,16 @@ struct BoardSyncRunner {
             }
         }
         for id in plan.delete { existing[id].map { $0.isTombstoned = true } }
+        // Discarded, not tombstoned: this machine's board is being replaced, and the other device
+        // never knew these ids, so a tombstone would be news to nobody.
+        for id in plan.discard { existing[id].map { context.delete($0) } }
     }
 
     /// The password crosses under the user's passphrase and is kept here in the Keychain, so it is
     /// decrypted and re-stored on the way in. With no passphrase, or a record carrying no secret,
     /// whatever is already in the Keychain is left alone: losing a password to a sync that couldn't
     /// read it would be losing data, and keeping the old one never is.
-    private func applyCredentials(local: BoardSnapshot, outcome: BoardSyncOutcome) {
+    private func applyCredentials(local: BoardSnapshot, outcome: BoardSyncOutcome, adopting: Bool) {
         let existing = Dictionary(
             (try? context.fetch(FetchDescriptor<Credential>()))?.map { ($0.id.uuidString, $0) } ?? [],
             uniquingKeysWith: { first, _ in first }
@@ -248,7 +267,8 @@ struct BoardSyncRunner {
             localByID: Dictionary(uniqueKeysWithValues: local.credentials.map { ($0.id, $0) }),
             merged: outcome.merged.credentials,
             id: { $0.id },
-            isDeleted: { $0.isDeleted }
+            isDeleted: { $0.isDeleted },
+            removingMissing: adopting
         )
         for record in plan.insert + plan.update {
             let credential: Credential
@@ -267,6 +287,9 @@ struct BoardSyncRunner {
             }
         }
         for id in plan.delete { existing[id].map { $0.isTombstoned = true } }
+        // Discarded, not tombstoned: this machine's board is being replaced, and the other device
+        // never knew these ids, so a tombstone would be news to nobody.
+        for id in plan.discard { existing[id].map { context.delete($0) } }
     }
 
     /// Pages are written in the record's order rather than the order they arrived, because page
@@ -277,7 +300,8 @@ struct BoardSyncRunner {
         local: BoardSnapshot,
         outcome: BoardSyncOutcome,
         pathsByHash: [String: URL],
-        folderBySketchSyncID: [String: String]
+        folderBySketchSyncID: [String: String],
+        adopting: Bool
     ) {
         let here = Dictionary(uniqueKeysWithValues: local.sketches.map { ($0.id, $0) })
         for record in outcome.merged.sketches where record != here[record.id] {
@@ -299,6 +323,15 @@ struct BoardSyncRunner {
                 try? sketches.write(data, to: sketches.folder(of: folder).appending(path: "page\(index + 1).png"))
             }
             if !record.name.isEmpty { sketches.setName(record.name, of: folder) }
+        }
+
+        // A note this machine has that the adopted board doesn't is discarded with everything else
+        // it was holding — see BoardPlan.discard.
+        if adopting {
+            let kept = Set(outcome.merged.sketches.map(\.id))
+            for id in here.keys where !kept.contains(id) {
+                if let folder = folderBySketchSyncID[id] { sketches.deleteNote(folder) }
+            }
         }
     }
 

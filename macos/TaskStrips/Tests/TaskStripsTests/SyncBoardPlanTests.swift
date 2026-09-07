@@ -55,6 +55,47 @@ final class SyncBoardPlanTests: XCTestCase {
         XCTAssertTrue(plan([], [task("a", at: 2, deleted: true)]).isEmpty)
     }
 
+    // MARK: - Adopting
+
+    /// The bug that duplicated a real board twice.
+    ///
+    /// Adopting is not a merge. A merge's result is a union, so a row this device holds is never
+    /// missing from it and nothing should be removed. An adopt's result is the *other* board
+    /// instead of this one, so a row it doesn't have should no longer exist here — and leaving it
+    /// keeps this device's whole board and adds the other one to it, which is two of everything
+    /// and gets worse with every sync after it.
+    func testAdoptingDiscardsRowsTheOtherBoardDoesntHave() {
+        let mine = [task("mine", "Only here"), task("shared", "On both")]
+        let theirs = [task("shared", "On both"), task("theirs", "Only there")]
+
+        let result = SyncBoardPlan.plan(
+            localByID: Dictionary(uniqueKeysWithValues: mine.map { ($0.id, $0) }),
+            merged: theirs,
+            id: { $0.id },
+            isDeleted: { $0.isDeleted },
+            removingMissing: true
+        )
+
+        XCTAssertEqual(result.discard, ["mine"])
+        XCTAssertEqual(result.insert.map(\.id), ["theirs"])
+    }
+
+    /// A merge must never discard. A row the other device hasn't heard of yet is not a row to
+    /// delete — doing so would throw away everything this device had that the other one didn't.
+    func testMergingNeverDiscardsAnything() {
+        let mine = [task("mine", "Only here")]
+        let theirs = [task("theirs", "Only there")]
+
+        let result = SyncBoardPlan.plan(
+            localByID: Dictionary(uniqueKeysWithValues: mine.map { ($0.id, $0) }),
+            merged: theirs,
+            id: { $0.id },
+            isDeleted: { $0.isDeleted }
+        )
+
+        XCTAssertTrue(result.discard.isEmpty)
+    }
+
     // MARK: - First sync
 
     /// The guard that matters most in this file. A first sync against an empty or unreachable

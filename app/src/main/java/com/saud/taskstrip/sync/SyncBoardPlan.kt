@@ -12,9 +12,17 @@ data class BoardPlan<T>(
     /** Rows both sides hold where the merge picked something this device isn't already showing. */
     val update: List<T> = emptyList(),
     /** Shared ids whose rows are tombstoned and should go from this device. */
-    val delete: List<String> = emptyList()
+    val delete: List<String> = emptyList(),
+    /** Rows this device holds that the board it is adopting simply doesn't have.
+     *
+     * Only ever filled for an adopt, and kept apart from [delete] because it means something
+     * different: a delete is news from the other device, and this is this device's own row being
+     * discarded because its board is being replaced. Nothing is told about it — the other device
+     * never knew these ids — so they go rather than becoming tombstones nobody can use. */
+    val discard: List<String> = emptyList()
 ) {
-    val isEmpty: Boolean get() = insert.isEmpty() && update.isEmpty() && delete.isEmpty()
+    val isEmpty: Boolean
+        get() = insert.isEmpty() && update.isEmpty() && delete.isEmpty() && discard.isEmpty()
 }
 
 /** How this device should treat what it finds in the shared folder. */
@@ -58,11 +66,23 @@ object SyncBoardPlan {
      * that changed nothing must write nothing, or every sync would churn the database and every
      * screen watching it.
      */
+    /**
+     * @param removingMissing what to do with a row this device holds that [merged] doesn't mention.
+     *   False for a merge, where the result is a union and a missing row means the other device
+     *   simply hasn't heard of it yet — removing those would delete everything this device had that
+     *   the other one didn't. True for an adopt, where the result is the other board *instead of*
+     *   this one, and a row it doesn't have is a row that should no longer exist here.
+     *
+     *   Getting this wrong is not subtle: an adopt that leaves them behind keeps this device's
+     *   whole board and adds the other one to it, which is two of everything and gets worse with
+     *   every sync after it.
+     */
     fun <T : Any> plan(
         localById: Map<String, T>,
         merged: List<T>,
         idOf: (T) -> String,
-        isDeleted: (T) -> Boolean
+        isDeleted: (T) -> Boolean,
+        removingMissing: Boolean = false
     ): BoardPlan<T> {
         val insert = mutableListOf<T>()
         val update = mutableListOf<T>()
@@ -79,7 +99,13 @@ object SyncBoardPlan {
                 local != record -> update.add(record)
             }
         }
-        return BoardPlan(insert = insert, update = update, delete = delete)
+        val discard = if (removingMissing) {
+            val kept = merged.map(idOf).toSet()
+            localById.keys.filter { it !in kept }
+        } else {
+            emptyList()
+        }
+        return BoardPlan(insert = insert, update = update, delete = delete, discard = discard)
     }
 
     /**

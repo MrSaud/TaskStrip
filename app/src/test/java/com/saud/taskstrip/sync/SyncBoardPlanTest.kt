@@ -57,6 +57,44 @@ class SyncBoardPlanTest {
         assertTrue(plan(emptyList(), listOf(task("a", at = 2, deleted = true))).isEmpty)
     }
 
+    // ---- Adopting ----
+
+    /**
+     * The bug that duplicated a real board twice.
+     *
+     * Adopting is not a merge. A merge's result is a union, so a row this device holds is never
+     * missing from it and nothing should be removed. An adopt's result is the *other* board instead
+     * of this one, so a row it doesn't have should no longer exist here — and leaving it keeps this
+     * device's whole board and adds the other one to it, which is two of everything and gets worse
+     * with every sync after it.
+     */
+    @Test
+    fun `adopting discards rows the other board doesn't have`() {
+        val mine = listOf(task("mine", "Only here"), task("shared", "On both"))
+        val theirs = listOf(task("shared", "On both"), task("theirs", "Only there"))
+
+        val result = SyncBoardPlan.plan(
+            mine.associateBy { it.id }, theirs, { it.id }, { it.isDeleted }, removingMissing = true
+        )
+
+        assertEquals(listOf("mine"), result.discard)
+        assertEquals(listOf("theirs"), result.insert.map { it.id })
+    }
+
+    /**
+     * A merge must never discard. A row the other device hasn't heard of yet is not a row to
+     * delete — doing so would throw away everything this device had that the other one didn't.
+     */
+    @Test
+    fun `merging never discards anything`() {
+        val mine = listOf(task("mine", "Only here"))
+        val theirs = listOf(task("theirs", "Only there"))
+
+        val result = SyncBoardPlan.plan(mine.associateBy { it.id }, theirs, { it.id }, { it.isDeleted })
+
+        assertTrue(result.discard.isEmpty())
+    }
+
     // ---- First sync ----
 
     /**

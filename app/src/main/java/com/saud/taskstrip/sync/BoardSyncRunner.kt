@@ -123,8 +123,10 @@ class BoardSyncRunner(
         // Planned over records on both sides, never records against rows: the plan asks whether
         // two things are equal, and an entity and a record are never equal to each other however
         // faithfully one was built from the other.
+        val adopting = outcome.stance == SyncStance.ADOPT
         val plan = SyncBoardPlan.plan(
-            local.tasks.associateBy { it.id }, outcome.merged.tasks, { it.id }, { it.isDeleted }
+            local.tasks.associateBy { it.id }, outcome.merged.tasks, { it.id }, { it.isDeleted },
+            removingMissing = adopting
         )
 
         (plan.insert + plan.update).forEach { record ->
@@ -143,11 +145,15 @@ class BoardSyncRunner(
         plan.delete.forEach { syncId ->
             existingTasks[syncId]?.let { taskDao.update(it.copy(isDeleted = true)) }
         }
+        // Discarded, not tombstoned: this device's board is being replaced, and the other device
+        // never knew these ids, so a tombstone would be news to nobody.
+        plan.discard.forEach { syncId -> existingTasks[syncId]?.let { taskDao.delete(it) } }
 
         val reminderDao = db.reminderDao()
         val existingReminders = reminderDao.getAllForSync().associateBy { it.syncId }
         val reminderPlan = SyncBoardPlan.plan(
-            local.reminders.associateBy { it.id }, outcome.merged.reminders, { it.id }, { it.isDeleted }
+            local.reminders.associateBy { it.id }, outcome.merged.reminders, { it.id }, { it.isDeleted },
+            removingMissing = adopting
         )
         (reminderPlan.insert + reminderPlan.update).forEach { record ->
             val existing = existingReminders[record.id]
@@ -157,10 +163,11 @@ class BoardSyncRunner(
         reminderPlan.delete.forEach { syncId ->
             existingReminders[syncId]?.let { reminderDao.update(it.copy(isDeleted = true)) }
         }
+        reminderPlan.discard.forEach { syncId -> existingReminders[syncId]?.let { reminderDao.delete(it) } }
 
-        applyStorage(local, outcome, pathsByHash)
-        applyCredentials(local, outcome)
-        applySketches(local, outcome, pathsByHash)
+        applyStorage(local, outcome, pathsByHash, adopting)
+        applyCredentials(local, outcome, adopting)
+        applySketches(local, outcome, pathsByHash, adopting)
     }
 
     /**
@@ -173,12 +180,14 @@ class BoardSyncRunner(
     private suspend fun applyStorage(
         local: BoardSnapshot,
         outcome: BoardSyncOutcome,
-        pathsByHash: Map<String, String>
+        pathsByHash: Map<String, String>,
+        adopting: Boolean
     ) {
         val dao = db.storageItemDao()
         val existing = dao.getAllForSync().associateBy { it.syncId }
         val plan = SyncBoardPlan.plan(
-            local.storage.associateBy { it.id }, outcome.merged.storage, { it.id }, { it.isDeleted }
+            local.storage.associateBy { it.id }, outcome.merged.storage, { it.id }, { it.isDeleted },
+            removingMissing = adopting
         )
 
         (plan.insert + plan.update).forEach { record ->
@@ -191,6 +200,7 @@ class BoardSyncRunner(
         plan.delete.forEach { syncId ->
             existing[syncId]?.let { dao.update(it.copy(isDeleted = true)) }
         }
+        plan.discard.forEach { syncId -> existing[syncId]?.let { dao.delete(it) } }
     }
 
     /**
@@ -202,12 +212,16 @@ class BoardSyncRunner(
      * a password to a sync that couldn't read it would be losing data; keeping the old one never
      * is, and the title and username still arrive.
      */
-    private suspend fun applyCredentials(local: BoardSnapshot, outcome: BoardSyncOutcome) {
+    private suspend fun applyCredentials(
+        local: BoardSnapshot,
+        outcome: BoardSyncOutcome,
+        adopting: Boolean
+    ) {
         val dao = db.credentialDao()
         val existing = dao.getAllForSync().associateBy { it.syncId }
         val plan = SyncBoardPlan.plan(
             local.credentials.associateBy { it.id }, outcome.merged.credentials,
-            { it.id }, { it.isDeleted }
+            { it.id }, { it.isDeleted }, removingMissing = adopting
         )
 
         (plan.insert + plan.update).forEach { record ->
@@ -218,6 +232,7 @@ class BoardSyncRunner(
         plan.delete.forEach { syncId ->
             existing[syncId]?.let { dao.update(it.copy(isDeleted = true)) }
         }
+        plan.discard.forEach { syncId -> existing[syncId]?.let { dao.delete(it) } }
     }
 
     private fun storedPassword(record: SyncCredentialRecord): String? {
@@ -246,7 +261,8 @@ class BoardSyncRunner(
     private fun applySketches(
         local: BoardSnapshot,
         outcome: BoardSyncOutcome,
-        pathsByHash: Map<String, String>
+        pathsByHash: Map<String, String>,
+        adopting: Boolean
     ) {
         val here = local.sketches.associateBy { it.id }
         val folders = SketchStorage.listAllForSync(context).associateBy {
@@ -273,6 +289,15 @@ class BoardSyncRunner(
                 File(path).copyTo(File(folder, "page${index + 1}.png"), overwrite = true)
             }
             if (record.name.isNotBlank()) SketchStorage.setName(folder, record.name)
+        }
+
+        // A note this device has that the adopted board doesn't is discarded with everything else
+        // it was holding — see BoardPlan.discard.
+        if (adopting) {
+            val kept = outcome.merged.sketches.map { it.id }.toSet()
+            here.keys.filter { it !in kept }.forEach { syncId ->
+                folders[syncId]?.let { runCatching { it.deleteRecursively() } }
+            }
         }
     }
 
