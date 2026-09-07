@@ -108,6 +108,16 @@ struct DriveClient {
         return request
     }
 
+    /// Removing a file outright, which is only ever done to an orphan — a file in the shared
+    /// folder that no live record names any more. See SyncFileStore.orphans, which computes that
+    /// against the merged document rather than one device's half, precisely so this is never
+    /// pointed at something the other device still wants.
+    static func deleteRequest(accessToken: String, fileID: String) -> URLRequest {
+        var request = URLRequest(url: URL(string: "\(base)/files/\(fileID)?supportsAllDrives=true")!)
+        request.httpMethod = "DELETE"
+        return authorized(request, accessToken: accessToken)
+    }
+
     static func downloadRequest(accessToken: String, fileID: String) -> URLRequest {
         authorized(URLRequest(url: URL(string: "\(base)/files/\(fileID)?alt=media")!), accessToken: accessToken)
     }
@@ -249,6 +259,10 @@ struct DriveClient {
 
     func download(fileID: String) async throws -> Data {
         try await perform(Self.downloadRequest(accessToken: accessToken, fileID: fileID))
+    }
+
+    func delete(fileID: String) async throws {
+        _ = try await perform(Self.deleteRequest(accessToken: accessToken, fileID: fileID))
     }
 
     func replace(fileID: String, with contents: Data, mimeType: String) async throws {
