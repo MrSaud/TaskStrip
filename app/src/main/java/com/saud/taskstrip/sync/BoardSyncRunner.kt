@@ -158,17 +158,122 @@ class BoardSyncRunner(
             existingReminders[syncId]?.let { reminderDao.update(it.copy(isDeleted = true)) }
         }
 
-        // Not yet written back: the storage library, credentials and sketches.
-        //
-        // All three are gathered, sent and merged — they are in the document and in outcome.merged,
-        // and the other device receives them — but nothing here lands them in this one's database
-        // or sketch folders yet. Each needs something the strips didn't: a library item has to have
-        // its bytes put somewhere before its row means anything, a credential's password has to be
-        // re-encrypted under this device's keystore before it can be stored, and a sketch's pages
-        // have to be written back into a folder as page1.png, page2.png in the record's order.
-        //
-        // Said here rather than left to be noticed: a sync that silently drops three of the five
-        // things it claims to carry is worse than one that hasn't finished.
+        applyStorage(local, outcome, pathsByHash)
+        applyCredentials(local, outcome)
+        applySketches(local, outcome, pathsByHash)
+    }
+
+    /**
+     * A library item is only worth a row once its bytes are somewhere.
+     *
+     * An item whose file hasn't landed yet is skipped rather than written with an empty path — the
+     * library would list something that opens nothing, and the row would then look up to date, so
+     * no later sync would fix it. Skipped, it simply arrives on the sync after the bytes do.
+     */
+    private suspend fun applyStorage(
+        local: BoardSnapshot,
+        outcome: BoardSyncOutcome,
+        pathsByHash: Map<String, String>
+    ) {
+        val dao = db.storageItemDao()
+        val existing = dao.getAllForSync().associateBy { it.syncId }
+        val plan = SyncBoardPlan.plan(
+            local.storage.associateBy { it.id }, outcome.merged.storage, { it.id }, { it.isDeleted }
+        )
+
+        (plan.insert + plan.update).forEach { record ->
+            val here = existing[record.id]
+            val path = pathsByHash[record.hash]
+            if (here == null && path == null) return@forEach
+            val applied = BoardRecords.applyTo(here, record, pathForNew = path.orEmpty())
+            if (here == null) dao.insert(applied) else dao.update(applied)
+        }
+        plan.delete.forEach { syncId ->
+            existing[syncId]?.let { dao.update(it.copy(isDeleted = true)) }
+        }
+    }
+
+    /**
+     * A credential's password has to be re-encrypted before it can be stored.
+     *
+     * The record carries it under the user's passphrase, which is the only form that can cross
+     * between devices; this device keeps it under its own keystore. With no passphrase — or a
+     * record that carried no secret — the password already stored is left exactly as it is. Losing
+     * a password to a sync that couldn't read it would be losing data; keeping the old one never
+     * is, and the title and username still arrive.
+     */
+    private suspend fun applyCredentials(local: BoardSnapshot, outcome: BoardSyncOutcome) {
+        val dao = db.credentialDao()
+        val existing = dao.getAllForSync().associateBy { it.syncId }
+        val plan = SyncBoardPlan.plan(
+            local.credentials.associateBy { it.id }, outcome.merged.credentials,
+            { it.id }, { it.isDeleted }
+        )
+
+        (plan.insert + plan.update).forEach { record ->
+            val here = existing[record.id]
+            val applied = BoardRecords.applyTo(here, record, encryptedPassword = storedPassword(record))
+            if (here == null) dao.insert(applied) else dao.update(applied)
+        }
+        plan.delete.forEach { syncId ->
+            existing[syncId]?.let { dao.update(it.copy(isDeleted = true)) }
+        }
+    }
+
+    private fun storedPassword(record: SyncCredentialRecord): String? {
+        val secret = passphrase ?: return null
+        if (!record.hasPassword) return null
+        return runCatching {
+            val plain = com.saud.taskstrip.backup.BackupCrypto.decrypt(
+                com.saud.taskstrip.backup.BackupCrypto.Encrypted(
+                    record.passwordSalt.orEmpty(), record.passwordIv.orEmpty(),
+                    record.passwordCipher.orEmpty()
+                ),
+                secret
+            ) ?: return null
+            com.saud.taskstrip.security.CredentialCrypto.encrypt(plain)
+        }.getOrNull()
+    }
+
+    /**
+     * A sketch's pages are written back in the record's order, not the order they arrived.
+     *
+     * Page numbering is a local detail — page1.png, page2.png — and the record is what says which
+     * page is which. A note whose pages haven't all landed is left alone entirely rather than
+     * written half-finished: half a drawing is worse than yesterday's whole one, and the next sync
+     * writes it properly once the rest of the bytes are here.
+     */
+    private fun applySketches(
+        local: BoardSnapshot,
+        outcome: BoardSyncOutcome,
+        pathsByHash: Map<String, String>
+    ) {
+        val here = local.sketches.associateBy { it.id }
+        val folders = SketchStorage.listAllForSync(context).associateBy {
+            SketchStorage.getOrCreateSyncId(it)
+        }
+
+        outcome.merged.sketches.forEach { record ->
+            if (record == here[record.id]) return@forEach
+            val folder = folders[record.id] ?: SketchStorage.noteRef(context, "note_${record.createdAt}")
+
+            if (record.isDeleted) {
+                if (SketchStorage.listPages(folder).isNotEmpty()) SketchStorage.deleteNote(folder)
+                SketchStorage.setSyncId(folder, record.id)
+                return@forEach
+            }
+
+            val landed = record.pages.map { pathsByHash[it] }
+            if (landed.any { it == null }) return@forEach
+
+            folder.mkdirs()
+            SketchStorage.setSyncId(folder, record.id)
+            SketchStorage.listPages(folder).forEach { it.delete() }
+            landed.filterNotNull().forEachIndexed { index, path ->
+                File(path).copyTo(File(folder, "page${index + 1}.png"), overwrite = true)
+            }
+            if (record.name.isNotBlank()) SketchStorage.setName(folder, record.name)
+        }
     }
 
     /**
