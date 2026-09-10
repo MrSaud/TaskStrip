@@ -53,6 +53,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SwapVert
@@ -104,6 +105,7 @@ import com.saud.taskstrip.ReminderViewModel
 import com.saud.taskstrip.data.Priority
 import com.saud.taskstrip.data.TaskActionLogEntry
 import com.saud.taskstrip.data.TaskEntity
+import com.saud.taskstrip.backup.BackupViewModel
 import com.saud.taskstrip.notifications.DigestPrefs
 import com.saud.taskstrip.notifications.DigestScheduler
 import com.saud.taskstrip.notifications.WeeklyDigestPrefs
@@ -123,6 +125,7 @@ import com.saud.taskstrip.ui.theme.BayBackground
 import com.saud.taskstrip.ui.theme.BaySurface
 import com.saud.taskstrip.ui.theme.InkColor
 import com.saud.taskstrip.ui.theme.Paper
+import com.saud.taskstrip.ui.theme.PriorityUrgent
 import com.saud.taskstrip.ui.theme.tabColor
 import com.saud.taskstrip.voice.VoiceCommandParser
 import kotlinx.coroutines.delay
@@ -136,6 +139,7 @@ private enum class ProgressSort { ASCENDING, DESCENDING }
 fun HomeScreen(
     viewModel: TaskViewModel,
     reminderViewModel: ReminderViewModel,
+    backupViewModel: BackupViewModel,
     onAddClick: () -> Unit,
     onReminderEditClick: (Long) -> Unit,
     onTaskClick: (Long) -> Unit,
@@ -173,6 +177,10 @@ fun HomeScreen(
     var reminderSortDescending by remember { mutableStateOf(false) }
     var reminderTagFilter by remember { mutableStateOf<String?>(null) }
     var reminderSortMenuExpanded by remember { mutableStateOf(false) }
+    val backupState by backupViewModel.uiState.collectAsStateWithLifecycle()
+    // Restore replaces everything on this device, so the menu asks before it does — the screen has
+    // a list and a passphrase field in front of it, and one tap from a menu has neither.
+    var confirmQuickRestore by remember { mutableStateOf(false) }
     var reminderTagMenuExpanded by remember { mutableStateOf(false) }
     val reminders by reminderViewModel.reminders.collectAsStateWithLifecycle()
     val reminderTagEmojis = remember(reminders) {
@@ -537,6 +545,22 @@ fun HomeScreen(
                                 }
                             )
                             DropdownMenuItem(
+                                text = { Text("QUICK BACKUP") },
+                                leadingIcon = { Icon(Icons.Default.CloudUpload, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    backupViewModel.quickBackup()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("QUICK RESTORE") },
+                                leadingIcon = { Icon(Icons.Default.Restore, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    confirmQuickRestore = true
+                                }
+                            )
+                            DropdownMenuItem(
                                 text = { Text("BACKUP & RESTORE") },
                                 leadingIcon = { Icon(Icons.Default.CloudUpload, contentDescription = null) },
                                 onClick = {
@@ -728,6 +752,17 @@ fun HomeScreen(
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
             BoardDateStrip(nowMillis)
+            QuickBackupDialogs(
+                state = backupState,
+                latestBackupName = backupViewModel.latestBackupName,
+                confirmRestore = confirmQuickRestore,
+                onConfirmRestore = {
+                    confirmQuickRestore = false
+                    backupViewModel.restoreLatest()
+                },
+                onCancelRestore = { confirmQuickRestore = false },
+                onDismissMessage = { backupViewModel.dismissMessages() }
+            )
             quote?.let { QuoteOfDayCard(it) }
             if (allTags.isNotEmpty() && pagerState.currentPage == PAGE_STRIPS) {
                 LazyRow(
@@ -949,6 +984,72 @@ fun HomeScreen(
             dismissButton = {
                 TextButton(onClick = { pendingArchive = null }) { Text("CANCEL") }
             }
+        )
+    }
+}
+
+/** The board's quick backup and restore, and what they have to say.
+ *
+ * Both live in the menu so a save or a rollback is one tap, and both report back rather than
+ * happening silently — a backup nobody saw succeed is a backup nobody trusts.
+ *
+ * Restore asks first. It replaces every strip, reminder, credential and library item on this
+ * device with whatever is in the backup, and unlike the Backup & Restore screen there is no list
+ * and no passphrase field in front of it to make that obvious.
+ */
+@Composable
+private fun QuickBackupDialogs(
+    state: com.saud.taskstrip.backup.BackupUiState,
+    latestBackupName: String?,
+    confirmRestore: Boolean,
+    onConfirmRestore: () -> Unit,
+    onCancelRestore: () -> Unit,
+    onDismissMessage: () -> Unit
+) {
+    if (confirmRestore) {
+        AlertDialog(
+            onDismissRequest = onCancelRestore,
+            title = { Text("RESTORE THE LATEST BACKUP?", style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Text(
+                    "Everything on this device — strips, reminders, credentials and the storage " +
+                        "library — is replaced by " +
+                        // Named when it is known. The list may not have been loaded yet, and
+                        // inventing a name would be worse than admitting which one it is.
+                        (latestBackupName?.let { "\"$it\"" } ?: "the most recent backup on Drive") +
+                        ". This can't be undone."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = onConfirmRestore) { Text("RESTORE", color = PriorityUrgent) }
+            },
+            dismissButton = { TextButton(onClick = onCancelRestore) { Text("CANCEL") } }
+        )
+    }
+
+    if (state.isBusy && state.busyMessage.isNotBlank()) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(state.busyMessage.uppercase(), style = MaterialTheme.typography.titleMedium) },
+            text = { Text("Don't close the app until this finishes.") },
+            confirmButton = {}
+        )
+    }
+
+    val message = state.errorMessage ?: state.lastActionSucceeded
+    if (!state.isBusy && message != null) {
+        AlertDialog(
+            onDismissRequest = onDismissMessage,
+            title = {
+                // Neither word names the action: one dialog reports both, and a restore that
+                // failed saying "BACKUP FAILED" is worse than saying nothing.
+                Text(
+                    if (state.errorMessage != null) "COULDN'T DO THAT" else "DONE",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = onDismissMessage) { Text("OK") } }
         )
     }
 }

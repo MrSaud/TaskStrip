@@ -250,6 +250,7 @@ class MainActivity : FragmentActivity() {
                         HomeScreen(
                             viewModel = viewModel,
                             reminderViewModel = reminderViewModel,
+                            backupViewModel = backupViewModel,
                             onAddClick = { navController.navigate("editor/-1") },
                             onReminderEditClick = { id -> navController.navigate("reminder-editor/$id") },
                             onTaskClick = { id -> navController.navigate("editor/$id") },
