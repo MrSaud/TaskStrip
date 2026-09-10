@@ -18,10 +18,6 @@ interface ReminderDao {
     @Query("SELECT * FROM reminders WHERE isDeleted = 0")
     suspend fun getAllOnce(): List<ReminderEntity>
 
-    /** Tombstones included — see TaskDao.getAllForSync. */
-    @Query("SELECT * FROM reminders")
-    suspend fun getAllForSync(): List<ReminderEntity>
-
     @Insert
     suspend fun insert(reminder: ReminderEntity): Long
 

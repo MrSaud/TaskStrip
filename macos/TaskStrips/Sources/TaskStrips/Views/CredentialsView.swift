@@ -269,6 +269,6 @@ struct CredentialsView: View {
     private func delete(_ credential: Credential) {
         store.removePassword(for: credential.id)
         revealed[credential.id] = nil
-        modelContext.tombstone(credential)
+        modelContext.delete(credential)
     }
 }

@@ -300,6 +300,6 @@ struct RemindersView: View {
 
     private func delete(_ reminder: Reminder) {
         ReminderScheduler.shared.cancel(reminderID: reminder.id)
-        modelContext.tombstone(reminder)
+        modelContext.delete(reminder)
     }
 }

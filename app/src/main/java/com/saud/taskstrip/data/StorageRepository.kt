@@ -22,11 +22,6 @@ class StorageRepository(private val dao: StorageItemDao) {
     suspend fun setTag(item: StorageItemEntity, tag: String, tagEmoji: String) =
         dao.update(item.copy(tag = tag, tagEmoji = tagEmoji, updatedAt = System.currentTimeMillis()))
 
-    /** A tombstone, not a removal — see TaskRepository.deleteTask. */
-    suspend fun delete(item: StorageItemEntity) = dao.update(
-        item.copy(isDeleted = true, updatedAt = System.currentTimeMillis())
-    )
-
-    /** What the sync sends: live items and the tombstones of dead ones. */
-    suspend fun getAllForSync(): List<StorageItemEntity> = dao.getAllForSync()
+    /** A real delete again — see TaskRepository.deleteTask. */
+    suspend fun delete(item: StorageItemEntity) = dao.delete(item)
 }

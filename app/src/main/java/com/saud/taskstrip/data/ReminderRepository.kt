@@ -60,13 +60,8 @@ class ReminderRepository(private val dao: ReminderDao) {
         return updated
     }
 
-    /** A tombstone, not a removal — see TaskRepository.deleteTask. */
-    suspend fun delete(reminder: ReminderEntity) = dao.update(
-        reminder.copy(isDeleted = true, updatedAt = System.currentTimeMillis())
-    )
-
-    /** What the sync sends: live reminders and the tombstones of dead ones. */
-    suspend fun getAllForSync(): List<ReminderEntity> = dao.getAllForSync()
+    /** A real delete again — see TaskRepository.deleteTask. */
+    suspend fun delete(reminder: ReminderEntity) = dao.delete(reminder)
 
     suspend fun getById(id: Long): ReminderEntity? = dao.getById(id)
 }

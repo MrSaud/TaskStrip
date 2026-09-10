@@ -261,7 +261,7 @@ struct TaskEditView: View {
                 if let task = editingTask {
                     for attachment in task.attachments { attachmentStore.remove(attachment) }
                     ReminderScheduler.shared.cancel(taskID: task.id)
-                    modelContext.tombstone(task)
+                    modelContext.delete(task)
                 }
                 onDeleted()
                 dismiss()

@@ -7,8 +7,7 @@ import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
-/** Tombstones are hidden from every query a person sees through — see TaskDao for why they
- * exist at all. [getAllForSync] is the one way to see them, and it is the sync's. */
+/** The isDeleted filter outlives the board sync that needed it — see TaskDao. */
 @Dao
 interface CredentialDao {
     @Query("SELECT * FROM credentials WHERE isDeleted = 0 ORDER BY title COLLATE NOCASE ASC")
@@ -19,10 +18,6 @@ interface CredentialDao {
 
     @Query("SELECT * FROM credentials WHERE isDeleted = 0")
     suspend fun getAllOnce(): List<CredentialEntity>
-
-    /** Tombstones included — see TaskDao.getAllForSync. */
-    @Query("SELECT * FROM credentials")
-    suspend fun getAllForSync(): List<CredentialEntity>
 
     @Insert
     suspend fun insert(credential: CredentialEntity): Long

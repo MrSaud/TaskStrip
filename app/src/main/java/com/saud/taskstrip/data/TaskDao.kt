@@ -8,12 +8,10 @@ import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
 /**
- * Every query a person sees through excludes tombstones.
+ * The isDeleted filters outlive the board sync that needed them.
  *
- * A deleted strip stays as a row so the delete can reach the other device — dropping it outright
- * would make it indistinguishable from a strip that device has never heard of, and it would come
- * straight back on the next sync. That row is bookkeeping, and it must never reach the board.
- * [getAllForSync] is the one way to see them, and it is the sync's.
+ * Deleting is a real delete again, so nothing new is ever tombstoned — but rows tombstoned while
+ * the sync existed are deleted rows, and dropping these filters would bring every one of them back.
  */
 @Dao
 interface TaskDao {
@@ -30,19 +28,11 @@ interface TaskDao {
     @Query("SELECT * FROM tasks WHERE isDeleted = 0 AND id = :id")
     suspend fun getById(id: Long): TaskEntity?
 
-    @Query("SELECT * FROM tasks WHERE isDeleted = 0 AND syncId = :syncId")
-    suspend fun getBySyncId(syncId: String): TaskEntity?
-
     @Query("SELECT COALESCE(MAX(orderIndex), -1) FROM tasks WHERE isDeleted = 0")
     suspend fun maxOrderIndex(): Int
 
     @Query("SELECT * FROM tasks WHERE isDeleted = 0")
     suspend fun getAllOnce(): List<TaskEntity>
-
-    /** Tombstones included — the only caller that wants them is the sync, which has to send them
-     * on so the other device learns what was deleted. */
-    @Query("SELECT * FROM tasks")
-    suspend fun getAllForSync(): List<TaskEntity>
 
     @Insert
     suspend fun insert(task: TaskEntity): Long
@@ -58,9 +48,6 @@ interface TaskDao {
     @Update
     suspend fun updateAll(tasks: List<TaskEntity>)
 
-    /** A hard delete, kept for the sync's own tombstone sweep and for restore, which rebuilds the
-     * table from nothing. Everything a person does goes through TaskRepository.deleteTask, which
-     * leaves a tombstone behind instead. */
     @Delete
     suspend fun delete(task: TaskEntity)
 

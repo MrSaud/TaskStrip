@@ -35,13 +35,8 @@ class CredentialRepository(private val dao: CredentialDao) {
         )
     }
 
-    /** A tombstone, not a removal — see TaskRepository.deleteTask. */
-    suspend fun delete(credential: CredentialEntity) = dao.update(
-        credential.copy(isDeleted = true, updatedAt = System.currentTimeMillis())
-    )
-
-    /** What the sync sends: live credentials and the tombstones of dead ones. */
-    suspend fun getAllForSync(): List<CredentialEntity> = dao.getAllForSync()
+    /** A real delete again — see TaskRepository.deleteTask. */
+    suspend fun delete(credential: CredentialEntity) = dao.delete(credential)
 
     suspend fun getById(id: Long): CredentialEntity? = dao.getById(id)
 

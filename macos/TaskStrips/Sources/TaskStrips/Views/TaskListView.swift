@@ -42,10 +42,6 @@ struct TaskListView: View {
     @State private var showCredentials = false
     @State private var showSketches = false
     @State private var showSyncNotes = false
-    // The board sync reports into an alert rather than a quiet line: it can move every strip on
-    // the board, and that is not something to find out about later.
-    @State private var boardSyncing = false
-    @State private var boardSyncResult: String?
     @State private var rollUp: RollUp?
     @State private var blockedAlertTask: TaskItem?
     @State private var importSummary: BackupImportSummary?
@@ -135,16 +131,6 @@ struct TaskListView: View {
             .task { WidgetPublisher.publish(tasks: allTasks, reminders: allReminders) }
             .onChange(of: WidgetPublisher.snapshot(tasks: allTasks, reminders: allReminders)) { _, _ in
                 WidgetPublisher.publish(tasks: allTasks, reminders: allReminders)
-            }
-            // Kept here rather than on the board's own modifier chain, which is long enough that
-            // adding to it pushed the type-checker past its budget.
-            .alert("Board sync", isPresented: Binding(
-                get: { boardSyncResult != nil },
-                set: { if !$0 { boardSyncResult = nil } }
-            )) {
-                Button("OK") { boardSyncResult = nil }
-            } message: {
-                Text(boardSyncResult ?? "")
             }
             .modifier(HorizontalSwipe { forward in
                 guard let target = forward ? page.next : page.previous else { return }
@@ -477,21 +463,6 @@ struct TaskListView: View {
         return parts.isEmpty ? "filtered" : parts.formatted(.list(type: .and))
     }
 
-    /// Runs the board sync and says what it did.
-    ///
-    /// Guarded against a second run while one is in flight. Two syncs racing each other would each
-    /// read the document before the other wrote it, and the loser's work would be merged away as
-    /// though it had never happened.
-    private func syncBoard() {
-        guard !boardSyncing else { return }
-        boardSyncing = true
-        Task {
-            let outcome = await BoardSyncService.run(context: modelContext)
-            boardSyncResult = outcome.summary
-            boardSyncing = false
-        }
-    }
-
     private func clearFilters() {
         searchText = ""
         tagFilter = nil
@@ -676,19 +647,6 @@ struct TaskListView: View {
                     Label("Sync Notes", systemImage: "arrow.triangle.2.circlepath")
                 }
                 .help("Sync Notes — text shared with the phone through Drive (⇧⌘T)")
-            }
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    syncBoard()
-                } label: {
-                    if boardSyncing {
-                        ProgressView().controlSize(.small)
-                    } else {
-                        Label("Sync Board", systemImage: "arrow.triangle.2.circlepath.circle")
-                    }
-                }
-                .disabled(boardSyncing)
-                .help("Sync Board — strips, reminders, the library, credentials and sketches")
             }
             ToolbarItem(placement: .navigation) {
                 Menu {
@@ -953,7 +911,7 @@ struct TaskListView: View {
         // would grow the media folder forever.
         for attachment in task.attachments { AttachmentStore.shared.remove(attachment) }
         ReminderScheduler.shared.cancel(taskID: id)
-        modelContext.tombstone(task)
+        modelContext.delete(task)
         cleanUpDanglingBlockers(deletedID: id)
     }
 

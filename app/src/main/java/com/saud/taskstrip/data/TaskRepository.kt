@@ -60,27 +60,21 @@ class TaskRepository(private val dao: TaskDao) {
 
     /** Stamped here rather than by each caller.
      *
-     * updatedAt is what tells the other device this strip changed, and a write that forgets it
-     * doesn't fail — it just never travels, and the change is quietly missing on the other machine
-     * until something else touches the same strip. One place that always stamps is the only shape
-     * of this that can't be got wrong by forgetting. */
+     * Kept after the board sync was removed because "when was this last changed" is worth knowing
+     * on its own, and one place that always stamps is the only shape of this that can't be got
+     * wrong by forgetting. Nothing reads it today. */
     suspend fun updateTask(task: TaskEntity) =
         dao.update(task.copy(updatedAt = System.currentTimeMillis()))
 
-    /** A tombstone, not a removal.
+    /** A real delete again.
      *
-     * The row has to outlive the strip long enough to tell the other device it is gone. Dropped
-     * outright, a delete is indistinguishable from a strip that device has never heard of, and the
-     * next sync brings it back from the dead. Every query a person sees through filters these out
-     * — see TaskDao. */
-    suspend fun deleteTask(task: TaskEntity) = dao.update(
-        task.copy(isDeleted = true, updatedAt = System.currentTimeMillis())
-    )
-
-    /** What the sync sends: live strips and the tombstones of dead ones. */
-    suspend fun getAllForSync(): List<TaskEntity> = dao.getAllForSync()
-
-    suspend fun getBySyncId(syncId: String): TaskEntity? = dao.getBySyncId(syncId)
+     * These were tombstones while the board sync existed — a deleted row had to outlive the thing
+     * so the delete could reach the other device. Nothing reads them now, and a tombstone nobody
+     * collects is a row that never goes away, so the row goes.
+     *
+     * The isDeleted column and the queries that filter on it stay. Rows tombstoned while the sync
+     * existed are deleted rows, and dropping the filter would bring every one of them back. */
+    suspend fun deleteTask(task: TaskEntity) = dao.delete(task)
 
     suspend fun getTask(id: Long): TaskEntity? = dao.getById(id)
 

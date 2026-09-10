@@ -389,7 +389,7 @@ struct StorageLibraryView: View {
 
     private func delete(_ item: StorageItem) {
         store.remove(relativePath: item.path, kind: item.type.attachmentKind)
-        modelContext.tombstone(item)
+        modelContext.delete(item)
     }
 }
 
