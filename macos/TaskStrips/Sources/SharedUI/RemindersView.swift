@@ -62,9 +62,7 @@ struct RemindersView: View {
         .macFrame(minWidth: 520, minHeight: 500)
         .background(TaskStripTheme.bayBackground)
         .searchable(if: isActive, text: $search, prompt: "Search reminders")
-        .toolbar {
-            if isActive { toolbarContent }
-        }
+        .toolbar { toolbarContent }
         .sheet(isPresented: $isCreating) {
             ReminderEditView(
                 reminder: nil,
@@ -222,8 +220,7 @@ struct RemindersView: View {
         }
     }
 
-    @ViewBuilder
-    private var controls: some View {
+    private var tagMenu: some View {
         Menu {
             Button("All tags") { tagFilter = nil }
             ForEach(availableTags, id: \.self) { tag in
@@ -235,7 +232,9 @@ struct RemindersView: View {
             Label("Filter by tag", systemImage: activeTag == nil ? "tag" : "tag.fill")
         }
         .disabled(availableTags.isEmpty)
+    }
 
+    private var sortButton: some View {
         Button {
             newestFirst.toggle()
         } label: {
@@ -244,13 +243,17 @@ struct RemindersView: View {
                 systemImage: newestFirst ? "arrow.down" : "arrow.up"
             )
         }
+    }
 
+    private var voiceButton: some View {
         Button {
             isDictating = true
         } label: {
             Label("New reminder by voice", systemImage: "mic")
         }
+    }
 
+    private var newButton: some View {
         Button {
             spokenText = ""
             isCreating = true
@@ -266,22 +269,33 @@ struct RemindersView: View {
                 .fontWeight(.bold)
                 .foregroundStyle(TaskStripTheme.amber)
             Spacer()
-            controls
-                .labelStyle(.iconOnly)
+            Group {
+                tagMenu
+                sortButton
+                voiceButton
+                newButton
+            }
+            .labelStyle(.iconOnly)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(TaskStripTheme.bayBackground)
     }
 
-    @ToolbarContentBuilder
+    /// One ToolbarItem per control, in a Group, as it always was, with the "is this page on
+    /// screen" test inside each item rather than around them. Both other shapes broke the Mac
+    /// without a word: a single ToolbarItemGroup stopped the board window opening at all, and an
+    /// `if` around the items lost the reminders sheet its Done button.
     private var toolbarContent: some ToolbarContent {
-        ToolbarItemGroup {
-            controls
-        }
-        ToolbarItem(placement: .confirmationAction) {
-            if !isEmbedded {
-                Button("Done") { dismiss() }
+        Group {
+            ToolbarItem { if isActive { tagMenu } }
+            ToolbarItem { if isActive { sortButton } }
+            ToolbarItem { if isActive { voiceButton } }
+            ToolbarItem { if isActive { newButton } }
+            ToolbarItem(placement: .confirmationAction) {
+                if !isEmbedded {
+                    Button("Done") { dismiss() }
+                }
             }
         }
     }
