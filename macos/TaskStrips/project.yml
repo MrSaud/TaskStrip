@@ -8,7 +8,10 @@ settings:
   base:
     SWIFT_VERSION: "5.0"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
-    DEVELOPMENT_TEAM: ""
+    # The personal team, and only that one — never an organisation's. The Mac was ad-hoc signed
+    # until Phase 2; iCloud Keychain needs a real team, and a stable signature also stops macOS
+    # asking for the login password again after every rebuild.
+    DEVELOPMENT_TEAM: FZ332788BV
     CODE_SIGN_STYLE: Automatic
 targets:
   TaskStrips:
@@ -133,7 +136,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.saud.taskstrip
         PRODUCT_NAME: TaskStrips
-        DEVELOPMENT_TEAM: FZ332788BV
         TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         MARKETING_VERSION: "0.1"

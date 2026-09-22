@@ -9,4 +9,10 @@ enum AppLaunch {
     static var isUITesting: Bool {
         ProcessInfo.processInfo.arguments.contains(uiTestingArgument)
     }
+
+    /// Running as the host for the unit tests. The app still launches then, and anything it does on
+    /// launch against the real keychain or store happens on the test machine for real.
+    static var isUnitTesting: Bool {
+        ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
+    }
 }

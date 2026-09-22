@@ -87,6 +87,27 @@ struct TaskStripsApp: App {
     /// Named so the menu bar glance can bring the board back after its window has been closed.
     static let boardWindowID = "board"
 
+    init() {
+        Self.movePasswordsToICloudKeychain()
+    }
+
+    /// Phase 2's one-time move of credential passwords into iCloud Keychain. Off the main thread,
+    /// because macOS may ask for the login password to release each old item and the board
+    /// shouldn't wait on that. Never under a test: the unit-test host is this app, launched for
+    /// real, and it must not go through the real keychain.
+    private static func movePasswordsToICloudKeychain() {
+        guard !AppLaunch.isUITesting, !AppLaunch.isUnitTesting,
+              !CredentialStore.shared.hasMigrated
+        else { return }
+        let container = sharedModelContainer
+        Task.detached(priority: .utility) {
+            let context = ModelContext(container)
+            let ids = ((try? context.fetch(FetchDescriptor<Credential>())) ?? []).map(\.id)
+            let report = CredentialStore.shared.migrate(ids: ids)
+            PasswordMoveStatus.record(report)
+        }
+    }
+
     var body: some Scene {
         WindowGroup(id: Self.boardWindowID) {
             TaskListView()

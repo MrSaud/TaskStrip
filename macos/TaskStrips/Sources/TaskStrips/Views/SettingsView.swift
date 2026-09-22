@@ -13,6 +13,37 @@ enum AppSettingsKey {
     static let lastAutoBackup = "lastAutoBackupAt"
 }
 
+/// The outcome of the last move of passwords into iCloud Keychain, for Settings to show. Counts
+/// only, like the report it comes from.
+enum PasswordMoveStatus {
+    private static let key = "credentials.lastMoveReport"
+
+    static func record(_ report: CredentialStore.MigrationReport) {
+        UserDefaults.standard.set(
+            ["moved": report.moved, "alreadyMoved": report.alreadyMoved,
+             "noPassword": report.noPassword, "failed": report.failed],
+            forKey: key
+        )
+    }
+
+    static var summary: String {
+        guard let saved = UserDefaults.standard.dictionary(forKey: key) as? [String: Int] else {
+            return CredentialStore.shared.hasMigrated
+                ? "Passwords are kept in iCloud Keychain."
+                : "Passwords will move to iCloud Keychain the next time the app starts."
+        }
+        let moved = (saved["moved"] ?? 0) + (saved["alreadyMoved"] ?? 0)
+        let failed = saved["failed"] ?? 0
+        if failed > 0 {
+            return "\(moved) password\(moved == 1 ? "" : "s") in iCloud Keychain; \(failed) couldn't be "
+                + "moved yet and will be tried again when the app next starts. Nothing has been lost: "
+                + "the old copies are still in this Mac's keychain."
+        }
+        return "Passwords are kept in iCloud Keychain — \(moved) moved from this Mac's keychain, "
+            + "where the old copies stay as a backup."
+    }
+}
+
 /// The cmd-, window. Deliberately small: only settings that change something the app already
 /// does, rather than a page of switches invented to fill it.
 struct SettingsView: View {
@@ -30,6 +61,11 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            Section("Passwords") {
+                Text(PasswordMoveStatus.summary)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+            }
             Section("New strips") {
                 Picker("Priority", selection: $defaultPriority) {
                     ForEach(Priority.allCases) { priority in

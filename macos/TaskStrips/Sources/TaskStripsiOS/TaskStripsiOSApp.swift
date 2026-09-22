@@ -21,6 +21,16 @@ struct TaskStripsiOSApp: App {
         }
     }()
 
+    #if DEBUG
+    init() {
+        // Phase 2's check that iCloud Keychain carries what the Mac writes. Only the marker's
+        // timestamp, never a password, and only in a Debug build.
+        let marker = Keychain(location: .iCloud(accessGroup: Keychain.sharedAccessGroup))
+            .value(service: "com.saud.taskstrip.integration-check", account: Keychain.crossDeviceMarkerAccount)
+        print("KEYCHAIN-CHECK", marker.map { "found marker written \($0)" } ?? "no marker yet")
+    }
+    #endif
+
     var body: some Scene {
         WindowGroup {
             PlaceholderBoard()
