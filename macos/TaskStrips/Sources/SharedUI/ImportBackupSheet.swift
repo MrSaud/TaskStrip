@@ -22,7 +22,7 @@ struct ImportBackupSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 4) {
-                Text("Import Android backup")
+                Text("Import a backup")
                     .font(.title2.weight(.semibold))
                 Text(summary.tasks.isEmpty
                      ? "This backup has no strips in it."

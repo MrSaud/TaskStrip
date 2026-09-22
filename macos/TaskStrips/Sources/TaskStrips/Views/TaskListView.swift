@@ -934,41 +934,20 @@ struct TaskListView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         do {
-            // The manifest reads the board, so it has to be built here; packing the files is
-            // nothing but paths and bytes, so that part goes elsewhere and the window stays alive.
-            var passwordsIncluded = 0
-            let manifest = try BackupExport.manifestData(
-                exportContents,
-                passphrase: passphrase,
-                credentialStore: .shared,
-                passwordsIncluded: &passwordsIncluded
-            )
-            let paths = BackupExport.mediaPaths(exportContents, store: .shared)
-            let strips = exportContents.tasks.count
+            let prepared = try BackupFlow.prepareExport(exportContents, passphrase: passphrase)
             progress = BackupProgress(
                 title: "Writing the backup",
-                step: paths.isEmpty ? "Packing" : "Packing files",
+                step: prepared.mediaPaths.isEmpty ? "Packing" : "Packing files",
                 completed: 0,
-                total: paths.count
+                total: prepared.mediaPaths.count
             )
-
             Task {
-                var result = await Task.detached {
-                    BackupExport.archive(
-                        manifest: manifest,
-                        mediaPaths: paths,
-                        store: .shared,
-                        progress: { done, total in
-                            DispatchQueue.main.async {
-                                progress?.completed = done
-                                progress?.total = total
-                            }
-                        }
-                    )
-                }.value
-                result.passwordsIncluded = passwordsIncluded
+                let result = await BackupFlow.pack(prepared) { done, total in
+                    progress?.completed = done
+                    progress?.total = total
+                }
                 progress = nil
-                finishExport(result, to: url, strips: strips)
+                finishExport(result, to: url, strips: prepared.strips)
             }
         } catch {
             progress = nil
@@ -982,19 +961,7 @@ struct TaskListView: View {
     private func finishExport(_ result: BackupExport.Result, to url: URL, strips: Int) {
         do {
             try result.archive.write(to: url)
-
-            var body = "Wrote \(strips) strip"
-                + "\(strips == 1 ? "" : "s") and \(result.fileCount) file"
-                + "\(result.fileCount == 1 ? "" : "s") to \(url.lastPathComponent)."
-            if result.passwordsIncluded > 0 {
-                body += " \(result.passwordsIncluded) password"
-                    + "\(result.passwordsIncluded == 1 ? " is" : "s are") encrypted with your passphrase."
-            }
-            if result.filesMissing > 0 {
-                body += " \(result.filesMissing) file\(result.filesMissing == 1 ? "" : "s") named by a strip "
-                    + "couldn't be read, so \(result.filesMissing == 1 ? "it isn't" : "they aren't") in the backup."
-            }
-            importMessage = ImportMessage(title: "Backup written", body: body)
+            importMessage = BackupFlow.exportMessage(result, fileName: url.lastPathComponent, strips: strips)
         } catch {
             importMessage = ImportMessage(
                 title: "Couldn't write the backup",
@@ -1017,11 +984,7 @@ struct TaskListView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
 
         do {
-            var summary = try BackupImport.parse(manifest: BackupArchive.manifestData(at: url))
-            // Kept so the files can be fetched if the user actually commits. Parsing shouldn't be
-            // writing anything to disk.
-            summary.sourceURL = url
-            importSummary = summary
+            importSummary = try BackupFlow.readSummary(at: url)
         } catch {
             importMessage = ImportMessage(
                 title: "Couldn't read that backup",
@@ -1036,7 +999,7 @@ struct TaskListView: View {
         // Files first: a strip that ends up pointing at nothing is better than files on disk that
         // nothing points at, and this is the step that can fail on its own. It's also the slow
         // one, so it happens off the main thread with the count on screen.
-        guard let source = summary.sourceURL, !referenced.isEmpty else {
+        guard summary.sourceURL != nil, !referenced.isEmpty else {
             finishImport(summary, mode: mode, passphrase: passphrase, restored: [], mediaProblem: nil)
             return
         }
@@ -1050,38 +1013,21 @@ struct TaskListView: View {
         )
 
         Task {
-            let outcome = await Task.detached { () -> (Set<String>, String?) in
-                do {
-                    let restored = try BackupImport.restoreMedia(
-                        fromArchiveAt: source,
-                        paths: referenced,
-                        into: .shared,
-                        progress: { done, total in
-                            DispatchQueue.main.async {
-                                progress?.completed = done
-                                progress?.total = total
-                            }
-                        }
-                    )
-                    return (restored, nil)
-                } catch {
-                    return ([], error.localizedDescription)
-                }
-            }.value
-
+            let outcome = await BackupFlow.restoreMedia(for: summary) { done, total in
+                progress?.completed = done
+                progress?.total = total
+            }
             progress = nil
             finishImport(
                 summary,
                 mode: mode,
                 passphrase: passphrase,
-                restored: outcome.0,
-                mediaProblem: outcome.1
+                restored: outcome.restored,
+                mediaProblem: outcome.problem
             )
         }
     }
 
-    /// Everything that touches the store, which has to be here rather than on a background task:
-    /// SwiftData objects belong to the thread that made them.
     private func finishImport(
         _ summary: BackupImportSummary,
         mode: ImportMode,
@@ -1089,90 +1035,18 @@ struct TaskListView: View {
         restored: Set<String>,
         mediaProblem: String?
     ) {
-        let replaced = mode == .replace ? allTasks.count : 0
-        let referenced = summary.referencedMediaPaths
-
-        let imported = BackupImport.apply(
-            summary.tasks,
+        let result = BackupFlow.apply(
+            summary,
             mode: mode,
-            existing: allTasks,
-            context: modelContext
-        )
-        let importedNotes = BackupImport.apply(
-            notes: summary.notes,
-            mode: mode,
-            existing: allNotes,
-            context: modelContext
-        )
-        let importedFiles = BackupImport.apply(
-            storageItems: summary.storageItems,
-            mode: mode,
-            existing: allStorageItems,
-            context: modelContext
-        )
-        let importedReminders = BackupImport.apply(
-            reminders: summary.reminders,
-            mode: mode,
-            existing: allReminders,
-            context: modelContext
-        )
-        let importedCredentials = BackupImport.apply(
-            credentials: summary.credentials,
-            mode: mode,
-            existing: allCredentials,
             passphrase: passphrase,
-            store: .shared,
+            restored: restored,
+            mediaProblem: mediaProblem,
+            existing: exportContents,
             context: modelContext
         )
         importSummary = nil
         ReminderScheduler.shared.sync(allTasks)
         ReminderScheduler.shared.sync(allReminders)
-
-        // SwiftData autosaves, but a failure here is exactly the silent-save class of bug that bit
-        // Phase 1 — an import that quietly wrote nothing would look identical to an empty backup.
-        let result: ImportMessage
-        do {
-            try modelContext.save()
-            var body = mode == .replace
-                ? "Replaced \(replaced) strip\(replaced == 1 ? "" : "s") with \(imported) from the backup."
-                : "Added \(imported) strip\(imported == 1 ? "" : "s") to the board."
-            if importedNotes > 0 {
-                body += " \(importedNotes) quick note\(importedNotes == 1 ? "" : "s") came across too."
-            }
-            if importedFiles > 0 {
-                body += " \(importedFiles) file\(importedFiles == 1 ? "" : "s") joined the storage library."
-            }
-            if importedReminders > 0 {
-                body += " \(importedReminders) standalone reminder\(importedReminders == 1 ? "" : "s") came across."
-            }
-            if importedCredentials.imported > 0 {
-                body += " \(importedCredentials.imported) credential\(importedCredentials.imported == 1 ? "" : "s") came across"
-                let withPasswords = importedCredentials.passwordsRestored
-                if withPasswords == 0 {
-                    body += summary.hasEncryptedPasswords
-                        ? ", but none of their passwords could be unlocked — check the passphrase."
-                        : ", without passwords: the backup was written without a passphrase, so it carries none."
-                } else {
-                    body += ", \(withPasswords) with \(withPasswords == 1 ? "its password" : "their passwords")."
-                }
-            }
-            if !referenced.isEmpty {
-                body += " Restored \(restored.count) of \(referenced.count) file\(referenced.count == 1 ? "" : "s")."
-            }
-            let missing = referenced.count - restored.count
-            if missing > 0 {
-                body += " The \(missing) the archive didn't carry show as missing on their strips."
-            }
-            if let mediaProblem {
-                body += " Files couldn't be read: \(mediaProblem)"
-            }
-            result = ImportMessage(title: "Import complete", body: body)
-        } catch {
-            result = ImportMessage(
-                title: "Import failed",
-                body: "The strips couldn't be saved: \(error.localizedDescription)"
-            )
-        }
 
         // Raising the alert in the same update that dismisses the sheet can swallow it — let the
         // sheet finish going away first.
@@ -1180,9 +1054,3 @@ struct TaskListView: View {
     }
 }
 
-/// Alert payload — `.alert(item:)` needs something Identifiable, and a bare String isn't.
-struct ImportMessage: Identifiable {
-    let id = UUID()
-    let title: String
-    let body: String
-}

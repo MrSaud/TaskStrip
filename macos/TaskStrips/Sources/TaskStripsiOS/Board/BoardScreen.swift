@@ -57,6 +57,8 @@ struct BoardScreen: View {
     @State private var editing: TaskItem?
     @State private var isCreating = false
     @State private var destination: Destination?
+    @State private var isBackingUp = false
+    @State private var isRestoring = false
 
     private var boardTasks: [TaskItem] { allTasks.filter { !$0.isArchived } }
 
@@ -140,6 +142,7 @@ struct BoardScreen: View {
                     screen(for: destination)
                 }
             }
+            .modifier(BoardBackup(isBackingUp: $isBackingUp, isRestoring: $isRestoring))
             .task {
                 ReminderScheduler.shared.sync(allTasks)
                 if showQuote { quote = await QuoteOfTheDay.today() }
@@ -155,6 +158,17 @@ struct BoardScreen: View {
                 } label: {
                     Label(item.title, systemImage: item.systemImage)
                 }
+            }
+            Divider()
+            Button {
+                isBackingUp = true
+            } label: {
+                Label("Back Up…", systemImage: "arrow.up.doc")
+            }
+            Button {
+                isRestoring = true
+            } label: {
+                Label("Restore…", systemImage: "arrow.down.doc")
             }
         } label: {
             Label("Menu", systemImage: "line.3.horizontal")

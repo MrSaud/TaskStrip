@@ -68,7 +68,7 @@ struct ExportBackupSheet: View {
             }
 
             Label(
-                "Restoring this on the phone replaces everything there — it's a restore, not a merge.",
+                "Restoring this on Android replaces everything there — it's a restore, not a merge.",
                 systemImage: "exclamationmark.triangle"
             )
             .font(.callout)
