@@ -61,6 +61,7 @@ final class BoardSync: ObservableObject {
     private var diffTask: Task<Void, Never>?
     private var ticker: Timer?
     private var saveObserver: NSObjectProtocol?
+    private var activeObserver: NSObjectProtocol?
 
     private var attachments: AttachmentStore { .shared }
     private var sketches: SketchStore { .shared }
@@ -186,6 +187,8 @@ final class BoardSync: ObservableObject {
         ticker = nil
         if let saveObserver { NotificationCenter.default.removeObserver(saveObserver) }
         saveObserver = nil
+        if let activeObserver { NotificationCenter.default.removeObserver(activeObserver) }
+        activeObserver = nil
     }
 
     private func registerForPushes() {
@@ -204,9 +207,23 @@ final class BoardSync: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor in self?.scheduleDiff(after: 1) }
         }
-        // Sketches are files, not store saves, so they're looked at on a timer too.
+        // Every 30 s while open: sketches are files, not store saves, so they're looked for here;
+        // and iCloud is asked for changes, in case its push is slow or never comes — waiting on
+        // the push alone left a change a minute late on the first real try.
         ticker = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
-            Task { @MainActor in self?.scheduleDiff(after: 0) }
+            Task { @MainActor in
+                self?.scheduleDiff(after: 0)
+                try? await self?.engine?.fetchChanges()
+            }
+        }
+        // Coming back to the app is when someone looks at the board, so it's brought up to date.
+        #if os(macOS)
+        let becameActive = NSApplication.didBecomeActiveNotification
+        #else
+        let becameActive = UIApplication.didBecomeActiveNotification
+        #endif
+        activeObserver = NotificationCenter.default.addObserver(forName: becameActive, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in try? await self?.engine?.fetchChanges() }
         }
     }
 
@@ -248,6 +265,11 @@ final class BoardSync: ObservableObject {
         let newDeletes = deletions.filter { !pending.contains($0) }
         if !newDeletes.isEmpty {
             engine.state.add(pendingRecordZoneChanges: newDeletes.map { .deleteRecord($0) })
+        }
+        // Sent now rather than whenever the system gets round to it: the other devices can only
+        // see a change once it's in iCloud.
+        if !newSaves.isEmpty || !newDeletes.isEmpty {
+            Task { try? await engine.sendChanges() }
         }
     }
 
