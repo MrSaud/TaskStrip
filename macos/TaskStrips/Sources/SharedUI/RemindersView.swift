@@ -13,6 +13,9 @@ struct RemindersView: View {
     /// On the iPhone board both pages exist side by side, and a page that isn't showing must not
     /// put its buttons and search field on the shared navigation bar.
     var isActive = true
+    /// For a column beside the strips on an iPad: the buttons sit in a header over the list, since
+    /// the navigation bar belongs to the strips. Pair it with `isActive: false`.
+    var showsHeader = false
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -39,6 +42,7 @@ struct RemindersView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if showsHeader { header }
             if notificationsDenied {
                 Label(
                     "Notifications are turned off for Task Strips — reminders won't announce themselves until they're allowed in \(Platform.settingsApp).",
@@ -218,50 +222,66 @@ struct RemindersView: View {
         }
     }
 
+    @ViewBuilder
+    private var controls: some View {
+        Menu {
+            Button("All tags") { tagFilter = nil }
+            ForEach(availableTags, id: \.self) { tag in
+                Button([tagEmojis[tag] ?? "", tag].filter { !$0.isEmpty }.joined(separator: " ")) {
+                    tagFilter = tag
+                }
+            }
+        } label: {
+            Label("Filter by tag", systemImage: activeTag == nil ? "tag" : "tag.fill")
+        }
+        .disabled(availableTags.isEmpty)
+
+        Button {
+            newestFirst.toggle()
+        } label: {
+            Label(
+                newestFirst ? "Latest first" : "Soonest first",
+                systemImage: newestFirst ? "arrow.down" : "arrow.up"
+            )
+        }
+
+        Button {
+            isDictating = true
+        } label: {
+            Label("New reminder by voice", systemImage: "mic")
+        }
+
+        Button {
+            spokenText = ""
+            isCreating = true
+        } label: {
+            Label("New reminder", systemImage: "plus")
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 18) {
+            Text("REMINDERS")
+                .font(.system(.subheadline, design: .monospaced))
+                .fontWeight(.bold)
+                .foregroundStyle(TaskStripTheme.amber)
+            Spacer()
+            controls
+                .labelStyle(.iconOnly)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .background(TaskStripTheme.bayBackground)
+    }
+
+    @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        Group {
-            ToolbarItem {
-                Menu {
-                    Button("All tags") { tagFilter = nil }
-                    ForEach(availableTags, id: \.self) { tag in
-                        Button([tagEmojis[tag] ?? "", tag].filter { !$0.isEmpty }.joined(separator: " ")) {
-                            tagFilter = tag
-                        }
-                    }
-                } label: {
-                    Label("Filter by tag", systemImage: activeTag == nil ? "tag" : "tag.fill")
-                }
-                .disabled(availableTags.isEmpty)
-            }
-            ToolbarItem {
-                Button {
-                    newestFirst.toggle()
-                } label: {
-                    Label(
-                        newestFirst ? "Latest first" : "Soonest first",
-                        systemImage: newestFirst ? "arrow.down" : "arrow.up"
-                    )
-                }
-            }
-            ToolbarItem {
-                Button {
-                    isDictating = true
-                } label: {
-                    Label("New reminder by voice", systemImage: "mic")
-                }
-            }
-            ToolbarItem {
-                Button {
-                    spokenText = ""
-                    isCreating = true
-                } label: {
-                    Label("New reminder", systemImage: "plus")
-                }
-            }
-            ToolbarItem(placement: .confirmationAction) {
-                if !isEmbedded {
-                    Button("Done") { dismiss() }
-                }
+        ToolbarItemGroup {
+            controls
+        }
+        ToolbarItem(placement: .confirmationAction) {
+            if !isEmbedded {
+                Button("Done") { dismiss() }
             }
         }
     }

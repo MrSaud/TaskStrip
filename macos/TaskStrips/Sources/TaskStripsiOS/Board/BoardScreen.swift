@@ -44,6 +44,7 @@ struct BoardScreen: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @Query(filter: #Predicate<TaskItem> { !$0.isTombstoned }, sort: \TaskItem.orderIndex)
     private var allTasks: [TaskItem]
     @Query(filter: #Predicate<Reminder> { !$0.isTombstoned }) private var allReminders: [Reminder]
@@ -66,6 +67,17 @@ struct BoardScreen: View {
 
     private var boardTasks: [TaskItem] { allTasks.filter { !$0.isArchived } }
 
+    /// An iPad, or a big iPhone in landscape: room for both pages at once, so there's no pager
+    /// and nothing to swipe between.
+    private var isWide: Bool { sizeClass == .regular }
+
+    /// Whether the strips' own controls — search, voice, + — belong on the bar right now.
+    private var showsStripControls: Bool { isWide || page == .strips }
+
+    private var stripsPage: some View {
+        StripsPage(strips: boardTasks, allTasks: allTasks, search: search, onEdit: { editing = $0 })
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -85,18 +97,24 @@ struct BoardScreen: View {
                 if showQuote, let quote {
                     QuoteOfDayCard(quote: quote)
                 }
-                BoardPageTabs(page: $page)
-                BoardPager(pages: [Page.strips, .reminders], selection: $page) { page in
-                    switch page {
-                    case .strips:
-                        StripsPage(
-                            strips: boardTasks,
-                            allTasks: allTasks,
-                            search: search,
-                            onEdit: { editing = $0 }
-                        )
-                    case .reminders:
-                        RemindersView(isEmbedded: true, isActive: self.page == .reminders)
+                if isWide {
+                    HStack(spacing: 0) {
+                        stripsPage
+                        Divider()
+                        // The navigation bar is the strips'; the reminders carry their buttons
+                        // in a header of their own. (A second navigation stack here doesn't keep
+                        // its toolbar to itself — its buttons, title and search all took over the
+                        // strips' bar.)
+                        RemindersView(isEmbedded: true, isActive: false, showsHeader: true)
+                            .frame(maxWidth: 440)
+                    }
+                } else {
+                    BoardPageTabs(page: $page)
+                    BoardPager(pages: [Page.strips, .reminders], selection: $page) { page in
+                        switch page {
+                        case .strips: stripsPage
+                        case .reminders: RemindersView(isEmbedded: true, isActive: self.page == .reminders)
+                        }
                     }
                 }
             }
@@ -104,10 +122,10 @@ struct BoardScreen: View {
             .navigationTitle("Task Strips")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(TaskStripTheme.bayBackground, for: .navigationBar)
-            .searchable(if: page == .strips, text: $search, prompt: "Search strips")
+            .searchable(if: showsStripControls, text: $search, prompt: "Search strips")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { menu }
-                if page == .strips {
+                if showsStripControls {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
                             isCapturingVoice = true
