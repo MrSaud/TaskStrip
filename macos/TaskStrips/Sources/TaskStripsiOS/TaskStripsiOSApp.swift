@@ -27,6 +27,10 @@ struct TaskStripsiOSApp: App {
             .value(service: "com.saud.taskstrip.integration-check", account: Keychain.crossDeviceMarkerAccount)
         print("KEYCHAIN-CHECK", marker.map { "found marker written \($0)" } ?? "no marker yet")
         SampleBoard.seedIfAsked(into: Self.sharedModelContainer)
+        // Phase 4: puts the CloudKit schema into the Development environment. Never automatic.
+        if ProcessInfo.processInfo.arguments.contains("-SeedCloudSchema") {
+            Task { await SchemaSeeder.run { print($0) } }
+        }
     }
     #endif
 
