@@ -16,6 +16,9 @@ struct WidgetSnapshot: Codable, Equatable {
     static let maxReminders = 3
 
     static let widgetBundleID = "com.saud.taskstrip.mac.widget"
+    /// On iPhone and iPad the app and the widget meet in the App Group's container instead —
+    /// there is no reaching into another app's sandbox there, and the team has the group.
+    static let appGroup = "group.com.saud.taskstrip"
     static let fileName = "widget-snapshot.json"
 
     struct Strip: Codable, Equatable, Identifiable {
@@ -59,21 +62,32 @@ struct WidgetSnapshot: Codable, Equatable {
 
     /// Where the widget looks. Inside its sandbox this resolves to its own container.
     static var readURL: URL? {
+        #if os(iOS)
+        groupURL
+        #else
         FileManager.default
             .urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
             .appending(path: fileName)
+        #endif
     }
+
+    #if os(iOS)
+    private static var groupURL: URL? {
+        FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: appGroup)?
+            .appending(path: fileName)
+    }
+    #endif
 
     /// Where the app writes: the widget's container, addressed from outside it.
     ///
     /// The directory is created if it isn't there — the container exists only once the extension
     /// has run at least once, and the board should not have to wait for that to publish.
     ///
-    /// On iOS there is no reaching into another app's container, so this is nil and nothing is
-    /// written until the iPhone widget arrives with its App Group (Phase 3).
+    /// On iOS both sides use the App Group, so this is the same file as `readURL`.
     static var writeURL: URL? {
         #if os(iOS)
-        return nil
+        return groupURL
         #else
         let directory = FileManager.default.homeDirectoryForCurrentUser
             .appending(path: "Library/Containers/\(widgetBundleID)/Data/Library/Application Support",

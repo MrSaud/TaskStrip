@@ -45,6 +45,7 @@ struct BoardScreen: View {
     @Environment(\.modelContext) private var modelContext
     @Query(filter: #Predicate<TaskItem> { !$0.isTombstoned }, sort: \TaskItem.orderIndex)
     private var allTasks: [TaskItem]
+    @Query(filter: #Predicate<Reminder> { !$0.isTombstoned }) private var allReminders: [Reminder]
 
     @AppStorage(AppSettingsKey.defaultPriority) private var defaultPriority = Priority.normal
     @AppStorage(AppSettingsKey.defaultNotesRtl) private var defaultNotesRtl = false
@@ -160,6 +161,11 @@ struct BoardScreen: View {
                 }
             }
             .modifier(BoardBackup(isBackingUp: $isBackingUp, isRestoring: $isRestoring))
+            // As on the Mac: the widget is handed a rendering, keyed on what it shows, so an edit
+            // that changes nothing visible doesn't spend one of WidgetKit's reloads.
+            .onChange(of: WidgetPublisher.snapshot(tasks: allTasks, reminders: allReminders), initial: true) {
+                WidgetPublisher.publish(tasks: allTasks, reminders: allReminders)
+            }
             .task {
                 ReminderScheduler.shared.sync(allTasks)
                 if showQuote { quote = await QuoteOfTheDay.today() }

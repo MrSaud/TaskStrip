@@ -107,6 +107,10 @@ targets:
       - path: Sources/Core
       - path: Sources/SharedUI
       - path: Sources/Shared
+    dependencies:
+      - target: TaskStripsiOSWidget
+        embed: true
+        codeSign: true
     info:
       path: Sources/TaskStripsiOS/Info.plist
       properties:
@@ -127,11 +131,12 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         NSMicrophoneUsageDescription: "Task Strips records voice notes onto a strip. Nothing is recorded until you press Record."
         NSFaceIDUsageDescription: "Task Strips asks for Face ID before showing a saved password."
-    # The identifiers registered in Phase 0. The App Group is left out until it is registered for
-    # real: a profile that doesn't carry an entitlement the app claims stops the app launching.
+    # The identifiers registered in Phase 0, and the App Group the widget and the Share Extension
+    # read the app's data through.
     entitlements:
       path: Sources/TaskStripsiOS/TaskStripsiOS.entitlements
       properties:
+        com.apple.security.application-groups: [group.com.saud.taskstrip]
         com.apple.developer.icloud-container-identifiers: [iCloud.com.saud.taskstrip]
         com.apple.developer.icloud-services: [CloudKit]
         keychain-access-groups: ["$(AppIdentifierPrefix)com.saud.taskstrip.shared"]
@@ -144,6 +149,38 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
+
+  # The iPhone and iPad home-screen widget: the Mac widget's code, reading its snapshot from the
+  # App Group instead of its own container.
+  TaskStripsiOSWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Sources/TaskStripsWidget
+        excludes:
+          - "TaskStripsWidget.entitlements"
+          - "Info.plist"
+      - path: Sources/Shared
+    info:
+      path: Sources/TaskStripsiOSWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Task Strips
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Sources/TaskStripsiOSWidget/TaskStripsiOSWidget.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.saud.taskstrip]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.saud.taskstrip.widget
+        PRODUCT_NAME: TaskStripsWidget
+        TARGETED_DEVICE_FAMILY: "1,2"
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SKIP_INSTALL: true
 
   TaskStripsTests:
     type: bundle.unit-test
