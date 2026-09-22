@@ -87,6 +87,20 @@ struct TaskStripsApp: App {
     init() {
         Self.movePasswordsToICloudKeychain()
         #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-EraseBoardTestZone") {
+            Task { await SchemaSeeder.eraseZone("BoardTest") { print($0); fflush(stdout) } }
+        }
+        if ProcessInfo.processInfo.arguments.contains("-RemoveLeakedTestItems") {
+            let container = Self.sharedModelContainer
+            Task { @MainActor in
+                let removed = BoardSync.shared.removeItemsLeakedFromOtherZones(container: container)
+                print("REPAIR removed \(removed.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", "))")
+                fflush(stdout)
+            }
+        }
+        if ProcessInfo.processInfo.arguments.contains("-InspectCloudZones") {
+            Task { await SchemaSeeder.inspectZones { print($0); fflush(stdout) } }
+        }
         if ProcessInfo.processInfo.arguments.contains("-EraseTestDataFromBoardZone") {
             Task { await SchemaSeeder.eraseLegacyTestZone { print($0); fflush(stdout) } }
         }

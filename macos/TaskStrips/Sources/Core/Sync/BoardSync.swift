@@ -465,7 +465,7 @@ final class BoardSync: ObservableObject {
     /// Looks the item up again when the engine asks for its record — it may have changed, or
     /// gone, since it was queued.
     private func currentRecord(for id: CKRecord.ID) -> CKRecord? {
-        guard let item = snapshot()[id.recordName] else { return nil }
+        guard id.zoneID == CloudSchema.zoneID, let item = snapshot()[id.recordName] else { return nil }
         return build(item, onto: cache.workingCopy(named: id.recordName), name: id.recordName)
     }
 
@@ -746,6 +746,28 @@ final class BoardSync: ObservableObject {
         saveOrphans(orphans)
     }
 
+    #if DEBUG
+    /// Phase 6 repair: removes from this board every item whose cached record came from another
+    /// zone (the leak above), then drops the polluted bookkeeping. Returns the count by type.
+    func removeItemsLeakedFromOtherZones(container: ModelContainer) -> [String: Int] {
+        let context = container.mainContext
+        var removed: [String: Int] = [:]
+        let leaked = CloudSchema.RecordType.all.flatMap { cache.records(ofType: $0) }.filter { $0.recordID.zoneID != CloudSchema.zoneID }
+        // Children first, so a strip's own delete doesn't take a file this pass then looks for.
+        let order = [CloudSchema.RecordType.attachment, CloudSchema.RecordType.sketchPage]
+        for record in leaked.sorted(by: { (order.contains($0.recordType) ? 0 : 1) < (order.contains($1.recordType) ? 0 : 1) }) {
+            delete(record.recordID.recordName, type: record.recordType, in: context)
+            removed[record.recordType, default: 0] += 1
+        }
+        try? context.save()
+        resetLocalBookkeeping()
+        try? FileManager.default.removeItem(at: loadOrphansURLForRepair)
+        return removed
+    }
+
+    private var loadOrphansURLForRepair: URL { orphansURL }
+    #endif
+
     // MARK: - Fetching models by id
 
     private func fetchTask(_ id: UUID, in context: ModelContext) -> TaskItem? {
@@ -827,15 +849,17 @@ final class BoardSync: ObservableObject {
             }
 
         case .fetchedRecordZoneChanges(let changes):
-            zoneConfirmed = true
-            apply(
-                changes.modifications.map(\.record),
-                deletions: changes.deletions.map { ($0.recordID, $0.recordType) }
-            )
+            // The engine fetches every zone in the database, not just this board's. Taking a
+            // record from another zone put the sync test board's strips onto the real board on
+            // the first real Turn On — so anything outside this board's zone is ignored here.
+            let modifications = changes.modifications.map(\.record).filter { $0.recordID.zoneID == CloudSchema.zoneID }
+            let deletions = changes.deletions.filter { $0.recordID.zoneID == CloudSchema.zoneID }
+            if !modifications.isEmpty || !deletions.isEmpty { zoneConfirmed = true }
+            apply(modifications, deletions: deletions.map { ($0.recordID, $0.recordType) })
 
         case .sentRecordZoneChanges(let sent):
             log("sent \(sent.savedRecords.count) saved, \(sent.deletedRecordIDs.count) deleted, \(sent.failedRecordSaves.count) failed")
-            for record in sent.savedRecords {
+            for record in sent.savedRecords where record.recordID.zoneID == CloudSchema.zoneID {
                 cache.store(record)
                 if record.recordType == CloudSchema.RecordType.sketchPage,
                    let file = (record[CloudSchema.SketchPage.image] as? CKAsset)?.fileURL {

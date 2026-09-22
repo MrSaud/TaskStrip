@@ -11,16 +11,46 @@ import Foundation
 ///
 /// Production is a separate step (Phase 7): the CloudKit Console copies this schema across.
 enum SchemaSeeder {
+    /// Read-only: how many records of each type each zone holds. `-InspectCloudZones`; Debug only.
+    static func inspectZones(log: (String) -> Void) async {
+        let database = CKContainer(identifier: CloudSchema.containerID).privateCloudDatabase
+        do {
+            let zones = try await database.allRecordZones()
+            log("INSPECT zones: \(zones.map(\.zoneID.zoneName).sorted())")
+            for zone in zones where zone.zoneID.zoneName != CKRecordZone.default().zoneID.zoneName {
+                var counts: [String: Int] = [:]
+                var token: CKServerChangeToken?
+                var more = true
+                while more {
+                    let result = try await database.recordZoneChanges(inZoneWith: zone.zoneID, since: token)
+                    for case .success(let modification) in result.modificationResultsByID.values {
+                        counts[modification.record.recordType, default: 0] += 1
+                    }
+                    token = result.changeToken
+                    more = result.moreComing
+                }
+                log("INSPECT \(zone.zoneID.zoneName): \(counts.sorted { $0.key < $1.key }.map { "\($0.key) \($0.value)" }.joined(separator: ", "))")
+            }
+        } catch {
+            log("INSPECT failed: \(error.localizedDescription)")
+        }
+    }
+
     /// Phase 6: removes the Board zone the sync test board used before it got a zone of its own,
     /// so the real board starts in an empty zone. `-EraseTestDataFromBoardZone`; Debug only.
     static func eraseLegacyTestZone(log: (String) -> Void) async {
+        await eraseZone("Board", log: log)
+    }
+
+    /// The sync test board's own zone and all its test data. `-EraseBoardTestZone`; Debug only.
+    static func eraseZone(_ name: String, log: (String) -> Void) async {
         let database = CKContainer(identifier: CloudSchema.containerID).privateCloudDatabase
-        let zoneID = CKRecordZone.ID(zoneName: "Board", ownerName: CKCurrentUserDefaultName)
+        let zoneID = CKRecordZone.ID(zoneName: name, ownerName: CKCurrentUserDefaultName)
         do {
             _ = try await database.modifyRecordZones(saving: [], deleting: [zoneID])
-            log("ERASE Board zone deleted")
+            log("ERASE \(name) zone deleted")
         } catch let error as CKError where error.code == .zoneNotFound {
-            log("ERASE Board zone was already gone")
+            log("ERASE \(name) zone was already gone")
         } catch {
             log("ERASE failed: \(error.localizedDescription)")
         }
