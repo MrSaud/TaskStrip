@@ -3,6 +3,7 @@ options:
   bundleIdPrefix: com.saud.taskstrip
   deploymentTarget:
     macOS: "14.0"
+    iOS: "17.0"
 settings:
   base:
     SWIFT_VERSION: "5.0"
@@ -20,6 +21,9 @@ targets:
           - "Assets.xcassets/make_icon.py"
           # Signed in, not copied in.
           - "TaskStrips.entitlements"
+      # Models, stores, backup, crypto and logic: everything that isn't a screen. Compiled into
+      # the Mac app and the iPhone/iPad app alike, so it must build on both.
+      - path: Sources/Core
       # Compiled into both the app and the widget: it is the format they agree on.
       - path: Sources/Shared
     dependencies:
@@ -85,6 +89,56 @@ targets:
         ENABLE_HARDENED_RUNTIME: true
         SKIP_INSTALL: true
 
+  # The iPhone and iPad app: one target, both devices. It shares Core with the Mac and has its
+  # own screens. Unlike the Mac it is signed by the personal team, because a phone won't run an
+  # app that isn't — and iCloud needs a real team anyway.
+  TaskStripsiOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/TaskStripsiOS
+        excludes:
+          - "TaskStripsiOS.entitlements"
+      - path: Sources/Core
+      - path: Sources/Shared
+    info:
+      path: Sources/TaskStripsiOS/Info.plist
+      properties:
+        CFBundleName: Task Strips
+        CFBundleDisplayName: Task Strips
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSApplicationCategoryType: public.app-category.productivity
+        # An empty dictionary is enough: a plain launch screen in the system background colour.
+        UILaunchScreen: {}
+        UIApplicationSupportsIndirectInputEvents: true
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        "UISupportedInterfaceOrientations~ipad":
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSMicrophoneUsageDescription: "Task Strips records voice notes onto a strip. Nothing is recorded until you press Record."
+    # The identifiers registered in Phase 0. The App Group is left out until it is registered for
+    # real: a profile that doesn't carry an entitlement the app claims stops the app launching.
+    entitlements:
+      path: Sources/TaskStripsiOS/TaskStripsiOS.entitlements
+      properties:
+        com.apple.developer.icloud-container-identifiers: [iCloud.com.saud.taskstrip]
+        com.apple.developer.icloud-services: [CloudKit]
+        keychain-access-groups: ["$(AppIdentifierPrefix)com.saud.taskstrip.shared"]
+        aps-environment: development
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.saud.taskstrip
+        PRODUCT_NAME: TaskStrips
+        DEVELOPMENT_TEAM: FZ332788BV
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+
   TaskStripsTests:
     type: bundle.unit-test
     platform: macOS
@@ -127,3 +181,9 @@ schemes:
       targets:
         - TaskStripsTests
         - TaskStripsUITests
+  TaskStripsiOS:
+    build:
+      targets:
+        TaskStripsiOS: all
+    run:
+      config: Debug

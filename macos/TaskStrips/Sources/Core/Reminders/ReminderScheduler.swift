@@ -19,7 +19,7 @@ final class ReminderScheduler {
     private var center: UNUserNotificationCenter { .current() }
 
     private init() {
-        isEnabled = !ProcessInfo.processInfo.arguments.contains(TaskStripsApp.uiTestingArgument)
+        isEnabled = !ProcessInfo.processInfo.arguments.contains(AppLaunch.uiTestingArgument)
     }
 
     /// Returns whether reminders can actually be posted. Safe to call repeatedly — the system

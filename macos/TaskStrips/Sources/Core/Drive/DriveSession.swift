@@ -1,4 +1,8 @@
+#if os(macOS)
 import AppKit
+#else
+import UIKit
+#endif
 import AuthenticationServices
 import Foundation
 
@@ -23,7 +27,7 @@ final class DriveSession: ObservableObject {
     private let isEnabled: Bool
 
     private init() {
-        isEnabled = !ProcessInfo.processInfo.arguments.contains(TaskStripsApp.uiTestingArgument)
+        isEnabled = !ProcessInfo.processInfo.arguments.contains(AppLaunch.uiTestingArgument)
         isSignedIn = isEnabled && GoogleOAuth.isSignedIn
     }
 
@@ -130,7 +134,14 @@ final class DriveSession: ObservableObject {
 
     private final class Presenter: NSObject, ASWebAuthenticationPresentationContextProviding {
         func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+            #if os(macOS)
             NSApplication.shared.keyWindow ?? NSApplication.shared.windows.first ?? ASPresentationAnchor()
+            #else
+            UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap(\.windows)
+                .first { $0.isKeyWindow } ?? ASPresentationAnchor()
+            #endif
         }
     }
 }

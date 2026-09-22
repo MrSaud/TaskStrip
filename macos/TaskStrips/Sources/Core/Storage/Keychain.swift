@@ -16,7 +16,7 @@ final class Keychain {
 
     /// Follows the same launch argument everything else does.
     static let shared = Keychain(
-        ephemeral: ProcessInfo.processInfo.arguments.contains(TaskStripsApp.uiTestingArgument)
+        ephemeral: ProcessInfo.processInfo.arguments.contains(AppLaunch.uiTestingArgument)
     )
 
     func value(service: String, account: String) -> String? {

@@ -14,7 +14,7 @@ final class CredentialStore {
     private let keychain: Keychain
 
     static let shared: CredentialStore = {
-        let underTest = ProcessInfo.processInfo.arguments.contains(TaskStripsApp.uiTestingArgument)
+        let underTest = ProcessInfo.processInfo.arguments.contains(AppLaunch.uiTestingArgument)
         return CredentialStore(ephemeral: underTest)
     }()
 

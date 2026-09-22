@@ -36,7 +36,7 @@ final class VoiceRecorder: ObservableObject {
     /// UI tests never touch the microphone: the permission dialog would sit there unanswered and
     /// take the rest of the suite with it.
     private var isEnabled: Bool {
-        !ProcessInfo.processInfo.arguments.contains(TaskStripsApp.uiTestingArgument)
+        !ProcessInfo.processInfo.arguments.contains(AppLaunch.uiTestingArgument)
     }
 
     /// Asked for the first time Record is pressed, never at launch.

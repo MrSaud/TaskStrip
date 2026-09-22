@@ -68,12 +68,19 @@ struct WidgetSnapshot: Codable, Equatable {
     ///
     /// The directory is created if it isn't there — the container exists only once the extension
     /// has run at least once, and the board should not have to wait for that to publish.
+    ///
+    /// On iOS there is no reaching into another app's container, so this is nil and nothing is
+    /// written until the iPhone widget arrives with its App Group (Phase 3).
     static var writeURL: URL? {
+        #if os(iOS)
+        return nil
+        #else
         let directory = FileManager.default.homeDirectoryForCurrentUser
             .appending(path: "Library/Containers/\(widgetBundleID)/Data/Library/Application Support",
                        directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return directory.appending(path: fileName)
+        #endif
     }
 
     /// Written atomically: the widget may read at any moment, and half a JSON file is worse than

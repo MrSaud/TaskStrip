@@ -29,7 +29,7 @@ struct AttachmentStore {
     /// for a throwaway board would still copy files into the real media folder — the store was
     /// safe and the files weren't, which is worse than either being obviously unsafe.
     static let shared: AttachmentStore = {
-        guard ProcessInfo.processInfo.arguments.contains(TaskStripsApp.uiTestingArgument) else {
+        guard ProcessInfo.processInfo.arguments.contains(AppLaunch.uiTestingArgument) else {
             return AttachmentStore(root: defaultRoot())
         }
         return AttachmentStore(

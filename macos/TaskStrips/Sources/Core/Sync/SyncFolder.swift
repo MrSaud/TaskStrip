@@ -36,7 +36,7 @@ enum SyncFolder {
         var isStale = false
         guard let url = try? URL(
             resolvingBookmarkData: data,
-            options: [.withSecurityScope],
+            options: bookmarkResolution,
             relativeTo: nil,
             bookmarkDataIsStale: &isStale
         ) else { return nil }
@@ -48,6 +48,17 @@ enum SyncFolder {
         return url
     }
 
+    // The Mac has to ask for a security-scoped bookmark to reach the folder again on a later
+    // launch; on iOS every bookmark to a picked folder already carries that, and the option
+    // doesn't exist.
+    #if os(macOS)
+    private static let bookmarkResolution: URL.BookmarkResolutionOptions = [.withSecurityScope]
+    private static let bookmarkCreation: URL.BookmarkCreationOptions = [.withSecurityScope]
+    #else
+    private static let bookmarkResolution: URL.BookmarkResolutionOptions = []
+    private static let bookmarkCreation: URL.BookmarkCreationOptions = []
+    #endif
+
     static func endAccess(_ url: URL) {
         url.stopAccessingSecurityScopedResource()
     }
@@ -55,7 +66,7 @@ enum SyncFolder {
     @discardableResult
     static func store(_ url: URL) -> Bool {
         guard let data = try? url.bookmarkData(
-            options: [.withSecurityScope],
+            options: bookmarkCreation,
             includingResourceValuesForKeys: nil,
             relativeTo: nil
         ) else { return false }
@@ -69,12 +80,17 @@ enum SyncFolder {
 
     /// Where Drive for desktop puts things, for the picker to open on rather than making the user
     /// hunt for it. Not assumed to exist — it's a starting point, not a location.
+    /// Drive for desktop is a Mac thing; on iOS the Files picker finds Drive by itself.
     static var likelyDriveFolder: URL? {
+        #if os(iOS)
+        return nil
+        #else
         let cloudStorage = FileManager.default.homeDirectoryForCurrentUser
             .appending(path: "Library/CloudStorage", directoryHint: .isDirectory)
         let contents = (try? FileManager.default.contentsOfDirectory(
             at: cloudStorage, includingPropertiesForKeys: nil
         )) ?? []
         return contents.first { $0.lastPathComponent.hasPrefix("GoogleDrive") } ?? cloudStorage
+        #endif
     }
 }

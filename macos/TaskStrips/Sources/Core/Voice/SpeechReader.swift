@@ -21,7 +21,7 @@ final class SpeechReader: NSObject, ObservableObject {
     private let isEnabled: Bool
 
     private override init() {
-        isEnabled = !ProcessInfo.processInfo.arguments.contains(TaskStripsApp.uiTestingArgument)
+        isEnabled = !ProcessInfo.processInfo.arguments.contains(AppLaunch.uiTestingArgument)
         super.init()
         synthesizer.delegate = self
     }

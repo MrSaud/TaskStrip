@@ -10,7 +10,7 @@ enum LocalAuth {
     /// UI tests can't answer a Touch ID prompt, and the dialog would block the runner until it
     /// timed out. Same escape hatch the notification scheduler uses.
     static var isEnabled: Bool {
-        !ProcessInfo.processInfo.arguments.contains(TaskStripsApp.uiTestingArgument)
+        !ProcessInfo.processInfo.arguments.contains(AppLaunch.uiTestingArgument)
     }
 
     static func confirm(reason: String) async -> Bool {
