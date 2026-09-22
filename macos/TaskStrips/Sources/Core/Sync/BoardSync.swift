@@ -57,6 +57,10 @@ final class BoardSync: ObservableObject {
     private static let enabledKey = "sync.enabled"
 
     private var heldDeletions: [CKRecord.ID] = []
+    /// Whether this device has seen the Board zone exist since it (re)started syncing. Until it
+    /// has, a "zone deleted" notice is the tail of an earlier erase, not news: on the first real
+    /// try, Turn On fetched the erase from step 6 all over again and switched itself straight off.
+    private var zoneConfirmed = false
     private var isApplying = false
     private var diffTask: Task<Void, Never>?
     private var ticker: Timer?
@@ -91,6 +95,7 @@ final class BoardSync: ObservableObject {
         configuration.automaticallySync = true
         let engine = CKSyncEngine(configuration)
         self.engine = engine
+        zoneConfirmed = loadState() != nil
         if !engine.state.pendingDatabaseChanges.contains(where: { if case .saveZone = $0 { return true } else { return false } }) {
             engine.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: CloudSchema.zoneID))])
         }
@@ -736,6 +741,9 @@ final class BoardSync: ObservableObject {
     // MARK: - Engine events
 
     fileprivate func handle(_ event: CKSyncEngine.Event, engine: CKSyncEngine) {
+        // A stopped engine can still deliver a last event or two; they mustn't touch the board
+        // or the status — one used to report "up to date" for a sync that had just switched off.
+        guard engine === self.engine else { return }
         switch event {
         case .stateUpdate(let update):
             saveState(update.stateSerialization)
@@ -753,7 +761,14 @@ final class BoardSync: ObservableObject {
             }
 
         case .fetchedDatabaseChanges(let changes):
+            if changes.modifications.contains(where: { $0.zoneID == CloudSchema.zoneID }) { zoneConfirmed = true }
             for deletion in changes.deletions where deletion.zoneID == CloudSchema.zoneID {
+                guard zoneConfirmed else {
+                    // Old news from before this device turned on: put the zone back and carry on.
+                    engine.state.add(pendingDatabaseChanges: [.saveZone(CKRecordZone(zoneID: CloudSchema.zoneID))])
+                    log("ignored an earlier erase; recreating the Board zone")
+                    continue
+                }
                 switch deletion.reason {
                 case .deleted:
                     stop(reason: "iCloud's copy was erased on another device. This device kept its board.")
@@ -770,6 +785,7 @@ final class BoardSync: ObservableObject {
             }
 
         case .fetchedRecordZoneChanges(let changes):
+            zoneConfirmed = true
             apply(
                 changes.modifications.map(\.record),
                 deletions: changes.deletions.map { ($0.recordID, $0.recordType) }
@@ -810,6 +826,7 @@ final class BoardSync: ObservableObject {
             if !retry.isEmpty { engine.state.add(pendingRecordZoneChanges: retry) }
 
         case .sentDatabaseChanges(let sent):
+            if sent.savedZones.contains(where: { $0.zoneID == CloudSchema.zoneID }) { zoneConfirmed = true }
             for failure in sent.failedZoneSaves {
                 status = .failed(failure.error.localizedDescription)
             }
