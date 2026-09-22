@@ -59,6 +59,7 @@ struct BoardScreen: View {
     @State private var destination: Destination?
     @State private var isBackingUp = false
     @State private var isRestoring = false
+    @State private var isCapturingVoice = false
 
     private var boardTasks: [TaskItem] { allTasks.filter { !$0.isArchived } }
 
@@ -106,6 +107,13 @@ struct BoardScreen: View {
                 if page == .strips {
                     ToolbarItem(placement: .primaryAction) {
                         Button {
+                            isCapturingVoice = true
+                        } label: {
+                            Label("New strip by voice", systemImage: "mic")
+                        }
+                    }
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
                             isCreating = true
                         } label: {
                             Label("New strip", systemImage: "plus")
@@ -137,6 +145,15 @@ struct BoardScreen: View {
                     )
                 }
             }
+            .sheet(isPresented: $isCapturingVoice) {
+                VoiceCaptureSheet(
+                    onFile: { draft in
+                        isCapturingVoice = false
+                        file(draft)
+                    },
+                    onCancel: { isCapturingVoice = false }
+                )
+            }
             .sheet(item: $destination) { destination in
                 NavigationStack {
                     screen(for: destination)
@@ -148,6 +165,19 @@ struct BoardScreen: View {
                 if showQuote { quote = await QuoteOfTheDay.today() }
             }
         }
+    }
+
+    /// Same as the Mac's: a spoken strip lands at the bottom of the board with the defaults for
+    /// anything it didn't say.
+    private func file(_ draft: VoiceDraft) {
+        let task = TaskItem(
+            title: draft.title,
+            orderIndex: StripActions.nextOrderIndex(in: allTasks),
+            priority: draft.priority ?? defaultPriority
+        )
+        task.notes = draft.notes
+        task.notesRtl = defaultNotesRtl
+        modelContext.insert(task)
     }
 
     private var menu: some View {
