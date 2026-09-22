@@ -42,7 +42,7 @@ final class CloudRecordCodingTests: XCTestCase {
     func testAStripComesBackWithEveryField() {
         let original = fullStrip()
         let record = CloudRecordCoding.newRecord(type: CloudSchema.RecordType.strip, name: original.id.uuidString)
-        CloudRecordCoding.encode(original, into: record)
+        CloudRecordCoding.encode(original, sortKey: "V", into: record)
 
         let copy = TaskItem(title: "", orderIndex: 0)
         CloudRecordCoding.decode(record, into: copy)
@@ -72,7 +72,7 @@ final class CloudRecordCodingTests: XCTestCase {
     /// The whole point of rule 4: nothing a person wrote is in a plain field.
     func testWhatAPersonWroteIsOnlyInEncryptedFields() {
         let record = CloudRecordCoding.newRecord(type: CloudSchema.RecordType.strip, name: UUID().uuidString)
-        CloudRecordCoding.encode(fullStrip(), into: record)
+        CloudRecordCoding.encode(fullStrip(), sortKey: "V", into: record)
 
         for key in CloudSchema.Strip.encrypted {
             XCTAssertNil(record[key], "\(key) must not be stored in the clear")
@@ -93,7 +93,7 @@ final class CloudRecordCodingTests: XCTestCase {
         record["colour"] = "teal"
         record[CloudSchema.schemaVersionKey] = Int64(5)
 
-        CloudRecordCoding.encode(fullStrip(), into: record)
+        CloudRecordCoding.encode(fullStrip(), sortKey: "V", into: record)
 
         XCTAssertEqual(record["colour"] as? String, "teal")
         XCTAssertEqual(record[CloudSchema.schemaVersionKey] as? Int64, 5)
@@ -104,7 +104,7 @@ final class CloudRecordCodingTests: XCTestCase {
         let task = fullStrip()
         task.dueAt = nil
         let record = CloudRecordCoding.newRecord(type: CloudSchema.RecordType.strip, name: task.id.uuidString)
-        CloudRecordCoding.encode(task, into: record)
+        CloudRecordCoding.encode(task, sortKey: "V", into: record)
 
         let copy = TaskItem(title: "x", orderIndex: 0)
         copy.dueAt = .now

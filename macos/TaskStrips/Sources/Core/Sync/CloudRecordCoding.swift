@@ -19,7 +19,9 @@ enum CloudRecordCoding {
 
     // MARK: - Strip
 
-    static func encode(_ task: TaskItem, into record: CKRecord) {
+    /// `sortKey` is the strip's place on the board, from SortKey — the sync layer owns it, since
+    /// it depends on the neighbours as iCloud last saw them rather than on anything in the model.
+    static func encode(_ task: TaskItem, sortKey: String, into record: CKRecord) {
         typealias K = CloudSchema.Strip
         stamp(record)
         let secret = record.encryptedValues
@@ -34,9 +36,7 @@ enum CloudRecordCoding {
         record[K.notesRTL] = flag(task.notesRtl)
         record[K.priority] = task.priorityRaw
         record[K.dueAt] = task.dueAt
-        // Until Phase 5 brings fractional keys, the board's own order, zero-padded so it sorts
-        // as text the way it sorts as a number.
-        record[K.sortKey] = String(format: "%010d", max(task.orderIndex, 0))
+        record[K.sortKey] = sortKey
         record[K.done] = flag(task.isDone)
         record[K.archived] = flag(task.isArchived)
         record[K.progress] = Int64(task.progress)
@@ -50,7 +50,8 @@ enum CloudRecordCoding {
         record[K.createdAt] = task.createdAt
     }
 
-    /// Attachments are their own records, so they aren't touched here.
+    /// Attachments are their own records, and the sort key belongs to the sync layer's ordering,
+    /// so neither is touched here.
     static func decode(_ record: CKRecord, into task: TaskItem) {
         typealias K = CloudSchema.Strip
         let secret = record.encryptedValues

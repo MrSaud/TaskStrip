@@ -64,7 +64,7 @@ enum SchemaSeeder {
         task.links = [TaskLink(url: "https://example.com")]; task.actionLog = [TaskActionLogEntry(text: "l")]
         task.reminderMinutesBefore = 5; task.repeatIntervalDays = 7
         let strip = record(CloudSchema.RecordType.strip, task.id.uuidString)
-        CloudRecordCoding.encode(task, into: strip)
+        CloudRecordCoding.encode(task, sortKey: "V", into: strip)
 
         var attachment = TaskAttachment()
         attachment.name = "a"
