@@ -538,7 +538,11 @@ final class BoardSync: ObservableObject {
                 task.attachments[index].name = decoded.attachment.name
                 return
             }
-            guard let file = decoded.file, let copy = try? attachments.add(contentsOf: file, kind: decoded.attachment.kind) else { return }
+            guard let file = decoded.file,
+                  let named = namedCopy(of: file, as: decoded.attachment.name, kind: decoded.attachment.kind),
+                  let copy = try? attachments.add(contentsOf: named, kind: decoded.attachment.kind)
+            else { return }
+            try? FileManager.default.removeItem(at: named.deletingLastPathComponent())
             var attachment = decoded.attachment
             attachment.path = copy.path
             if let task = fetchTask(decoded.stripID, in: context) {
@@ -575,8 +579,10 @@ final class BoardSync: ObservableObject {
             let item = existing ?? StorageItem(name: "", path: "", type: .document, id: id)
             let file = CloudRecordCoding.decode(record, into: item)
             if item.path.isEmpty || !FileManager.default.fileExists(atPath: attachments.url(forRelativePath: item.path).path),
-               let file, let copy = try? attachments.add(contentsOf: file, kind: item.type.attachmentKind) {
+               let file, let named = namedCopy(of: file, as: item.name, kind: item.type.attachmentKind),
+               let copy = try? attachments.add(contentsOf: named, kind: item.type.attachmentKind) {
                 item.path = copy.path
+                try? FileManager.default.removeItem(at: named.deletingLastPathComponent())
             }
             if existing == nil { context.insert(item) }
 
@@ -673,6 +679,32 @@ final class BoardSync: ObservableObject {
             }
         }
         BoardOrdering.renumber(result)
+    }
+
+    /// CloudKit hands a downloaded file over under a name of its own ("01ffb59e…", no extension),
+    /// and the store names what it keeps after the file it's given — so the first files to arrive
+    /// were saved as `audio/<id>.01ffb59e…` and lost the extension that says what they are. The
+    /// file is copied under the name it had on the other device first.
+    private func namedCopy(of asset: URL, as name: String, kind: AttachmentKind) -> URL? {
+        var fileName = (name as NSString).lastPathComponent.replacingOccurrences(of: ":", with: "-")
+        if fileName.isEmpty { fileName = UUID().uuidString }
+        if (fileName as NSString).pathExtension.isEmpty {
+            switch kind {
+            case .voiceNote: fileName += ".m4a"
+            case .image: fileName += ".jpg"
+            case .video: fileName += ".mov"
+            case .document: break
+            }
+        }
+        let folder = FileManager.default.temporaryDirectory.appending(path: "TaskStrips-arriving-\(UUID().uuidString)", directoryHint: .isDirectory)
+        let target = folder.appending(path: fileName)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try FileManager.default.copyItem(at: asset, to: target)
+            return target
+        } catch {
+            return nil
+        }
     }
 
     // MARK: - Attachments waiting for their strip
