@@ -37,7 +37,12 @@ jobs:
       - name: Generate the Xcode project
         run: xcodegen generate
 
-      # Ad-hoc signing rather than none: the UI tests have to actually launch the app.
+      # Ad-hoc signing rather than none: the UI tests have to actually launch the app. Entitlements
+      # are stripped too: TaskStrips.entitlements now asks for iCloud, push and a team keychain
+      # group, all restricted entitlements that need a real Apple-issued provisioning profile — an
+      # ad-hoc signature can't carry them, and a binary signed as if it could gets refused at
+      # launch (RunningBoard error 5) rather than at build time. None of that is exercised by the
+      # test target, so CI doesn't need it provisioned.
       - name: Build
         run: |
           set -o pipefail
@@ -50,6 +55,7 @@ jobs:
             CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY=- \
             CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_ENTITLEMENTS= \
             ENABLE_HARDENED_RUNTIME=NO \
             | xcbeautify
 
