@@ -11,7 +11,7 @@ final class BoardOrderingTests: XCTestCase {
     override func setUpWithError() throws {
         let container = try ModelContainer(
             for: TaskItem.self,
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         context = ModelContext(container)
     }

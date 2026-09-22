@@ -127,6 +127,7 @@ struct TaskListView: View {
             // The widget is handed a rendering rather than the data, so something has to hand it
             // over — this is that. Keyed on the snapshot itself, which compares only what the
             // widget shows, so an edit that changes nothing visible doesn't spend a reload.
+            .modifier(SyncConfirmationAlert())
             .task { WidgetPublisher.publish(tasks: allTasks, reminders: allReminders) }
             .onChange(of: WidgetPublisher.snapshot(tasks: allTasks, reminders: allReminders)) { _, _ in
                 WidgetPublisher.publish(tasks: allTasks, reminders: allReminders)

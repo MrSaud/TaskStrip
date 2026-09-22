@@ -241,8 +241,12 @@ enum CloudRecordCoding {
 
     private static func flag(_ value: Bool) -> Int64 { value ? 1 : 0 }
 
+    /// Sorted keys: the same value must always give the same bytes, or an untouched strip would
+    /// look changed on every pass and bounce between devices forever.
     private static func json<T: Encodable>(_ value: T) -> Data? {
-        try? JSONEncoder().encode(value)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        return try? encoder.encode(value)
     }
 
     private static func value<T: Decodable>(_ raw: Any?) -> T? {

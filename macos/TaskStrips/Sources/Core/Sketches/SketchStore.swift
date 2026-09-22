@@ -121,6 +121,13 @@ struct SketchStore {
         return lastModified(of: id)
     }
 
+    /// For a sketch arriving from another device, which knows when it was first drawn.
+    func setCreated(_ date: Date, of id: String) {
+        let url = folder(of: id).appending(path: Self.createdFile)
+        try? FileManager.default.createDirectory(at: folder(of: id), withIntermediateDirectories: true)
+        try? String(Int(date.timeIntervalSince1970 * 1000)).write(to: url, atomically: true, encoding: .utf8)
+    }
+
     func stampCreatedIfMissing(_ id: String, now: Date = .now) {
         let url = folder(of: id).appending(path: Self.createdFile)
         guard !FileManager.default.fileExists(atPath: url.path) else { return }

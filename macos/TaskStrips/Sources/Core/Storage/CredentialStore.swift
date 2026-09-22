@@ -38,7 +38,12 @@ final class CredentialStore {
 
     private static let migratedKey = "credentials.movedToICloudKeychain"
 
-    static let shared = CredentialStore(ephemeral: AppLaunch.isUITesting)
+    /// The sync test board keeps its passwords under their own name, so a test credential can
+    /// never be mistaken for — or overwrite — a real one in iCloud Keychain.
+    static let shared = AppLaunch.isSyncTesting
+        ? CredentialStore(ephemeral: AppLaunch.isUITesting, service: "com.saud.taskstrip.credentials.synctest",
+                          defaults: UserDefaults(suiteName: "com.saud.taskstrip.synctest") ?? .standard)
+        : CredentialStore(ephemeral: AppLaunch.isUITesting)
 
     init(
         ephemeral: Bool = false,

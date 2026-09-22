@@ -32,10 +32,7 @@ struct TaskStripsApp: App {
     static let sharedModelContainer: ModelContainer = {
         if isUITesting { return uiTestingContainer() }
 
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        let storeDirectory = appSupport.appending(path: "TaskStrips", directoryHint: .isDirectory)
-        try? FileManager.default.createDirectory(at: storeDirectory, withIntermediateDirectories: true)
-        let storeURL = storeDirectory.appending(path: "TaskStrips.store")
+        let storeURL = BoardLocation.storeURL
         let configuration = BoardSchema.configuration(url: storeURL)
         do {
             return try ModelContainer(
@@ -48,7 +45,7 @@ struct TaskStripsApp: App {
     }()
 
     private static func uiTestingContainer() -> ModelContainer {
-        let configuration = ModelConfiguration(isStoredInMemoryOnly: true)
+        let configuration = ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         do {
             let container = try ModelContainer(
                 for: Schema(BoardSchema.models),
@@ -89,6 +86,11 @@ struct TaskStripsApp: App {
 
     init() {
         Self.movePasswordsToICloudKeychain()
+        // Phase 5: only on the sync test board (-SyncTestStore); a no-op otherwise.
+        if BoardSync.isAllowed {
+            let container = Self.sharedModelContainer
+            Task { @MainActor in BoardSync.shared.start(container: container) }
+        }
     }
 
     /// Phase 2's one-time move of credential passwords into iCloud Keychain. Off the main thread,

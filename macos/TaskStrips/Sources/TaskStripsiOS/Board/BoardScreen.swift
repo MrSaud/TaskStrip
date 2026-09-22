@@ -181,6 +181,7 @@ struct BoardScreen: View {
                 }
             }
             .modifier(BoardBackup(isBackingUp: $isBackingUp, isRestoring: $isRestoring))
+            .modifier(SyncConfirmationAlert())
             // As on the Mac: the widget is handed a rendering, keyed on what it shows, so an edit
             // that changes nothing visible doesn't spend one of WidgetKit's reloads.
             .onChange(of: WidgetPublisher.snapshot(tasks: allTasks, reminders: allReminders), initial: true) {

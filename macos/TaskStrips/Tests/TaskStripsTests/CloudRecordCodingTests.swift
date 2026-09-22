@@ -11,7 +11,7 @@ final class CloudRecordCodingTests: XCTestCase {
     override func setUpWithError() throws {
         let container = try ModelContainer(
             for: Schema(BoardSchema.models),
-            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
         )
         context = ModelContext(container)
     }

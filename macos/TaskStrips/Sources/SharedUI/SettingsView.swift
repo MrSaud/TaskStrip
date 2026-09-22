@@ -61,6 +61,9 @@ struct SettingsView: View {
 
     var body: some View {
         Form {
+            if BoardSync.isAllowed {
+                SyncSettingsSection()
+            }
             Section("Passwords") {
                 Text(PasswordMoveStatus.summary)
                     .font(.callout)

@@ -129,6 +129,8 @@ targets:
         # An empty dictionary is enough: a plain launch screen in the system background colour.
         UILaunchScreen: {}
         UIApplicationSupportsIndirectInputEvents: true
+        # CKSyncEngine is woken by a silent push when another device changed the board.
+        UIBackgroundModes: [remote-notification]
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         "UISupportedInterfaceOrientations~ipad":

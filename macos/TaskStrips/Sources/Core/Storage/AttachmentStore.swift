@@ -39,10 +39,7 @@ struct AttachmentStore {
     }()
 
     static func defaultRoot() -> URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-        return appSupport
-            .appending(path: "TaskStrips", directoryHint: .isDirectory)
-            .appending(path: "Media", directoryHint: .isDirectory)
+        BoardLocation.mediaDirectory
     }
 
     func url(for attachment: TaskAttachment) -> URL {

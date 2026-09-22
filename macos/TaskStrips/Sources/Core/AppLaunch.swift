@@ -12,6 +12,14 @@ enum AppLaunch {
 
     /// Running as the host for the unit tests. The app still launches then, and anything it does on
     /// launch against the real keychain or store happens on the test machine for real.
+    /// Phase 5: a separate, empty board that sync is allowed to touch. Sync runs only in this
+    /// mode until the real data comes over in Phase 6, so a sync bug can only ever hurt test data.
+    static let syncTestArgument = "-SyncTestStore"
+
+    static var isSyncTesting: Bool {
+        ProcessInfo.processInfo.arguments.contains(syncTestArgument)
+    }
+
     static var isUnitTesting: Bool {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
     }
