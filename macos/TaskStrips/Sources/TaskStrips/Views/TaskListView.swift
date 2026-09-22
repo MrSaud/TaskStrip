@@ -107,6 +107,7 @@ struct TaskListView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                SyncTestBanner()
                 // Fixed: the board's identity and today's date belong to both pages.
                 dateHeader
                 if showQuote, let quote {

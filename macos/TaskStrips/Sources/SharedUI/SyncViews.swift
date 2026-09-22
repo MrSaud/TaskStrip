@@ -90,3 +90,37 @@ struct SyncConfirmationAlert: ViewModifier {
 private extension String {
     var capitalizedFirst: String { prefix(1).uppercased() + dropFirst() }
 }
+
+/// Says, on the board itself, that this is the sync test board — so nobody mistakes it for the
+/// real one while Phase 5 is being tried.
+struct SyncTestBanner: View {
+    @ObservedObject private var sync = BoardSync.shared
+
+    var body: some View {
+        if AppLaunch.isSyncTesting {
+            HStack(spacing: 6) {
+                Image(systemName: "flask")
+                Text("SYNC TEST BOARD")
+                    .fontWeight(.bold)
+                Spacer()
+                Text(state)
+            }
+            .font(.caption.monospaced())
+            .foregroundStyle(.black)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .background(TaskStripTheme.amber)
+        }
+    }
+
+    private var state: String {
+        switch sync.status {
+        case .off: "sync off"
+        case .syncing: "syncing…"
+        case .upToDate(let date): "synced \(date.formatted(date: .omitted, time: .shortened))"
+        case .needsConfirmation: "waiting for you"
+        case .stopped: "stopped"
+        case .failed: "failed"
+        }
+    }
+}

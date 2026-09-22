@@ -81,6 +81,7 @@ struct BoardScreen: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                SyncTestBanner()
                 // Fixed, like Android's: today's date belongs to both pages. A plain line on a
                 // minute timer rather than a TimelineView: in this layout (above the pager, under
                 // a navigation bar with search) a TimelineView sent SwiftUI into an endless

@@ -43,6 +43,7 @@ final class BoardSync: ObservableObject {
     /// Counts and states only — never a title, a note or anything else a person wrote.
     private func log(_ line: String) {
         print("SYNC \(line)")
+        fflush(stdout)
     }
 
     private var engine: CKSyncEngine?

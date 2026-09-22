@@ -16,9 +16,22 @@ enum AppLaunch {
     /// mode until the real data comes over in Phase 6, so a sync bug can only ever hurt test data.
     static let syncTestArgument = "-SyncTestStore"
 
-    static var isSyncTesting: Bool {
-        ProcessInfo.processInfo.arguments.contains(syncTestArgument)
-    }
+    /// Sticky in a Debug build, so the app opened from its icon stays on the test board while
+    /// Phase 5 is being tried by hand; `-RealStore` switches it back. A Release build never has it.
+    static let isSyncTesting: Bool = {
+        #if DEBUG
+        let key = "debug.syncTestStore"
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains("-RealStore") {
+            UserDefaults.standard.removeObject(forKey: key)
+            return false
+        }
+        if arguments.contains(syncTestArgument) { UserDefaults.standard.set(true, forKey: key) }
+        return UserDefaults.standard.bool(forKey: key) && !isUITesting && !isUnitTesting
+        #else
+        return false
+        #endif
+    }()
 
     static var isUnitTesting: Bool {
         ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil
