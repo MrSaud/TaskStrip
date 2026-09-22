@@ -42,7 +42,7 @@ final class BoardSync: ObservableObject {
 
     /// Counts and states only — never a title, a note or anything else a person wrote.
     private func log(_ line: String) {
-        print("SYNC \(line)")
+        print("SYNC \(Date.now.formatted(.iso8601.time(includingFractionalSeconds: true))) \(line)")
         fflush(stdout)
     }
 
@@ -62,6 +62,7 @@ final class BoardSync: ObservableObject {
     private var ticker: Timer?
     private var saveObserver: NSObjectProtocol?
     private var activeObserver: NSObjectProtocol?
+    private var saver: Timer?
 
     private var attachments: AttachmentStore { .shared }
     private var sketches: SketchStore { .shared }
@@ -95,12 +96,30 @@ final class BoardSync: ObservableObject {
         }
         observeLocalChanges()
         registerForPushes()
+        #if DEBUG
+        probeEditIfAsked()
+        #endif
         status = .syncing
         Task {
             try? await engine.fetchChanges()
             scheduleDiff(after: 0)
         }
     }
+
+    #if DEBUG
+    /// For timing the trip between devices without a hand on either: flips the first strip's
+    /// done flag after a few seconds, on the test board only.
+    func probeEditIfAsked() {
+        guard ProcessInfo.processInfo.arguments.contains("-SyncProbeEdit"), let context else { return }
+        Task {
+            try? await Task.sleep(for: .seconds(8))
+            let strips = ((try? context.fetch(FetchDescriptor<TaskItem>())) ?? []).sorted { $0.orderIndex < $1.orderIndex }
+            guard let strip = strips.first else { return }
+            strip.isDone.toggle()
+            log("probe: edited one strip")
+        }
+    }
+    #endif
 
     func syncNow() async {
         guard let engine else { return }
@@ -171,6 +190,7 @@ final class BoardSync: ObservableObject {
         cache.removeAll()
         try? FileManager.default.removeItem(at: stateURL)
         try? FileManager.default.removeItem(at: digestsURL)
+        try? FileManager.default.removeItem(at: pollTokenURL)
     }
 
     private func resetFetchPosition() {
@@ -189,6 +209,8 @@ final class BoardSync: ObservableObject {
         saveObserver = nil
         if let activeObserver { NotificationCenter.default.removeObserver(activeObserver) }
         activeObserver = nil
+        saver?.invalidate()
+        saver = nil
     }
 
     private func registerForPushes() {
@@ -207,13 +229,22 @@ final class BoardSync: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor in self?.scheduleDiff(after: 1) }
         }
+        // SwiftData saves on its own schedule, which on the phone was tens of seconds after a
+        // swipe — and nothing is sent before a save. So unsaved edits are saved within two
+        // seconds, and the save starts the send.
+        saver = Timer.scheduledTimer(withTimeInterval: 2, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                guard let self, !self.isApplying, let context = self.context, context.hasChanges else { return }
+                try? context.save()
+            }
+        }
         // Every 30 s while open: sketches are files, not store saves, so they're looked for here;
         // and iCloud is asked for changes, in case its push is slow or never comes — waiting on
         // the push alone left a change a minute late on the first real try.
-        ticker = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
+        ticker = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 self?.scheduleDiff(after: 0)
-                try? await self?.engine?.fetchChanges()
+                await self?.fetchBoardZone()
             }
         }
         // Coming back to the app is when someone looks at the board, so it's brought up to date.
@@ -223,8 +254,52 @@ final class BoardSync: ObservableObject {
         let becameActive = UIApplication.didBecomeActiveNotification
         #endif
         activeObserver = NotificationCenter.default.addObserver(forName: becameActive, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in try? await self?.engine?.fetchChanges() }
+            Task { @MainActor in await self?.fetchBoardZone() }
         }
+    }
+
+    /// Asks the Board zone for what changed since this device last looked, directly, with a
+    /// bookmark of its own. The engine's own fetch keeps its own schedule — asked to fetch now,
+    /// it came back in 10 ms without contacting iCloud, and a phone's change reached the Mac only
+    /// when a push did, 35 s later. This path contacts iCloud every time. Anything it brings is
+    /// applied exactly as the engine's would be, so the engine delivering the same change again
+    /// later does nothing.
+    private func fetchBoardZone() async {
+        guard engine != nil else { return }
+        let database = CKContainer(identifier: CloudSchema.containerID).privateCloudDatabase
+        var token = loadPollToken()
+        do {
+            var more = true
+            while more {
+                let result = try await database.recordZoneChanges(inZoneWith: CloudSchema.zoneID, since: token)
+                let records = result.modificationResultsByID.values.compactMap { try? $0.get().record }
+                let gone = result.deletions.map { ($0.recordID, $0.recordType) }
+                if !records.isEmpty || !gone.isEmpty { apply(records, deletions: gone) }
+                token = result.changeToken
+                savePollToken(result.changeToken)
+                more = result.moreComing
+            }
+        } catch let error as CKError where error.code == .changeTokenExpired {
+            savePollToken(nil)
+        } catch {
+            // The zone not being there yet, or no network: the engine's own path covers both.
+        }
+    }
+
+    private var pollTokenURL: URL { BoardLocation.syncDirectory.appending(path: "poll-token.data") }
+
+    private func loadPollToken() -> CKServerChangeToken? {
+        guard let data = try? Data(contentsOf: pollTokenURL) else { return nil }
+        return try? NSKeyedUnarchiver.unarchivedObject(ofClass: CKServerChangeToken.self, from: data)
+    }
+
+    private func savePollToken(_ token: CKServerChangeToken?) {
+        guard let token, let data = try? NSKeyedArchiver.archivedData(withRootObject: token, requiringSecureCoding: true) else {
+            try? FileManager.default.removeItem(at: pollTokenURL)
+            return
+        }
+        try? FileManager.default.createDirectory(at: BoardLocation.syncDirectory, withIntermediateDirectories: true)
+        try? data.write(to: pollTokenURL, options: .atomic)
     }
 
     private func scheduleDiff(after seconds: Double) {
@@ -414,9 +489,19 @@ final class BoardSync: ObservableObject {
         let order = [CloudSchema.RecordType.strip, CloudSchema.RecordType.sketch]
         let sorted = modifications.sorted { (order.firstIndex(of: $0.recordType) ?? 9) < (order.firstIndex(of: $1.recordType) ?? 9) }
         log("received \(modifications.count) changed, \(deletions.count) deleted")
+        let local = snapshot()
         for record in sorted {
+            let name = record.recordID.recordName
+            // An edit here that hasn't gone up yet must survive what arrives: the arriving record
+            // is merged, field by field, with this device's version against the copy both started
+            // from. With nothing unsent, the merge is simply the arriving record.
+            var incoming = record
+            if let base = cache.record(named: name), let item = local[name] {
+                let mine = build(item, onto: base.copy() as? CKRecord, name: name)
+                incoming = RecordMerge.merge(base: base, local: mine, server: record.copy() as! CKRecord)
+            }
             cache.store(record)
-            applyOne(record, in: context)
+            applyOne(incoming, in: context)
         }
         for (id, type) in deletions {
             cache.remove(named: id.recordName)
