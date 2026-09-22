@@ -30,7 +30,6 @@ final class RemindersUITests: XCTestCase {
 
     func testTheViewMenuOpensTheReminders() {
         openReminders()
-        app.windowButton("Done").click()
     }
 
     func testAReminderCanBeMadeAndComesBackInTheList() {
@@ -47,7 +46,6 @@ final class RemindersUITests: XCTestCase {
             app.staticTexts["Renew the registration"].waitForExistence(timeout: UITestSupport.timeout),
             "the new reminder never reached the list"
         )
-        app.windowButton("Done").click()
     }
 
     /// A reminder with no title would be a row you can't read, so the editor won't take one.
