@@ -29,6 +29,9 @@ targets:
       - path: Sources/Core
       # SwiftUI views that work unchanged on the Mac and the iPhone/iPad.
       - path: Sources/SharedUI
+      # Only the iPhone's Share Extension writes to it, but it's plain Foundation, and compiling it
+      # here puts it under the Mac's unit tests.
+      - path: Sources/ShareInbox
       # Compiled into both the app and the widget: it is the format they agree on.
       - path: Sources/Shared
     dependencies:
@@ -107,8 +110,12 @@ targets:
       - path: Sources/Core
       - path: Sources/SharedUI
       - path: Sources/Shared
+      - path: Sources/ShareInbox
     dependencies:
       - target: TaskStripsiOSWidget
+        embed: true
+        codeSign: true
+      - target: TaskStripsShare
         embed: true
         codeSign: true
     info:
@@ -177,6 +184,46 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.saud.taskstrip.widget
         PRODUCT_NAME: TaskStripsWidget
+        TARGETED_DEVICE_FAMILY: "1,2"
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SKIP_INSTALL: true
+
+  # The share target: other apps send text, links, contacts and files here. It leaves them in the
+  # App Group's ShareInbox, and the app files them when it next comes to the front.
+  TaskStripsShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Sources/TaskStripsShare
+        excludes:
+          - "TaskStripsShare.entitlements"
+          - "Info.plist"
+      - path: Sources/ShareInbox
+    info:
+      path: Sources/TaskStripsShare/Info.plist
+      properties:
+        CFBundleDisplayName: Task Strips
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).ShareViewController"
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsImageWithMaxCount: 20
+              NSExtensionActivationSupportsMovieWithMaxCount: 10
+              NSExtensionActivationSupportsFileWithMaxCount: 20
+    entitlements:
+      path: Sources/TaskStripsShare/TaskStripsShare.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.saud.taskstrip]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.saud.taskstrip.share
+        PRODUCT_NAME: TaskStripsShare
         TARGETED_DEVICE_FAMILY: "1,2"
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"

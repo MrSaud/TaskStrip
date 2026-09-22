@@ -43,6 +43,7 @@ struct BoardScreen: View {
     }
 
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.scenePhase) private var scenePhase
     @Query(filter: #Predicate<TaskItem> { !$0.isTombstoned }, sort: \TaskItem.orderIndex)
     private var allTasks: [TaskItem]
     @Query(filter: #Predicate<Reminder> { !$0.isTombstoned }) private var allReminders: [Reminder]
@@ -61,6 +62,7 @@ struct BoardScreen: View {
     @State private var isBackingUp = false
     @State private var isRestoring = false
     @State private var isCapturingVoice = false
+    @State private var shareReport: String?
 
     private var boardTasks: [TaskItem] { allTasks.filter { !$0.isArchived } }
 
@@ -165,6 +167,20 @@ struct BoardScreen: View {
             // that changes nothing visible doesn't spend one of WidgetKit's reloads.
             .onChange(of: WidgetPublisher.snapshot(tasks: allTasks, reminders: allReminders), initial: true) {
                 WidgetPublisher.publish(tasks: allTasks, reminders: allReminders)
+            }
+            // Whatever the Share Extension left while the app was away.
+            .onChange(of: scenePhase, initial: true) { _, phase in
+                guard phase == .active else { return }
+                let filed = ShareInboxDrain.run(context: modelContext, tasks: allTasks, defaultPriority: defaultPriority)
+                if !filed.isEmpty { shareReport = "From Share: " + filed.summary }
+            }
+            .alert(
+                "Shared into Task Strips",
+                isPresented: Binding(get: { shareReport != nil }, set: { if !$0 { shareReport = nil } })
+            ) {
+                Button("OK") {}
+            } message: {
+                Text(shareReport ?? "")
             }
             .task {
                 ReminderScheduler.shared.sync(allTasks)
