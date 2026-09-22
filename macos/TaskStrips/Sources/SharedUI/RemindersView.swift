@@ -10,6 +10,9 @@ struct RemindersView: View {
     /// Set when this is the board's Reminders page rather than a sheet over it. A page has nothing
     /// to dismiss, so it drops the Done button; everything else about the view is the same.
     var isEmbedded = false
+    /// On the iPhone board both pages exist side by side, and a page that isn't showing must not
+    /// put its buttons and search field on the shared navigation bar.
+    var isActive = true
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -38,7 +41,7 @@ struct RemindersView: View {
         VStack(spacing: 0) {
             if notificationsDenied {
                 Label(
-                    "Notifications are turned off for Task Strips — reminders won't announce themselves until they're allowed in System Settings.",
+                    "Notifications are turned off for Task Strips — reminders won't announce themselves until they're allowed in \(Platform.settingsApp).",
                     systemImage: "bell.slash"
                 )
                 .font(.callout)
@@ -52,10 +55,12 @@ struct RemindersView: View {
                 list
             }
         }
-        .frame(minWidth: 520, minHeight: 500)
+        .macFrame(minWidth: 520, minHeight: 500)
         .background(TaskStripTheme.bayBackground)
-        .searchable(text: $search, placement: .toolbar, prompt: "Search reminders")
-        .toolbar { toolbarContent }
+        .searchable(if: isActive, text: $search, prompt: "Search reminders")
+        .toolbar {
+            if isActive { toolbarContent }
+        }
         .sheet(isPresented: $isCreating) {
             ReminderEditView(
                 reminder: nil,

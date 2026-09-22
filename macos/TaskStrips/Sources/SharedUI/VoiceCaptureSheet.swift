@@ -86,7 +86,7 @@ struct VoiceCaptureSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 480, height: 470)
+        .macFrame(width: 480, height: 470)
         .background(TaskStripTheme.bayBackground)
         .onAppear { sentenceFocused = true }
     }

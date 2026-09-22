@@ -27,7 +27,7 @@ struct NotesView: View {
             Divider()
             list
         }
-        .frame(minWidth: 480, minHeight: 460)
+        .macFrame(minWidth: 480, minHeight: 460)
         .background(TaskStripTheme.bayBackground)
         .navigationTitle("QUICK NOTES")
         .toolbar {

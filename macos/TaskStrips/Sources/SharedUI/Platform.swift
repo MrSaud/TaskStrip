@@ -11,6 +11,33 @@ import SwiftUI
 /// else in SharedUI is plain SwiftUI; when a screen needs something that has no counterpart at
 /// all (Show in Finder, say), it says so with #if where it's used rather than hiding it here.
 enum Platform {
+    /// "this Mac", "this iPhone" or "this iPad", for text that says where something lives.
+    static var thisDevice: String {
+        #if os(macOS)
+        "this Mac"
+        #else
+        UIDevice.current.userInterfaceIdiom == .pad ? "this iPad" : "this iPhone"
+        #endif
+    }
+
+    /// "Click" or "Tap", for instructions that name the gesture.
+    static var pointerVerb: String {
+        #if os(macOS)
+        "Click"
+        #else
+        "Tap"
+        #endif
+    }
+
+    /// Where the user goes to allow notifications or the microphone.
+    static var settingsApp: String {
+        #if os(macOS)
+        "System Settings"
+        #else
+        "Settings"
+        #endif
+    }
+
     static func copy(_ text: String) {
         #if os(macOS)
         NSPasteboard.general.clearContents()
@@ -44,5 +71,68 @@ enum Platform {
         let scoped = url.startAccessingSecurityScopedResource()
         defer { if scoped { url.stopAccessingSecurityScopedResource() } }
         return try body(url)
+    }
+}
+
+extension View {
+    /// A Mac sheet or window's size. iOS sizes its own sheets to the screen, and a fixed width
+    /// that suits a Mac window is wider than a phone.
+    func macFrame(width: CGFloat? = nil, height: CGFloat? = nil) -> some View {
+        #if os(macOS)
+        frame(width: width, height: height)
+        #else
+        self
+        #endif
+    }
+
+    func macFrame(minWidth: CGFloat, minHeight: CGFloat) -> some View {
+        #if os(macOS)
+        frame(minWidth: minWidth, minHeight: minHeight)
+        #else
+        self
+        #endif
+    }
+}
+
+extension View {
+    /// Search that can be switched off, for a view that is only sometimes the one on screen. The
+    /// Mac puts it in the toolbar, as it always has; iOS lets the navigation bar decide.
+    @ViewBuilder
+    func searchable(if enabled: Bool, text: Binding<String>, prompt: String) -> some View {
+        if enabled {
+            #if os(macOS)
+            searchable(text: text, placement: .toolbar, prompt: prompt)
+            #else
+            searchable(text: text, prompt: prompt)
+            #endif
+        } else {
+            self
+        }
+    }
+}
+
+extension View {
+    /// A sheet on the Mac, full screen on iPhone and iPad — for the sketch canvas, where a sheet
+    /// would take any downward stroke as a swipe to close it.
+    func canvasPresentation<Item: Identifiable, Content: View>(
+        item: Binding<Item?>,
+        @ViewBuilder content: @escaping (Item) -> Content
+    ) -> some View {
+        #if os(macOS)
+        sheet(item: item, content: content)
+        #else
+        fullScreenCover(item: item, content: content)
+        #endif
+    }
+
+    func canvasPresentation<Content: View>(
+        isPresented: Binding<Bool>,
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
+        #if os(macOS)
+        sheet(isPresented: isPresented, content: content)
+        #else
+        fullScreenCover(isPresented: isPresented, content: content)
+        #endif
     }
 }

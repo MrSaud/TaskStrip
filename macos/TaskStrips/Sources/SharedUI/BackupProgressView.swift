@@ -57,7 +57,7 @@ struct BackupProgressView: View {
             }
         }
         .padding(20)
-        .frame(width: 380)
+        .macFrame(width: 380)
         .background(TaskStripTheme.bayBackground)
         // Nothing to cancel with: the work is one file-system pass, and stopping halfway through
         // a restore would leave the board holding a partial import.

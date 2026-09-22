@@ -25,7 +25,7 @@ struct SketchListView: View {
                 grid
             }
         }
-        .frame(minWidth: 520, minHeight: 420)
+        .macFrame(minWidth: 520, minHeight: 420)
         .background(TaskStripTheme.bayBackground)
         .navigationTitle(isPicking ? "LINK A SKETCH" : "SKETCH NOTES")
         .toolbar {
@@ -46,7 +46,7 @@ struct SketchListView: View {
         .onAppear(perform: refresh)
         // A sheet rather than a pushed screen: this list is itself presented as a sheet from the
         // board, and stacking two navigation levels inside one sheet is how you lose the toolbar.
-        .sheet(item: $opening) { open in
+        .canvasPresentation(item: $opening) { open in
             NavigationStack {
                 SketchCanvasView(noteID: open.id, store: store, onChange: refresh)
             }
@@ -80,7 +80,7 @@ struct SketchListView: View {
                 .foregroundStyle(TaskStripTheme.paper.opacity(0.5))
             Text(isPicking
                  ? "Draw one from the Sketches window first."
-                 : "Click + to draw or write freely.")
+                 : "\(Platform.pointerVerb) + to draw or write freely.")
                 .font(.callout)
                 .foregroundStyle(TaskStripTheme.paper.opacity(0.35))
         }
@@ -178,7 +178,7 @@ struct SketchListView: View {
             }
         }
         .padding(20)
-        .frame(width: 320)
+        .macFrame(width: 320)
     }
 
     private func refresh() {

@@ -74,7 +74,7 @@ struct CredentialEditView: View {
                         .buttonStyle(.borderless)
                         .help(isPasswordVisible ? "Hide" : "Show")
                     }
-                    Text("Kept in your login keychain, not in the app's store or its backups — a "
+                    Text("Kept in iCloud Keychain, not in the app's store or its backups — a "
                          + "backup only carries it when you set a passphrase to encrypt it with.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -99,7 +99,7 @@ struct CredentialEditView: View {
             }
             .padding(12)
         }
-        .frame(width: 480, height: 520)
+        .macFrame(width: 480, height: 520)
         .background(TaskStripTheme.bayBackground)
     }
 

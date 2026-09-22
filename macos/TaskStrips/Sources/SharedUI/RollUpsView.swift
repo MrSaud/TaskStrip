@@ -42,7 +42,7 @@ struct RollUpsView: View {
             case .tags: tagProgress
             }
         }
-        .frame(minWidth: 460, minHeight: 460)
+        .macFrame(minWidth: 460, minHeight: 460)
         .background(TaskStripTheme.bayBackground)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

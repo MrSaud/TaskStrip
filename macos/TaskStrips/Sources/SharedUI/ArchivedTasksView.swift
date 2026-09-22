@@ -46,6 +46,6 @@ struct ArchivedTasksView: View {
                 Button("Done") { dismiss() }
             }
         }
-        .frame(minWidth: 420, minHeight: 400)
+        .macFrame(minWidth: 420, minHeight: 400)
     }
 }

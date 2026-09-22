@@ -69,7 +69,7 @@ struct StoragePickerSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 480, height: 420)
+        .macFrame(width: 480, height: 420)
         .background(TaskStripTheme.bayBackground)
     }
 

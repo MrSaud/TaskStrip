@@ -85,6 +85,7 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            #if os(macOS)
             Section {
                 Toggle("Show in the menu bar", isOn: $showMenuBar)
             } footer: {
@@ -92,6 +93,7 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            #endif
 
             Section {
                 Toggle("Quote of the day on the board", isOn: $showQuote)
@@ -113,12 +115,15 @@ struct SettingsView: View {
                 // Both are off by default: an app that starts sending notifications before being
                 // asked is an app whose notifications get turned off wholesale.
                 Text("Each says nothing on a day with nothing to report. They're worked out while "
-                     + "the app is open, so one that fires after days of the Mac being shut "
+                     + "the app is open, so one that fires after days of \(Platform.thisDevice) being shut "
                      + "describes the board as it was last seen.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
 
+            // Drive backup is the Mac's: the iPhone and iPad back up through Files, and Drive is
+            // retired with Android in Phase 7.
+            #if os(macOS)
             // Written with an explicit header rather than Section("Google Drive") { } footer: { }:
             // SwiftUI has a titled section and a section with a footer, but no initialiser that
             // takes both.
@@ -153,10 +158,13 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            #endif
         }
         .formStyle(.grouped)
+        #if os(macOS)
         .frame(width: 460)
         .fixedSize(horizontal: false, vertical: true)
+        #endif
     }
 
     private func saveClientID() {

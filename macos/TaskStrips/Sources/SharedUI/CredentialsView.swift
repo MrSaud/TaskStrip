@@ -38,7 +38,7 @@ struct CredentialsView: View {
                 list
             }
         }
-        .frame(minWidth: 540, minHeight: 500)
+        .macFrame(minWidth: 540, minHeight: 500)
         .background(TaskStripTheme.bayBackground)
         .searchable(text: $search, placement: .toolbar, prompt: "Search credentials")
         .toolbar { toolbarContent }
@@ -87,7 +87,7 @@ struct CredentialsView: View {
             Text("NO CREDENTIALS YET")
                 .font(.title3)
                 .foregroundStyle(.secondary)
-            Text("Passwords are kept in your login keychain, never in the app's own store.")
+            Text("Passwords are kept in iCloud Keychain, never in the app's own store.")
                 .font(.callout)
                 .foregroundStyle(.tertiary)
             Button("New Credential") { isCreating = true }

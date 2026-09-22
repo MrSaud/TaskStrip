@@ -56,7 +56,7 @@ struct ExportBackupSheet: View {
                             .foregroundStyle(.secondary)
                     } else {
                         Text("Without a passphrase the credentials still travel — usernames, URLs "
-                             + "and notes — but their passwords stay on this Mac.")
+                             + "and notes — but their passwords stay on \(Platform.thisDevice).")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -86,7 +86,7 @@ struct ExportBackupSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 460, height: credentialsWithPasswords > 0 ? 430 : 260)
+        .macFrame(width: 460, height: credentialsWithPasswords > 0 ? 430 : 260)
         .background(TaskStripTheme.bayBackground)
     }
 

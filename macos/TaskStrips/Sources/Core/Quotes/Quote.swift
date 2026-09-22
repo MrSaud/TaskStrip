@@ -75,3 +75,14 @@ struct QuoteCache {
         defaults.set(quote.author, forKey: Self.authorKey)
     }
 }
+
+extension QuoteOfTheDay {
+    /// Today's quote: from the cache if it's already been fetched today, otherwise once from the
+    /// network. A day with no connection simply has no card.
+    static func today(cache: QuoteCache = QuoteCache()) async -> Quote? {
+        if let cached = cache.quote() { return cached }
+        guard let fetched = await fetch() else { return nil }
+        cache.save(fetched)
+        return fetched
+    }
+}

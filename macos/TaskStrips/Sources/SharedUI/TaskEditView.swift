@@ -162,7 +162,7 @@ struct TaskEditView: View {
                         }
                     }
                     if reminderDenied {
-                        Text("Notifications are turned off for Task Strips — check System Settings.")
+                        Text("Notifications are turned off for Task Strips — check \(Platform.settingsApp).")
                             .font(.caption)
                             .foregroundStyle(TaskStripTheme.urgent)
                     }
@@ -227,7 +227,7 @@ struct TaskEditView: View {
             }
         }
         .formStyle(.grouped)
-        .frame(minWidth: 480, minHeight: 560)
+        .macFrame(minWidth: 480, minHeight: 560)
         .onChange(of: hasReminder) { _, isOn in
             guard isOn else { return }
             Task {
@@ -249,7 +249,7 @@ struct TaskEditView: View {
                 SketchListView(onPick: { linkedSketchID = $0.id })
             }
         }
-        .sheet(isPresented: $openingLinkedSketch) {
+        .canvasPresentation(isPresented: $openingLinkedSketch) {
             if let linkedSketchID {
                 NavigationStack {
                     SketchCanvasView(noteID: linkedSketchID)
@@ -323,7 +323,7 @@ struct TaskEditView: View {
                     Text(note?.displayName ?? "Sketch note")
                     // A linked sketch whose pages aren't here yet is the normal state right
                     // after a partial restore, so say so rather than showing an empty row.
-                    Text(note == nil ? "Not on this Mac yet" : "\(note?.pageCount ?? 0) page(s)")
+                    Text(note == nil ? "Not on \(Platform.thisDevice) yet" : "\(note?.pageCount ?? 0) page(s)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

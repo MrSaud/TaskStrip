@@ -126,6 +126,7 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSMicrophoneUsageDescription: "Task Strips records voice notes onto a strip. Nothing is recorded until you press Record."
+        NSFaceIDUsageDescription: "Task Strips asks for Face ID before showing a saved password."
     # The identifiers registered in Phase 0. The App Group is left out until it is registered for
     # real: a profile that doesn't carry an entitlement the app claims stops the app launching.
     entitlements:

@@ -51,7 +51,7 @@ struct StorageLibraryView: View {
                 library
             }
         }
-        .frame(minWidth: 560, minHeight: 520)
+        .macFrame(minWidth: 560, minHeight: 520)
         .background(TaskStripTheme.bayBackground)
         .toolbar { toolbarContent }
         .sheet(item: $taggingItem) { item in
@@ -141,7 +141,7 @@ struct StorageLibraryView: View {
                 section(.document) { documents(StorageLibrary.items(visible, ofType: .document)) }
 
                 // Said out loud because a keyboard shortcut nobody knows about isn't a feature.
-                Text("Click a file, then press space to preview it.")
+                Text(Self.previewHint)
                     .font(.caption)
                     .foregroundStyle(.tertiary)
                     .padding(.top, 4)
@@ -186,6 +186,14 @@ struct StorageLibraryView: View {
                     .contextMenu { itemMenu(item) }
             }
         }
+    }
+
+    private static var previewHint: String {
+        #if os(macOS)
+        "Click a file, then press space to preview it."
+        #else
+        "Double-tap a file to preview it."
+        #endif
     }
 
     @ViewBuilder
@@ -422,7 +430,7 @@ struct StorageLibraryView: View {
         guard FileManager.default.fileExists(atPath: url.path) else {
             problem = StorageProblem(
                 title: "Nothing to preview",
-                message: "\"\(item.name)\" is listed here but its file isn't on this Mac. "
+                message: "\"\(item.name)\" is listed here but its file isn't on \(Platform.thisDevice). "
                     + "It may not have come across in a restore."
             )
             return

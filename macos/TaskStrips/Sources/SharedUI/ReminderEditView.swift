@@ -142,7 +142,7 @@ struct ReminderEditView: View {
             }
             .padding(12)
         }
-        .frame(width: 480, height: 560)
+        .macFrame(width: 480, height: 560)
         .background(TaskStripTheme.bayBackground)
     }
 

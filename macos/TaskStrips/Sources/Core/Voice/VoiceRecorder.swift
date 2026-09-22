@@ -16,8 +16,12 @@ final class VoiceRecorder: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .microphoneRefused:
+                #if os(macOS)
                 return "Task Strips can't use the microphone. Allow it in System Settings › "
                     + "Privacy & Security › Microphone."
+                #else
+                return "Task Strips can't use the microphone. Allow it in Settings › Task Strips."
+                #endif
             case .couldNotStart:
                 return "The recording couldn't be started."
             }
@@ -57,6 +61,16 @@ final class VoiceRecorder: ObservableObject {
             AVEncoderAudioQualityKey: AVAudioQuality.medium.rawValue,
         ]
 
+        #if os(iOS)
+        // iOS records nothing until the app's audio session says it records; the Mac has no
+        // session to set.
+        do {
+            try AVAudioSession.sharedInstance().setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker])
+            try AVAudioSession.sharedInstance().setActive(true)
+        } catch {
+            throw Failure.couldNotStart
+        }
+        #endif
         guard let recorder = try? AVAudioRecorder(url: url, settings: settings), recorder.record() else {
             throw Failure.couldNotStart
         }
@@ -83,6 +97,10 @@ final class VoiceRecorder: ObservableObject {
         let url = recorder.url
         recorder.stop()
         finish()
+        #if os(iOS)
+        // Hands the audio back, so music the recording paused can carry on.
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        #endif
 
         guard let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > 0 else {
             try? FileManager.default.removeItem(at: url)

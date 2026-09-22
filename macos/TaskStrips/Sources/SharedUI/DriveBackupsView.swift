@@ -65,7 +65,7 @@ struct DriveBackupsView: View {
             }
         }
         .padding(20)
-        .frame(width: 520, height: 460)
+        .macFrame(width: 520, height: 460)
         .background(TaskStripTheme.bayBackground)
         .alert("Drive trouble", isPresented: Binding(
             get: { problem != nil },

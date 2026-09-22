@@ -48,7 +48,7 @@ struct DateRangeFilterView: View {
             }
         }
         .padding()
-        .frame(width: 260)
+        .macFrame(width: 260)
     }
 
     private func apply() {

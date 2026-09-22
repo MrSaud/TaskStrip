@@ -43,7 +43,7 @@ struct SketchCanvasView: View {
             canvas
             palette
         }
-        .frame(minWidth: 560, minHeight: 560)
+        .macFrame(minWidth: 560, minHeight: 560)
         .background(TaskStripTheme.bayBackground)
         .navigationTitle(pendingImage == nil ? "PAGE \(pageIndex + 1)/\(pageCount)" : "DRAG TO MOVE · PINCH TO RESIZE")
         .toolbar { toolbarContent }
@@ -284,13 +284,25 @@ struct SketchCanvasView: View {
                     Label("Add page", systemImage: "doc.badge.plus")
                 }
 
+                #if os(macOS)
                 // "Save", not "Done": the list behind this has a Done of its own, and the two
                 // sheets are stacked.
                 Button("Save") {
                     persistCurrentPage()
                     dismiss()
                 }
+                #endif
             }
+            #if os(iOS)
+            // A phone's toolbar has room for a few buttons and folds the rest into a menu; the
+            // way out must never be the one that gets folded away.
+            ToolbarItem(placement: .confirmationAction) {
+                Button("Save") {
+                    persistCurrentPage()
+                    dismiss()
+                }
+            }
+            #endif
         }
     }
 

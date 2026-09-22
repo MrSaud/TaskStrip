@@ -101,8 +101,7 @@ struct TaskListView: View {
     }
 
     private func blocker(for task: TaskItem) -> TaskItem? {
-        guard let id = task.blockedByID else { return nil }
-        return allTasks.first { $0.id == id }
+        StripActions.blocker(for: task, in: allTasks)
     }
 
     var body: some View {
@@ -233,13 +232,7 @@ struct TaskListView: View {
                 NavigationStack {
                     ArchivedTasksView(
                         tasks: allTasks.filter(\.isArchived),
-                        onUnarchive: { task in
-                            // Renumbering only ever walks the strips on the board, so this one's
-                            // orderIndex is whatever it held before it was archived — it would
-                            // reappear at some arbitrary spot mid-board. Send it to the bottom.
-                            task.orderIndex = nextOrderIndex()
-                            task.isArchived = false
-                        }
+                        onUnarchive: { task in StripActions.unarchive(task, in: allTasks) }
                     )
                 }
             }
@@ -748,14 +741,7 @@ struct TaskListView: View {
     /// network. A day with no connection simply has no card.
     private func loadQuote() async {
         guard showQuote else { return }
-        let cache = QuoteCache()
-        if let cached = cache.quote() {
-            quote = cached
-            return
-        }
-        guard let fetched = await QuoteOfTheDay.fetch() else { return }
-        cache.save(fetched)
-        quote = fetched
+        quote = await QuoteOfTheDay.today()
     }
 
     // MARK: - Scheduled summaries and backups
@@ -865,32 +851,18 @@ struct TaskListView: View {
     }
 
     private func nextOrderIndex() -> Int {
-        (allTasks.map(\.orderIndex).max() ?? -1) + 1
+        StripActions.nextOrderIndex(in: allTasks)
     }
 
     private func toggleDone(_ task: TaskItem) {
-        if !task.isDone, let blockerTask = blocker(for: task), !blockerTask.isDone {
+        if case .blocked = StripActions.toggleDone(task, in: allTasks, context: modelContext) {
             blockedAlertTask = task
-            return
         }
-        task.isDone.toggle()
-        task.completedAt = task.isDone ? .now : nil
-
-        // Completing a repeating strip spawns the next one rather than rolling this one forward,
-        // so the finished occurrence stays as history — Android's choice, and the reason "what did
-        // I finish last week" keeps working.
-        if task.isDone, let next = ReminderPlan.nextOccurrence(completing: task, orderIndex: nextOrderIndex()) {
-            modelContext.insert(next)
-            ReminderScheduler.shared.schedule(for: next)
-        }
-        // Covers both directions: completing clears the pending reminder, reopening restores it.
-        ReminderScheduler.shared.schedule(for: task)
     }
 
     private func archive(_ task: TaskItem) {
-        task.isArchived = true
         if selectedTaskID == task.id { selectedTaskID = nil }
-        ReminderScheduler.shared.schedule(for: task)
+        StripActions.archive(task)
     }
 
     /// Deleting a strip is permanent and there's no undo, so the board asks first unless the user
@@ -905,20 +877,12 @@ struct TaskListView: View {
     }
 
     private func delete(_ task: TaskItem) {
-        let id = task.id
-        if selectedTaskID == id { selectedTaskID = nil }
-        // The strip's files go with it — nothing else points at them, and leaving them behind
-        // would grow the media folder forever.
-        for attachment in task.attachments { AttachmentStore.shared.remove(attachment) }
-        ReminderScheduler.shared.cancel(taskID: id)
-        modelContext.delete(task)
-        cleanUpDanglingBlockers(deletedID: id)
+        if selectedTaskID == task.id { selectedTaskID = nil }
+        StripActions.delete(task, in: allTasks, context: modelContext)
     }
 
     private func cleanUpDanglingBlockers(deletedID: UUID) {
-        for task in allTasks where task.blockedByID == deletedID {
-            task.blockedByID = nil
-        }
+        StripActions.releaseBlocked(by: deletedID, in: allTasks)
     }
 
     private func move(from source: IndexSet, to destination: Int) {

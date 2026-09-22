@@ -101,13 +101,13 @@ struct ImportBackupSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 460, height: summary.hasEncryptedPasswords ? 430 : 300)
+        .macFrame(width: 460, height: summary.hasEncryptedPasswords ? 430 : 300)
         .background(TaskStripTheme.bayBackground)
         .alert("Replace everything on the board?", isPresented: $confirmingReplace) {
             Button("Cancel", role: .cancel) {}
             Button("Replace", role: .destructive) { onImport(.replace, passphrase) }
         } message: {
-            Text("This deletes the \(existingCount) strip\(existingCount == 1 ? "" : "s") already on this Mac, archived ones included\(summary.notes.isEmpty ? "" : ", along with every quick note"), and puts the backup's \(summary.tasks.count) in their place. It can't be undone.")
+            Text("This deletes the \(existingCount) strip\(existingCount == 1 ? "" : "s") already on \(Platform.thisDevice), archived ones included\(summary.notes.isEmpty ? "" : ", along with every quick note"), and puts the backup's \(summary.tasks.count) in their place. It can't be undone.")
         }
     }
 
