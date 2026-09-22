@@ -100,6 +100,11 @@ object SketchStorage {
 
     fun createdLabel(note: File): String = formatDate(getCreatedAt(note))
 
+    /** The folder and everything in it.
+     *
+     * This left a tombstone behind while the board sync existed, so a delete could reach the other
+     * device. Nothing collects those now, and a folder that never goes away is worse than no
+     * record of the delete at all. */
     fun deleteNote(note: File) {
         runCatching { note.deleteRecursively() }
     }

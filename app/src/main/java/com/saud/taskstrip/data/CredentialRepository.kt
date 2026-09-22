@@ -28,11 +28,14 @@ class CredentialRepository(private val dao: CredentialDao) {
                 username = username,
                 encryptedPassword = if (password.isBlank()) existing.encryptedPassword else CredentialCrypto.encrypt(password),
                 url = url,
-                notes = notes
+                notes = notes,
+                // Stamped here, like every other edit — see TaskRepository.updateTask.
+                updatedAt = System.currentTimeMillis()
             )
         )
     }
 
+    /** A real delete again — see TaskRepository.deleteTask. */
     suspend fun delete(credential: CredentialEntity) = dao.delete(credential)
 
     suspend fun getById(id: Long): CredentialEntity? = dao.getById(id)

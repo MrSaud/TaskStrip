@@ -44,6 +44,7 @@ import com.saud.taskstrip.ui.screens.CredentialEditScreen
 import com.saud.taskstrip.ui.screens.CredentialsScreen
 import com.saud.taskstrip.ui.screens.HomeScreen
 import com.saud.taskstrip.ui.screens.NotesScreen
+import com.saud.taskstrip.ui.screens.SyncNotesScreen
 import com.saud.taskstrip.ui.screens.ReminderEditScreen
 import com.saud.taskstrip.ui.screens.RemindersScreen
 import com.saud.taskstrip.ui.screens.ShareStorageScreen
@@ -248,7 +249,10 @@ class MainActivity : FragmentActivity() {
                     composable("home") {
                         HomeScreen(
                             viewModel = viewModel,
+                            reminderViewModel = reminderViewModel,
+                            backupViewModel = backupViewModel,
                             onAddClick = { navController.navigate("editor/-1") },
+                            onReminderEditClick = { id -> navController.navigate("reminder-editor/$id") },
                             onTaskClick = { id -> navController.navigate("editor/$id") },
                             onArchiveClick = { navController.navigate("archive") },
                             onSketchesClick = { navController.navigate("sketches") },
@@ -263,7 +267,8 @@ class MainActivity : FragmentActivity() {
                                 reminderViewModel.setPendingText(spoken)
                                 navController.navigate("reminder-editor/-1")
                             },
-                            onStorageClick = { navController.navigate("storage") }
+                            onStorageClick = { navController.navigate("storage") },
+                            onSyncNotesClick = { navController.navigate("sync-notes") }
                         )
                     }
                     composable("storage") {
@@ -314,6 +319,9 @@ class MainActivity : FragmentActivity() {
                             viewModel = viewModel,
                             onBack = { navController.popBackStack() }
                         )
+                    }
+                    composable("sync-notes") {
+                        SyncNotesScreen(onBack = { navController.popBackStack() })
                     }
                     composable("notes") {
                         NotesScreen(

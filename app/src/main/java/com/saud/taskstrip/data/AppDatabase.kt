@@ -185,9 +185,123 @@ val MIGRATION_22_23 = object : Migration(22, 23) {
     }
 }
 
+val MIGRATION_23_24 = object : Migration(23, 24) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        // The id is the shared UUID rather than an autoincrementing key: it has to mean the same
+        // note on the Mac, which is the whole point of the table.
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS sync_notes (" +
+                "id TEXT PRIMARY KEY NOT NULL, " +
+                "title TEXT NOT NULL DEFAULT '', " +
+                "text TEXT NOT NULL DEFAULT '', " +
+                "updatedAt INTEGER NOT NULL, " +
+                "isDeleted INTEGER NOT NULL DEFAULT 0)"
+        )
+    }
+}
+
+// A synced note is one text now, so its title column goes. SQLite only learned DROP COLUMN in
+// 3.35, which is newer than the SQLite on the oldest devices this app runs on (minSdk 26), so the
+// table is rebuilt instead — the portable way to do this, and what Room itself generates.
+//
+// The title is folded into the top of the text rather than dropped with the column. It was the
+// note's name, the new first-line rule reads a name from exactly that position, and a migration
+// that silently threw away the only name a note had would be a migration that loses data.
+val MIGRATION_24_25 = object : Migration(24, 25) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS sync_notes_new (" +
+                "id TEXT PRIMARY KEY NOT NULL, " +
+                "text TEXT NOT NULL DEFAULT '', " +
+                "updatedAt INTEGER NOT NULL, " +
+                "isDeleted INTEGER NOT NULL DEFAULT 0)"
+        )
+        // A folded row is stamped as edited now, and one that had no title keeps the timestamp it
+        // had. Without that stamp the fold would not survive contact with the Mac: the Mac drops
+        // its own titles in the same release and cannot fold them back (its store has no migration
+        // hook to read them from), so it arrives holding the same note, the same updatedAt and the
+        // shorter text — and the merge's byte tie-break happens to prefer that shorter text, which
+        // would hand the loss straight back to the phone. A real edit deserves a real timestamp
+        // anyway; this is one.
+        val now = System.currentTimeMillis()
+        db.execSQL(
+            "INSERT INTO sync_notes_new (id, text, updatedAt, isDeleted) " +
+                "SELECT id, " +
+                "CASE " +
+                "WHEN title = '' THEN text " +
+                "WHEN text = '' THEN title " +
+                "ELSE title || char(10) || text " +
+                "END, " +
+                "CASE WHEN title = '' THEN updatedAt ELSE $now END, " +
+                "isDeleted FROM sync_notes"
+        )
+        db.execSQL("DROP TABLE sync_notes")
+        db.execSQL("ALTER TABLE sync_notes_new RENAME TO sync_notes")
+    }
+}
+
+// Strips and reminders learn the three things a merge needs of them: a name both devices know
+// them by, when they were last touched, and a way to say "deleted" out loud.
+//
+// syncId is backfilled per row rather than left empty. SQLite has no uuid(), and hex(randomblob())
+// is the portable way to get 16 random bytes; the dashes are put back by hand so the value is the
+// same shape both apps parse. Rows that already exist get one now, so the first sync treats them
+// as strips it has never seen rather than skipping them.
+//
+// updatedAt seeds from createdAt, not from now: a row nobody has touched since it was filed is
+// exactly as old as its filing, and stamping everything with the migration's own clock would make
+// every strip on this device look newer than its counterpart on the other one and win every tie.
+val MIGRATION_25_26 = object : Migration(25, 26) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        for (table in listOf("tasks", "reminders")) {
+            db.execSQL("ALTER TABLE $table ADD COLUMN syncId TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE $table ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE $table ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0")
+            db.execSQL(
+                "UPDATE $table SET syncId = " +
+                    "lower(substr(hex(randomblob(4)),1,8) || '-' || " +
+                    "substr(hex(randomblob(2)),1,4) || '-' || " +
+                    "substr(hex(randomblob(2)),1,4) || '-' || " +
+                    "substr(hex(randomblob(2)),1,4) || '-' || " +
+                    "substr(hex(randomblob(6)),1,12)) " +
+                    "WHERE syncId = ''"
+            )
+            db.execSQL("UPDATE $table SET updatedAt = createdAt WHERE updatedAt = 0")
+        }
+        // Two rows must never share a name, or the merge would fold them into one.
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_tasks_syncId ON tasks(syncId)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_reminders_syncId ON reminders(syncId)")
+    }
+}
+
+// Credentials and the storage library join the sync, so they need the same three columns strips
+// and reminders got in MIGRATION_25_26 — and for the same reasons, including seeding updatedAt
+// from createdAt rather than from the migration's own clock.
+val MIGRATION_26_27 = object : Migration(26, 27) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        for (table in listOf("credentials", "storage_items")) {
+            db.execSQL("ALTER TABLE $table ADD COLUMN syncId TEXT NOT NULL DEFAULT ''")
+            db.execSQL("ALTER TABLE $table ADD COLUMN updatedAt INTEGER NOT NULL DEFAULT 0")
+            db.execSQL("ALTER TABLE $table ADD COLUMN isDeleted INTEGER NOT NULL DEFAULT 0")
+            db.execSQL(
+                "UPDATE $table SET syncId = " +
+                    "lower(substr(hex(randomblob(4)),1,8) || '-' || " +
+                    "substr(hex(randomblob(2)),1,4) || '-' || " +
+                    "substr(hex(randomblob(2)),1,4) || '-' || " +
+                    "substr(hex(randomblob(2)),1,4) || '-' || " +
+                    "substr(hex(randomblob(6)),1,12)) " +
+                    "WHERE syncId = ''"
+            )
+            db.execSQL("UPDATE $table SET updatedAt = createdAt WHERE updatedAt = 0")
+        }
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_credentials_syncId ON credentials(syncId)")
+        db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS index_storage_items_syncId ON storage_items(syncId)")
+    }
+}
+
 @Database(
-    entities = [TaskEntity::class, CredentialEntity::class, NoteEntity::class, ReminderEntity::class, StorageItemEntity::class],
-    version = 23,
+    entities = [TaskEntity::class, CredentialEntity::class, NoteEntity::class, ReminderEntity::class, StorageItemEntity::class, SyncNoteEntity::class],
+    version = 27,
     exportSchema = false
 )
 @TypeConverters(Converters::class)
@@ -197,6 +311,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun noteDao(): NoteDao
     abstract fun reminderDao(): ReminderDao
     abstract fun storageItemDao(): StorageItemDao
+    abstract fun syncNoteDao(): SyncNoteDao
 
     companion object {
         @Volatile
@@ -209,7 +324,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "taskstrip.db"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17, MIGRATION_17_18, MIGRATION_18_19, MIGRATION_19_20, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27)
                     // Only reached for version jumps with no real user data behind them
                     // (e.g. a stale pre-v3 dev install) — every jump from here on gets a
                     // real Migration above instead, so saved tasks are never silently wiped.

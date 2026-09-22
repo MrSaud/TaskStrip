@@ -3,11 +3,15 @@ options:
   bundleIdPrefix: com.saud.taskstrip
   deploymentTarget:
     macOS: "14.0"
+    iOS: "17.0"
 settings:
   base:
     SWIFT_VERSION: "5.0"
     MACOSX_DEPLOYMENT_TARGET: "14.0"
-    DEVELOPMENT_TEAM: ""
+    # The personal team, and only that one — never an organisation's. The Mac was ad-hoc signed
+    # until Phase 2; iCloud Keychain needs a real team, and a stable signature also stops macOS
+    # asking for the login password again after every rebuild.
+    DEVELOPMENT_TEAM: FZ332788BV
     CODE_SIGN_STYLE: Automatic
 targets:
   TaskStrips:
@@ -15,17 +19,263 @@ targets:
     platform: macOS
     sources:
       - path: Sources/TaskStrips
+        excludes:
+          # Generator for the icon set, not something to ship inside the bundle.
+          - "Assets.xcassets/make_icon.py"
+          # Signed in, not copied in.
+          - "TaskStrips.entitlements"
+      # Models, stores, backup, crypto and logic: everything that isn't a screen. Compiled into
+      # the Mac app and the iPhone/iPad app alike, so it must build on both.
+      - path: Sources/Core
+      # SwiftUI views that work unchanged on the Mac and the iPhone/iPad.
+      - path: Sources/SharedUI
+      # Only the iPhone's Share Extension writes to it, but it's plain Foundation, and compiling it
+      # here puts it under the Mac's unit tests.
+      - path: Sources/ShareInbox
+      # Compiled into both the app and the widget: it is the format they agree on.
+      - path: Sources/Shared
+    dependencies:
+      - target: TaskStripsWidget
+        embed: true
+        codeSign: true
+    # The one source of truth for the app's Info.plist, which XcodeGen writes from this on every
+    # generate. It used to be checked in as well, and the two drifted in both directions at once:
+    # CFBundleIconName was here but not in the file, so a build from the file had no Dock icon;
+    # NSMicrophoneUsageDescription was in the file but not here, so a build after a generate
+    # couldn't record. Whichever copy won, one feature was broken — and the file showing up as a
+    # local modification after every generate was the same drift, wearing a different hat.
     info:
       path: Sources/TaskStrips/Info.plist
       properties:
         CFBundleName: Task Strips
         CFBundleDisplayName: Task Strips
+        # The asset catalog compiles the artwork; this key is how the Dock finds it. Without it
+        # you get the generic application icon and no error anywhere.
+        CFBundleIconName: AppIcon
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSApplicationCategoryType: public.app-category.productivity
         NSHumanReadableCopyright: ""
+        NSMicrophoneUsageDescription: "Task Strips records voice notes onto a strip. Nothing is recorded until you press Record, and the audio stays on this Mac."
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.saud.taskstrip.mac
         PRODUCT_NAME: TaskStrips
+        # The hardened runtime keeps the microphone shut unless the app is signed with this, and
+        # the failure is silent: recording just produces nothing.
+        CODE_SIGN_ENTITLEMENTS: Sources/TaskStrips/TaskStrips.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         ENABLE_HARDENED_RUNTIME: true
         MARKETING_VERSION: "0.1"
         CURRENT_PROJECT_VERSION: "1"
+      configs:
+        # @testable import TaskStrips in the test target needs this.
+        Debug:
+          ENABLE_TESTABILITY: true
+  # The desktop half of the phone's home-screen widget. It shows what that shows — the top active
+  # strips with their priority colour and due time, then the next reminders — and reads it from a
+  # snapshot the app writes, because a sandboxed extension cannot open the app's store.
+  TaskStripsWidget:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Sources/TaskStripsWidget
+        excludes:
+          - "TaskStripsWidget.entitlements"
+      - path: Sources/Shared
+    info:
+      path: Sources/TaskStripsWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Task Strips
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.saud.taskstrip.mac.widget
+        PRODUCT_NAME: TaskStripsWidget
+        CODE_SIGN_ENTITLEMENTS: Sources/TaskStripsWidget/TaskStripsWidget.entitlements
+        ENABLE_HARDENED_RUNTIME: true
+        SKIP_INSTALL: true
+
+  # The iPhone and iPad app: one target, both devices. It shares Core with the Mac and has its
+  # own screens. Unlike the Mac it is signed by the personal team, because a phone won't run an
+  # app that isn't — and iCloud needs a real team anyway.
+  TaskStripsiOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/TaskStripsiOS
+        excludes:
+          - "TaskStripsiOS.entitlements"
+      - path: Sources/Core
+      - path: Sources/SharedUI
+      - path: Sources/Shared
+      - path: Sources/ShareInbox
+    dependencies:
+      - target: TaskStripsiOSWidget
+        embed: true
+        codeSign: true
+      - target: TaskStripsShare
+        embed: true
+        codeSign: true
+    info:
+      path: Sources/TaskStripsiOS/Info.plist
+      properties:
+        CFBundleName: Task Strips
+        CFBundleDisplayName: Task Strips
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSApplicationCategoryType: public.app-category.productivity
+        # An empty dictionary is enough: a plain launch screen in the system background colour.
+        UILaunchScreen: {}
+        UIApplicationSupportsIndirectInputEvents: true
+        # CKSyncEngine is woken by a silent push when another device changed the board.
+        UIBackgroundModes: [remote-notification]
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        "UISupportedInterfaceOrientations~ipad":
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSMicrophoneUsageDescription: "Task Strips records voice notes onto a strip. Nothing is recorded until you press Record."
+        NSFaceIDUsageDescription: "Task Strips asks for Face ID before showing a saved password."
+    # The identifiers registered in Phase 0, and the App Group the widget and the Share Extension
+    # read the app's data through.
+    entitlements:
+      path: Sources/TaskStripsiOS/TaskStripsiOS.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.saud.taskstrip]
+        com.apple.developer.icloud-container-identifiers: [iCloud.com.saud.taskstrip]
+        com.apple.developer.icloud-services: [CloudKit]
+        keychain-access-groups: ["$(AppIdentifierPrefix)com.saud.taskstrip.shared"]
+        aps-environment: development
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.saud.taskstrip
+        PRODUCT_NAME: TaskStrips
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+
+  # The iPhone and iPad home-screen widget: the Mac widget's code, reading its snapshot from the
+  # App Group instead of its own container.
+  TaskStripsiOSWidget:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Sources/TaskStripsWidget
+        excludes:
+          - "TaskStripsWidget.entitlements"
+          - "Info.plist"
+      - path: Sources/Shared
+    info:
+      path: Sources/TaskStripsiOSWidget/Info.plist
+      properties:
+        CFBundleDisplayName: Task Strips
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: Sources/TaskStripsiOSWidget/TaskStripsiOSWidget.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.saud.taskstrip]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.saud.taskstrip.widget
+        PRODUCT_NAME: TaskStripsWidget
+        TARGETED_DEVICE_FAMILY: "1,2"
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SKIP_INSTALL: true
+
+  # The share target: other apps send text, links, contacts and files here. It leaves them in the
+  # App Group's ShareInbox, and the app files them when it next comes to the front.
+  TaskStripsShare:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Sources/TaskStripsShare
+        excludes:
+          - "TaskStripsShare.entitlements"
+          - "Info.plist"
+      - path: Sources/ShareInbox
+    info:
+      path: Sources/TaskStripsShare/Info.plist
+      properties:
+        CFBundleDisplayName: Task Strips
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: "$(PRODUCT_MODULE_NAME).ShareViewController"
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsImageWithMaxCount: 20
+              NSExtensionActivationSupportsMovieWithMaxCount: 10
+              NSExtensionActivationSupportsFileWithMaxCount: 20
+    entitlements:
+      path: Sources/TaskStripsShare/TaskStripsShare.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.saud.taskstrip]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.saud.taskstrip.share
+        PRODUCT_NAME: TaskStripsShare
+        TARGETED_DEVICE_FAMILY: "1,2"
+        MARKETING_VERSION: "0.1"
+        CURRENT_PROJECT_VERSION: "1"
+        SKIP_INSTALL: true
+
+  TaskStripsTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/TaskStripsTests
+        excludes:
+          # Generator for the fixture zip, not something to ship inside the test bundle.
+          - "Fixtures/make_fixture.py"
+    dependencies:
+      - target: TaskStrips
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.saud.taskstrip.mac.tests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/TaskStrips.app/Contents/MacOS/TaskStrips"
+        BUNDLE_LOADER: "$(TEST_HOST)"
+  TaskStripsUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: Tests/TaskStripsUITests
+    dependencies:
+      - target: TaskStrips
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.saud.taskstrip.mac.uitests
+        GENERATE_INFOPLIST_FILE: true
+        TEST_TARGET_NAME: TaskStrips
+schemes:
+  TaskStrips:
+    build:
+      targets:
+        TaskStrips: all
+        TaskStripsTests: [test]
+        TaskStripsUITests: [test]
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - TaskStripsTests
+        - TaskStripsUITests
+  TaskStripsiOS:
+    build:
+      targets:
+        TaskStripsiOS: all
+    run:
+      config: Debug

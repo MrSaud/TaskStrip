@@ -20,7 +20,8 @@ class StorageRepository(private val dao: StorageItemDao) {
     }
 
     suspend fun setTag(item: StorageItemEntity, tag: String, tagEmoji: String) =
-        dao.update(item.copy(tag = tag, tagEmoji = tagEmoji))
+        dao.update(item.copy(tag = tag, tagEmoji = tagEmoji, updatedAt = System.currentTimeMillis()))
 
+    /** A real delete again — see TaskRepository.deleteTask. */
     suspend fun delete(item: StorageItemEntity) = dao.delete(item)
 }

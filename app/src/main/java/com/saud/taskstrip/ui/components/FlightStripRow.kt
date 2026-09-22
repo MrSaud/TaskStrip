@@ -8,8 +8,9 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,6 +58,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,11 +67,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntOffset
 import com.saud.taskstrip.data.TaskEntity
 import com.saud.taskstrip.media.TextToSpeechHelper
 import com.saud.taskstrip.media.VoicePlayer
@@ -80,6 +87,8 @@ import com.saud.taskstrip.ui.theme.PriorityNormal
 import com.saud.taskstrip.ui.theme.PriorityUrgent
 import com.saud.taskstrip.ui.theme.tabColor
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
+import kotlin.math.roundToInt
 
 val StripHeight = 104.dp
 val StripShape = RoundedCornerShape(4.dp)
@@ -98,7 +107,15 @@ fun FlightStripRow(
     onQuickLog: ((String) -> Unit)? = null,
     dragModifier: Modifier? = null,
     trailingActions: @Composable () -> Unit = {},
-    blockerTask: TaskEntity? = null
+    blockerTask: TaskEntity? = null,
+    /** Whether a leftward swipe deletes this strip.
+     *
+     * Off on the board, where that gesture belongs to the pager moving between strips and
+     * reminders: a row nested in a pager consumes the horizontal drag before the pager sees it,
+     * so the two cannot both have it. Deleting from the board goes through the strip's own editor,
+     * which asks for confirmation anyway. On by default, and left on in the archive, which has no
+     * pager to compete with and where deleting is most of what you are there to do. */
+    enableSwipeToDelete: Boolean = true
 ) {
     val context = LocalContext.current
     var showDeleteConfirm by remember { mutableStateOf(false) }
@@ -119,7 +136,8 @@ fun FlightStripRow(
             when (value) {
                 SwipeToDismissBoxValue.EndToStart -> {
                     // Delete is irreversible — ask first, and spring the row back to rest while
-                    // we wait rather than leaving it hanging in the dismissed position.
+                    // we wait rather than leaving it hanging in the dismissed position. Never
+                    // reached when enableSwipeToDelete is off, since the box won't travel that way.
                     showDeleteConfirm = true
                     false
                 }
@@ -180,315 +198,618 @@ fun FlightStripRow(
         0f
     }
 
-    SwipeToDismissBox(
-        state = dismissState,
-        modifier = modifier,
-        enableDismissFromStartToEnd = onToggleDone != null,
-        backgroundContent = {
-            val isToggleSwipe = dismissState.dismissDirection == SwipeToDismissBoxValue.StartToEnd
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
-                    .clip(StripShape)
-                    .background(if (isToggleSwipe) PriorityNormal else PriorityUrgent),
-                contentAlignment = if (isToggleSwipe) Alignment.CenterStart else Alignment.CenterEnd
-            ) {
-                Icon(
-                    imageVector = if (isToggleSwipe) {
-                        if (completed) Icons.Default.Replay else Icons.Default.Check
-                    } else {
-                        Icons.Default.Delete
-                    },
-                    contentDescription = if (isToggleSwipe) {
-                        if (completed) "Mark active" else "Mark complete"
-                    } else {
-                        "Delete"
-                    },
-                    tint = Paper,
-                    modifier = Modifier.padding(horizontal = 24.dp)
-                )
+    // Two ways to wear the same row. The archive keeps the stock component and both of its
+    // swipes; the board can't, because that component consumes horizontal drags in both
+    // directions even with one of them disabled, which leaves the pager nothing to work
+    // with — see SwipeRightToComplete.
+    if (enableSwipeToDelete) {
+        SwipeToDismissBox(
+            state = dismissState,
+            modifier = modifier,
+            enableDismissFromStartToEnd = onToggleDone != null,
+            enableDismissFromEndToStart = enableSwipeToDelete,
+            backgroundContent = {
+                val isToggleSwipe = dismissState.dismissDirection == SwipeToDismissBoxValue.StartToEnd
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                        .clip(StripShape)
+                        .background(if (isToggleSwipe) PriorityNormal else PriorityUrgent),
+                    contentAlignment = if (isToggleSwipe) Alignment.CenterStart else Alignment.CenterEnd
+                ) {
+                    Icon(
+                        imageVector = if (isToggleSwipe) {
+                            if (completed) Icons.Default.Replay else Icons.Default.Check
+                        } else {
+                            Icons.Default.Delete
+                        },
+                        contentDescription = if (isToggleSwipe) {
+                            if (completed) "Mark active" else "Mark complete"
+                        } else {
+                            "Delete"
+                        },
+                        tint = Paper,
+                        modifier = Modifier.padding(horizontal = 24.dp)
+                    )
+                }
             }
-        }
-    ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(StripHeight)
-                .padding(horizontal = 10.dp, vertical = 4.dp)
-                .clip(StripShape),
-            color = if (completed) BaySurfaceFaded else BaySurface,
-            shadowElevation = if (completed) 0.dp else 3.dp
         ) {
-            Box(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize()) {
-                Row(Modifier.weight(1f)) {
-                    // Tab + content together form the draggable/tappable body: the whole strip,
-                    // not just a thin handle, responds to long-press-drag for reordering.
-                    Row(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                            .clickable(onClick = onClick)
-                            .then(dragModifier ?: Modifier)
-                    ) {
-                        Box(
-                            Modifier
-                                .width(10.dp)
-                                .fillMaxHeight()
-                                .background(task.priority.tabColor())
-                        )
-                        Column(
-                            Modifier
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(StripHeight)
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                    .clip(StripShape),
+                color = if (completed) BaySurfaceFaded else BaySurface,
+                shadowElevation = if (completed) 0.dp else 3.dp
+            ) {
+                Box(Modifier.fillMaxSize()) {
+                Column(Modifier.fillMaxSize()) {
+                    Row(Modifier.weight(1f)) {
+                        // Tab + content together form the draggable/tappable body: the whole strip,
+                        // not just a thin handle, responds to long-press-drag for reordering.
+                        Row(
+                            modifier = Modifier
                                 .weight(1f)
-                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                .fillMaxHeight()
+                                .clickable(onClick = onClick)
+                                .then(dragModifier ?: Modifier)
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = task.title.uppercase(),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = Paper,
-                                    textDecoration = if (completed) TextDecoration.LineThrough else null,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = "FILED ${formatTimestampShort(task.createdAt)}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Paper.copy(alpha = 0.45f),
-                                    maxLines = 1
-                                )
-                                if (task.repeatIntervalDays != null) {
-                                    Spacer(Modifier.width(8.dp))
-                                    Icon(
-                                        Icons.Default.Repeat,
-                                        contentDescription = "Repeats every ${task.repeatIntervalDays} days",
-                                        tint = Paper.copy(alpha = 0.45f),
-                                        modifier = Modifier.height(14.dp)
-                                    )
-                                }
-                                Spacer(Modifier.width(8.dp))
-                                Text(
-                                    text = task.priority.label,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = task.priority.tabColor(),
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                            Spacer(Modifier.height(4.dp))
-                            HorizontalDivider(color = Paper.copy(alpha = 0.15f))
-                            Spacer(Modifier.height(4.dp))
-                            Row(
-                                Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                            Box(
+                                Modifier
+                                    .width(10.dp)
+                                    .fillMaxHeight()
+                                    .background(task.priority.tabColor())
+                            )
+                            Column(
+                                Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (task.tags.isNotEmpty()) {
-                                        StripField(label = "TAGS", value = task.tags.joinToString(", ") { it.uppercase() })
-                                        Spacer(Modifier.width(14.dp))
-                                    }
-                                    if (dueAt != null) {
-                                        StripField(label = "DUE", value = formatEtaShort(dueAt), valueColor = dueColor)
-                                    }
-                                    if (isOverdue) {
-                                        Spacer(Modifier.width(6.dp))
-                                        Icon(
-                                            Icons.Default.Alarm,
-                                            contentDescription = "Overdue",
-                                            tint = PriorityUrgent.copy(alpha = pulseAlpha),
-                                            modifier = Modifier
-                                                .height(18.dp)
-                                                .scale(0.85f + pulseAlpha * 0.3f)
-                                        )
-                                    }
-                                }
-                                if (task.images.isNotEmpty() || task.voiceNotes.isNotEmpty() || task.documents.isNotEmpty() || task.videos.isNotEmpty() || task.contacts.isNotEmpty()) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        if (task.images.isNotEmpty()) {
-                                            Icon(
-                                                Icons.Default.Image,
-                                                contentDescription = "${task.images.size} photos attached",
-                                                tint = Paper.copy(alpha = 0.45f),
-                                                modifier = Modifier.height(14.dp)
-                                            )
-                                            Text(
-                                                text = "${task.images.size}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Paper.copy(alpha = 0.45f)
-                                            )
-                                            Spacer(Modifier.width(8.dp))
-                                        }
-                                        if (task.documents.isNotEmpty()) {
-                                            Icon(
-                                                Icons.Default.Description,
-                                                contentDescription = "${task.documents.size} documents attached",
-                                                tint = Paper.copy(alpha = 0.45f),
-                                                modifier = Modifier.height(14.dp)
-                                            )
-                                            Text(
-                                                text = "${task.documents.size}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Paper.copy(alpha = 0.45f)
-                                            )
-                                            Spacer(Modifier.width(8.dp))
-                                        }
-                                        if (task.videos.isNotEmpty()) {
-                                            Icon(
-                                                Icons.Default.VideoLibrary,
-                                                contentDescription = "${task.videos.size} videos attached",
-                                                tint = Paper.copy(alpha = 0.45f),
-                                                modifier = Modifier.height(14.dp)
-                                            )
-                                            Text(
-                                                text = "${task.videos.size}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Paper.copy(alpha = 0.45f)
-                                            )
-                                            Spacer(Modifier.width(8.dp))
-                                        }
-                                        if (task.contacts.isNotEmpty()) {
-                                            Icon(
-                                                Icons.Default.Person,
-                                                contentDescription = "${task.contacts.size} contacts attached",
-                                                tint = Paper.copy(alpha = 0.45f),
-                                                modifier = Modifier.height(14.dp)
-                                            )
-                                            Text(
-                                                text = "${task.contacts.size}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = Paper.copy(alpha = 0.45f)
-                                            )
-                                            Spacer(Modifier.width(8.dp))
-                                        }
-                                        if (task.voiceNotes.isNotEmpty()) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.clickable {
-                                                    if (isPlayingAll) {
-                                                        player.stop()
-                                                        isPlayingAll = false
-                                                    } else {
-                                                        showPlayConfirm = true
-                                                    }
-                                                }
-                                            ) {
-                                                Icon(
-                                                    imageVector = if (isPlayingAll) Icons.Default.Stop else Icons.Default.Mic,
-                                                    contentDescription = if (isPlayingAll) {
-                                                        "Stop playing voice notes"
-                                                    } else {
-                                                        "Play ${task.voiceNotes.size} voice notes"
-                                                    },
-                                                    tint = if (isPlayingAll) AmberTab else Paper.copy(alpha = 0.45f),
-                                                    modifier = Modifier.height(14.dp)
-                                                )
-                                                Text(
-                                                    text = if (isPlayingAll) "${playIndex + 1}/${task.voiceNotes.size}" else "${task.voiceNotes.size}",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = if (isPlayingAll) AmberTab else Paper.copy(alpha = 0.45f)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            if (isBlocked || (task.waitingOnName.isNotBlank() && !completed)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (isBlocked) {
-                                        Icon(
-                                            Icons.Default.Block,
-                                            contentDescription = null,
-                                            tint = PriorityUrgent,
-                                            modifier = Modifier.height(13.dp)
-                                        )
-                                        Spacer(Modifier.width(3.dp))
-                                        Text(
-                                            text = "BLOCKED BY ${blockerTask?.title?.uppercase()}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = PriorityUrgent,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                    if (isBlocked && task.waitingOnName.isNotBlank() && !completed) {
-                                        Spacer(Modifier.width(10.dp))
-                                    }
-                                    if (task.waitingOnName.isNotBlank() && !completed) {
-                                        Icon(
-                                            Icons.Default.HourglassTop,
-                                            contentDescription = null,
-                                            tint = AmberTab,
-                                            modifier = Modifier.height(13.dp)
-                                        )
-                                        Spacer(Modifier.width(3.dp))
-                                        Text(
-                                            text = "WAITING ON ${task.waitingOnName.uppercase()}",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = Paper.copy(alpha = 0.6f),
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis
-                                        )
-                                    }
-                                }
-                            }
-                            if (task.notes.isNotBlank()) {
-                                val speakingTaskId by TextToSpeechHelper.speakingTaskId
-                                val isReadingThis = speakingTaskId == task.id
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = if (isReadingThis) Icons.Default.Stop else Icons.AutoMirrored.Filled.VolumeUp,
-                                        contentDescription = if (isReadingThis) "Stop reading notes" else "Read notes aloud",
-                                        tint = if (isReadingThis) AmberTab else Paper.copy(alpha = 0.5f),
-                                        modifier = Modifier
-                                            .height(14.dp)
-                                            .clickable {
-                                                if (isReadingThis) {
-                                                    TextToSpeechHelper.stop()
-                                                } else {
-                                                    TextToSpeechHelper.speak(context, task.id, task.notes)
-                                                }
-                                            }
-                                    )
-                                    Spacer(Modifier.width(4.dp))
                                     Text(
-                                        text = task.notes,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = Paper.copy(alpha = 0.6f),
+                                        text = task.title.uppercase(),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = Paper,
+                                        textDecoration = if (completed) TextDecoration.LineThrough else null,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.weight(1f)
                                     )
+                                    Spacer(Modifier.width(8.dp))
+                                    StripInlineField(
+                                        label = "FILED",
+                                        value = formatAgeCompact(task.createdAt),
+                                        valueColor = Paper.copy(alpha = 0.6f)
+                                    )
+                                    if (task.repeatIntervalDays != null) {
+                                        Spacer(Modifier.width(8.dp))
+                                        Icon(
+                                            Icons.Default.Repeat,
+                                            contentDescription = "Repeats every ${task.repeatIntervalDays} days",
+                                            tint = Paper.copy(alpha = 0.45f),
+                                            modifier = Modifier.height(14.dp)
+                                        )
+                                    }
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = task.priority.label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = task.priority.tabColor(),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                HorizontalDivider(color = Paper.copy(alpha = 0.15f))
+                                Spacer(Modifier.height(4.dp))
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Dates lead, at a fixed left edge, so reading a column of strips
+                                    // is reading one column rather than hunting for where the field
+                                    // landed on each. Tags used to come first and are the only field
+                                    // here with no upper bound on its width — which is what pushed the
+                                    // due date off the strip once a task carried a few of them. They
+                                    // now follow the dates and are the one thing that gives way.
+                                    if (dueAt != null) {
+                                        DueChip(
+                                            text = formatDueCompact(dueAt),
+                                            color = dueColor,
+                                            isLate = isOverdue,
+                                            pulseAlpha = pulseAlpha
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                    }
+                                    Box(Modifier.weight(1f)) {
+                                        if (task.tags.isNotEmpty()) {
+                                            Text(
+                                                text = task.tags.joinToString(" · ") { it.uppercase() },
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = Paper.copy(alpha = 0.75f),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                    if (task.images.isNotEmpty() || task.voiceNotes.isNotEmpty() || task.documents.isNotEmpty() || task.videos.isNotEmpty() || task.contacts.isNotEmpty()) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (task.images.isNotEmpty()) {
+                                                Icon(
+                                                    Icons.Default.Image,
+                                                    contentDescription = "${task.images.size} photos attached",
+                                                    tint = Paper.copy(alpha = 0.45f),
+                                                    modifier = Modifier.height(14.dp)
+                                                )
+                                                Text(
+                                                    text = "${task.images.size}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Paper.copy(alpha = 0.45f)
+                                                )
+                                                Spacer(Modifier.width(8.dp))
+                                            }
+                                            if (task.documents.isNotEmpty()) {
+                                                Icon(
+                                                    Icons.Default.Description,
+                                                    contentDescription = "${task.documents.size} documents attached",
+                                                    tint = Paper.copy(alpha = 0.45f),
+                                                    modifier = Modifier.height(14.dp)
+                                                )
+                                                Text(
+                                                    text = "${task.documents.size}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Paper.copy(alpha = 0.45f)
+                                                )
+                                                Spacer(Modifier.width(8.dp))
+                                            }
+                                            if (task.videos.isNotEmpty()) {
+                                                Icon(
+                                                    Icons.Default.VideoLibrary,
+                                                    contentDescription = "${task.videos.size} videos attached",
+                                                    tint = Paper.copy(alpha = 0.45f),
+                                                    modifier = Modifier.height(14.dp)
+                                                )
+                                                Text(
+                                                    text = "${task.videos.size}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Paper.copy(alpha = 0.45f)
+                                                )
+                                                Spacer(Modifier.width(8.dp))
+                                            }
+                                            if (task.contacts.isNotEmpty()) {
+                                                Icon(
+                                                    Icons.Default.Person,
+                                                    contentDescription = "${task.contacts.size} contacts attached",
+                                                    tint = Paper.copy(alpha = 0.45f),
+                                                    modifier = Modifier.height(14.dp)
+                                                )
+                                                Text(
+                                                    text = "${task.contacts.size}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Paper.copy(alpha = 0.45f)
+                                                )
+                                                Spacer(Modifier.width(8.dp))
+                                            }
+                                            if (task.voiceNotes.isNotEmpty()) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.clickable {
+                                                        if (isPlayingAll) {
+                                                            player.stop()
+                                                            isPlayingAll = false
+                                                        } else {
+                                                            showPlayConfirm = true
+                                                        }
+                                                    }
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (isPlayingAll) Icons.Default.Stop else Icons.Default.Mic,
+                                                        contentDescription = if (isPlayingAll) {
+                                                            "Stop playing voice notes"
+                                                        } else {
+                                                            "Play ${task.voiceNotes.size} voice notes"
+                                                        },
+                                                        tint = if (isPlayingAll) AmberTab else Paper.copy(alpha = 0.45f),
+                                                        modifier = Modifier.height(14.dp)
+                                                    )
+                                                    Text(
+                                                        text = if (isPlayingAll) "${playIndex + 1}/${task.voiceNotes.size}" else "${task.voiceNotes.size}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = if (isPlayingAll) AmberTab else Paper.copy(alpha = 0.45f)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if (isBlocked || (task.waitingOnName.isNotBlank() && !completed)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (isBlocked) {
+                                            Icon(
+                                                Icons.Default.Block,
+                                                contentDescription = null,
+                                                tint = PriorityUrgent,
+                                                modifier = Modifier.height(13.dp)
+                                            )
+                                            Spacer(Modifier.width(3.dp))
+                                            Text(
+                                                text = "BLOCKED BY ${blockerTask?.title?.uppercase()}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = PriorityUrgent,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        if (isBlocked && task.waitingOnName.isNotBlank() && !completed) {
+                                            Spacer(Modifier.width(10.dp))
+                                        }
+                                        if (task.waitingOnName.isNotBlank() && !completed) {
+                                            Icon(
+                                                Icons.Default.HourglassTop,
+                                                contentDescription = null,
+                                                tint = AmberTab,
+                                                modifier = Modifier.height(13.dp)
+                                            )
+                                            Spacer(Modifier.width(3.dp))
+                                            Text(
+                                                text = "WAITING ON ${task.waitingOnName.uppercase()}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Paper.copy(alpha = 0.6f),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+                                if (task.notes.isNotBlank()) {
+                                    val speakingTaskId by TextToSpeechHelper.speakingTaskId
+                                    val isReadingThis = speakingTaskId == task.id
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = if (isReadingThis) Icons.Default.Stop else Icons.AutoMirrored.Filled.VolumeUp,
+                                            contentDescription = if (isReadingThis) "Stop reading notes" else "Read notes aloud",
+                                            tint = if (isReadingThis) AmberTab else Paper.copy(alpha = 0.5f),
+                                            modifier = Modifier
+                                                .height(14.dp)
+                                                .clickable {
+                                                    if (isReadingThis) {
+                                                        TextToSpeechHelper.stop()
+                                                    } else {
+                                                        TextToSpeechHelper.speak(context, task.id, task.notes)
+                                                    }
+                                                }
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            text = task.notes,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = Paper.copy(alpha = 0.6f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
                                 }
                             }
                         }
-                    }
-                    if (onQuickLog != null) {
-                        IconButton(onClick = { showQuickLogDialog = true }) {
-                            Icon(
-                                Icons.Default.NoteAdd,
-                                contentDescription = "Log an action for \"${task.title}\"",
-                                tint = Paper.copy(alpha = 0.5f)
-                            )
+                        if (onQuickLog != null) {
+                            IconButton(onClick = { showQuickLogDialog = true }) {
+                                Icon(
+                                    Icons.Default.NoteAdd,
+                                    contentDescription = "Log an action for \"${task.title}\"",
+                                    tint = Paper.copy(alpha = 0.5f)
+                                )
+                            }
                         }
+                        trailingActions()
                     }
-                    trailingActions()
+                    ProgressTrack(progress = task.progress, color = task.priority.tabColor())
                 }
-                ProgressTrack(progress = task.progress, color = task.priority.tabColor())
+                if (task.progress > 0) {
+                    Text(
+                        text = "${task.progress}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = task.priority.tabColor(),
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 6.dp, bottom = 7.dp)
+                    )
+                }
+                }
             }
-            if (task.progress > 0) {
-                Text(
-                    text = "${task.progress}%",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = task.priority.tabColor(),
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(end = 6.dp, bottom = 7.dp)
-                )
-            }
+        }
+    } else {
+        SwipeRightToComplete(
+            modifier = modifier,
+            enabled = onToggleDone != null,
+            completed = completed,
+            onComplete = { requestToggleDone() }
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(StripHeight)
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                    .clip(StripShape),
+                color = if (completed) BaySurfaceFaded else BaySurface,
+                shadowElevation = if (completed) 0.dp else 3.dp
+            ) {
+                Box(Modifier.fillMaxSize()) {
+                Column(Modifier.fillMaxSize()) {
+                    Row(Modifier.weight(1f)) {
+                        // Tab + content together form the draggable/tappable body: the whole strip,
+                        // not just a thin handle, responds to long-press-drag for reordering.
+                        Row(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .clickable(onClick = onClick)
+                                .then(dragModifier ?: Modifier)
+                        ) {
+                            Box(
+                                Modifier
+                                    .width(10.dp)
+                                    .fillMaxHeight()
+                                    .background(task.priority.tabColor())
+                            )
+                            Column(
+                                Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        text = task.title.uppercase(),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = Paper,
+                                        textDecoration = if (completed) TextDecoration.LineThrough else null,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                    Spacer(Modifier.width(8.dp))
+                                    StripInlineField(
+                                        label = "FILED",
+                                        value = formatAgeCompact(task.createdAt),
+                                        valueColor = Paper.copy(alpha = 0.6f)
+                                    )
+                                    if (task.repeatIntervalDays != null) {
+                                        Spacer(Modifier.width(8.dp))
+                                        Icon(
+                                            Icons.Default.Repeat,
+                                            contentDescription = "Repeats every ${task.repeatIntervalDays} days",
+                                            tint = Paper.copy(alpha = 0.45f),
+                                            modifier = Modifier.height(14.dp)
+                                        )
+                                    }
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(
+                                        text = task.priority.label,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = task.priority.tabColor(),
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                Spacer(Modifier.height(4.dp))
+                                HorizontalDivider(color = Paper.copy(alpha = 0.15f))
+                                Spacer(Modifier.height(4.dp))
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Dates lead, at a fixed left edge, so reading a column of strips
+                                    // is reading one column rather than hunting for where the field
+                                    // landed on each. Tags used to come first and are the only field
+                                    // here with no upper bound on its width — which is what pushed the
+                                    // due date off the strip once a task carried a few of them. They
+                                    // now follow the dates and are the one thing that gives way.
+                                    if (dueAt != null) {
+                                        DueChip(
+                                            text = formatDueCompact(dueAt),
+                                            color = dueColor,
+                                            isLate = isOverdue,
+                                            pulseAlpha = pulseAlpha
+                                        )
+                                        Spacer(Modifier.width(8.dp))
+                                    }
+                                    Box(Modifier.weight(1f)) {
+                                        if (task.tags.isNotEmpty()) {
+                                            Text(
+                                                text = task.tags.joinToString(" · ") { it.uppercase() },
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = Paper.copy(alpha = 0.75f),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                    if (task.images.isNotEmpty() || task.voiceNotes.isNotEmpty() || task.documents.isNotEmpty() || task.videos.isNotEmpty() || task.contacts.isNotEmpty()) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            if (task.images.isNotEmpty()) {
+                                                Icon(
+                                                    Icons.Default.Image,
+                                                    contentDescription = "${task.images.size} photos attached",
+                                                    tint = Paper.copy(alpha = 0.45f),
+                                                    modifier = Modifier.height(14.dp)
+                                                )
+                                                Text(
+                                                    text = "${task.images.size}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Paper.copy(alpha = 0.45f)
+                                                )
+                                                Spacer(Modifier.width(8.dp))
+                                            }
+                                            if (task.documents.isNotEmpty()) {
+                                                Icon(
+                                                    Icons.Default.Description,
+                                                    contentDescription = "${task.documents.size} documents attached",
+                                                    tint = Paper.copy(alpha = 0.45f),
+                                                    modifier = Modifier.height(14.dp)
+                                                )
+                                                Text(
+                                                    text = "${task.documents.size}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Paper.copy(alpha = 0.45f)
+                                                )
+                                                Spacer(Modifier.width(8.dp))
+                                            }
+                                            if (task.videos.isNotEmpty()) {
+                                                Icon(
+                                                    Icons.Default.VideoLibrary,
+                                                    contentDescription = "${task.videos.size} videos attached",
+                                                    tint = Paper.copy(alpha = 0.45f),
+                                                    modifier = Modifier.height(14.dp)
+                                                )
+                                                Text(
+                                                    text = "${task.videos.size}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Paper.copy(alpha = 0.45f)
+                                                )
+                                                Spacer(Modifier.width(8.dp))
+                                            }
+                                            if (task.contacts.isNotEmpty()) {
+                                                Icon(
+                                                    Icons.Default.Person,
+                                                    contentDescription = "${task.contacts.size} contacts attached",
+                                                    tint = Paper.copy(alpha = 0.45f),
+                                                    modifier = Modifier.height(14.dp)
+                                                )
+                                                Text(
+                                                    text = "${task.contacts.size}",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = Paper.copy(alpha = 0.45f)
+                                                )
+                                                Spacer(Modifier.width(8.dp))
+                                            }
+                                            if (task.voiceNotes.isNotEmpty()) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    modifier = Modifier.clickable {
+                                                        if (isPlayingAll) {
+                                                            player.stop()
+                                                            isPlayingAll = false
+                                                        } else {
+                                                            showPlayConfirm = true
+                                                        }
+                                                    }
+                                                ) {
+                                                    Icon(
+                                                        imageVector = if (isPlayingAll) Icons.Default.Stop else Icons.Default.Mic,
+                                                        contentDescription = if (isPlayingAll) {
+                                                            "Stop playing voice notes"
+                                                        } else {
+                                                            "Play ${task.voiceNotes.size} voice notes"
+                                                        },
+                                                        tint = if (isPlayingAll) AmberTab else Paper.copy(alpha = 0.45f),
+                                                        modifier = Modifier.height(14.dp)
+                                                    )
+                                                    Text(
+                                                        text = if (isPlayingAll) "${playIndex + 1}/${task.voiceNotes.size}" else "${task.voiceNotes.size}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = if (isPlayingAll) AmberTab else Paper.copy(alpha = 0.45f)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if (isBlocked || (task.waitingOnName.isNotBlank() && !completed)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        if (isBlocked) {
+                                            Icon(
+                                                Icons.Default.Block,
+                                                contentDescription = null,
+                                                tint = PriorityUrgent,
+                                                modifier = Modifier.height(13.dp)
+                                            )
+                                            Spacer(Modifier.width(3.dp))
+                                            Text(
+                                                text = "BLOCKED BY ${blockerTask?.title?.uppercase()}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = PriorityUrgent,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        if (isBlocked && task.waitingOnName.isNotBlank() && !completed) {
+                                            Spacer(Modifier.width(10.dp))
+                                        }
+                                        if (task.waitingOnName.isNotBlank() && !completed) {
+                                            Icon(
+                                                Icons.Default.HourglassTop,
+                                                contentDescription = null,
+                                                tint = AmberTab,
+                                                modifier = Modifier.height(13.dp)
+                                            )
+                                            Spacer(Modifier.width(3.dp))
+                                            Text(
+                                                text = "WAITING ON ${task.waitingOnName.uppercase()}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = Paper.copy(alpha = 0.6f),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+                                if (task.notes.isNotBlank()) {
+                                    val speakingTaskId by TextToSpeechHelper.speakingTaskId
+                                    val isReadingThis = speakingTaskId == task.id
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = if (isReadingThis) Icons.Default.Stop else Icons.AutoMirrored.Filled.VolumeUp,
+                                            contentDescription = if (isReadingThis) "Stop reading notes" else "Read notes aloud",
+                                            tint = if (isReadingThis) AmberTab else Paper.copy(alpha = 0.5f),
+                                            modifier = Modifier
+                                                .height(14.dp)
+                                                .clickable {
+                                                    if (isReadingThis) {
+                                                        TextToSpeechHelper.stop()
+                                                    } else {
+                                                        TextToSpeechHelper.speak(context, task.id, task.notes)
+                                                    }
+                                                }
+                                        )
+                                        Spacer(Modifier.width(4.dp))
+                                        Text(
+                                            text = task.notes,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = Paper.copy(alpha = 0.6f),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                        if (onQuickLog != null) {
+                            IconButton(onClick = { showQuickLogDialog = true }) {
+                                Icon(
+                                    Icons.Default.NoteAdd,
+                                    contentDescription = "Log an action for \"${task.title}\"",
+                                    tint = Paper.copy(alpha = 0.5f)
+                                )
+                            }
+                        }
+                        trailingActions()
+                    }
+                    ProgressTrack(progress = task.progress, color = task.priority.tabColor())
+                }
+                if (task.progress > 0) {
+                    Text(
+                        text = "${task.progress}%",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = task.priority.tabColor(),
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 6.dp, bottom = 7.dp)
+                    )
+                }
+                }
             }
         }
     }
@@ -588,10 +909,152 @@ private fun ProgressTrack(progress: Int, color: Color) {
     }
 }
 
+
+/** Swipe right to mark a strip done, leaving every other direction to whoever is underneath.
+ *
+ * The board can't use SwipeToDismissBox. That component installs a horizontal draggable and
+ * consumes drags in both directions even when one of them is disabled, so nesting it inside the
+ * strips/reminders pager starves the pager completely — measured, not assumed: with the component
+ * present and both of its directions turned off the page still would not move, and with it removed
+ * the same swipe moved the page immediately.
+ *
+ * So the gesture is written out here, and the whole point of it is what it declines to take. It
+ * claims the pointer only once the finger has travelled decisively to the right; a leftward drag
+ * is never consumed, which is what lets the pager see it and move to Reminders. Deleting is not
+ * here at all — on the board that lives in the strip's own editor, which asks before it acts.
+ */
 @Composable
-private fun StripField(label: String, value: String, valueColor: Color = Paper) {
-    Column {
-        Text(text = label, style = MaterialTheme.typography.labelSmall, color = Paper.copy(alpha = 0.5f))
-        Text(text = value, style = MaterialTheme.typography.bodyMedium, color = valueColor, fontWeight = FontWeight.SemiBold)
+private fun SwipeRightToComplete(
+    modifier: Modifier,
+    enabled: Boolean,
+    completed: Boolean,
+    onComplete: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val threshold = with(LocalDensity.current) { 96.dp.toPx() }
+    var offsetX by remember { mutableFloatStateOf(0f) }
+
+    Box(modifier) {
+        // Only drawn once the row has actually moved, so a resting strip has nothing behind it.
+        if (offsetX > 1f) {
+            Box(
+                Modifier
+                    .matchParentSize()
+                    .padding(horizontal = 10.dp, vertical = 4.dp)
+                    .clip(StripShape)
+                    .background(PriorityNormal),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                Icon(
+                    imageVector = if (completed) Icons.Default.Replay else Icons.Default.Check,
+                    contentDescription = if (completed) "Mark active" else "Mark complete",
+                    tint = Paper,
+                    modifier = Modifier.padding(horizontal = 24.dp)
+                )
+            }
+        }
+        Box(
+            Modifier
+                .offset { IntOffset(offsetX.roundToInt(), 0) }
+                .pointerInput(enabled) {
+                    if (!enabled) return@pointerInput
+                    val slop = viewConfiguration.touchSlop
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        var travel = 0f
+                        var claimed = false
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) break
+                            val moved = change.positionChange()
+                            travel += moved.x
+                            if (!claimed) {
+                                // Left is the pager's, and this gesture gives it up for good
+                                // rather than waiting to see if the finger comes back.
+                                if (travel <= -slop) break
+                                if (travel >= slop) claimed = true
+                            }
+                            if (claimed) {
+                                offsetX = (offsetX + moved.x).coerceIn(0f, size.width.toFloat())
+                                change.consume()
+                            }
+                        }
+                        if (claimed) {
+                            val past = offsetX >= threshold
+                            // Snaps home either way: the row leaves this list on its own once the
+                            // data changes, so holding it open would only show a stale position.
+                            offsetX = 0f
+                            if (past) onComplete()
+                        }
+                    }
+                }
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun StripInlineField(label: String, value: String, valueColor: Color = Paper) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(text = label, style = MaterialTheme.typography.labelSmall, color = Paper.copy(alpha = 0.4f))
+        Spacer(Modifier.width(4.dp))
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = valueColor,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1
+        )
+    }
+}
+
+/** The due date, in the one place on the strip the eye is trained to look.
+ *
+ * A tinted box rather than another label/value pair: due is the only field on the row whose colour
+ * carries meaning — soon and late are both red, further out is amber — and a filled chip is what
+ * makes that colour legible at this size against the strip's own dark surface.
+ *
+ * The word DUE is dropped once the strip is late, because "DUE 3D LATE" reads worse than "3D LATE"
+ * and the alarm has already said what kind of field this is.
+ */
+@Composable
+private fun DueChip(text: String, color: Color, isLate: Boolean, pulseAlpha: Float) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(3.dp))
+            // Late strips breathe through the chip's own fill. The old pulsing alarm sat loose in
+            // the row next to a date that never said how late anything was; the number is the
+            // information, and the pulse is now just what carries the eye to it.
+            .background(color.copy(alpha = if (isLate) 0.12f + pulseAlpha * 0.18f else 0.12f))
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (isLate) {
+            Icon(
+                Icons.Default.Alarm,
+                contentDescription = "Overdue",
+                tint = color.copy(alpha = 0.55f + pulseAlpha * 0.45f),
+                modifier = Modifier
+                    .height(13.dp)
+                    .scale(0.9f + pulseAlpha * 0.2f)
+            )
+            Spacer(Modifier.width(4.dp))
+        } else {
+            Text(
+                text = "DUE",
+                style = MaterialTheme.typography.labelSmall,
+                color = color.copy(alpha = 0.65f)
+            )
+            Spacer(Modifier.width(4.dp))
+        }
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = color,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1
+        )
     }
 }

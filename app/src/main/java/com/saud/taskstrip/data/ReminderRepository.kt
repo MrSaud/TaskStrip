@@ -51,12 +51,16 @@ class ReminderRepository(private val dao: ReminderDao) {
             repeatUnit = repeatUnit,
             tag = tag,
             tagEmoji = tagEmoji,
-            isDone = isDone
+            isDone = isDone,
+            // Stamped here for the same reason TaskRepository.updateTask stamps: a write that
+            // forgets it doesn't fail, it just never reaches the other device.
+            updatedAt = System.currentTimeMillis()
         )
         dao.update(updated)
         return updated
     }
 
+    /** A real delete again — see TaskRepository.deleteTask. */
     suspend fun delete(reminder: ReminderEntity) = dao.delete(reminder)
 
     suspend fun getById(id: Long): ReminderEntity? = dao.getById(id)

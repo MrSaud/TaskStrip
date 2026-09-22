@@ -1,0 +1,73 @@
+name: Android app
+
+# The Android app had no CI at all until the sync notes landed, which meant every Kotlin change in
+# this repo was shipped uncompiled — the Mac half was checked on every push and the phone half was
+# checked by installing it and finding out. This at least compiles it.
+on:
+  push:
+    branches: ["claude/**"]
+    paths:
+      - "app/**"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - "gradle/**"
+      - ".github/workflows/android.yml"
+  pull_request:
+    paths:
+      - "app/**"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    # Job level, not step level: a step's own `env` is not in scope for that step's own `if`, so
+    # guarding on it there would evaluate an empty string every time and skip the upload always.
+    env:
+      DRIVE_CLIENT_ID: ${{ secrets.DRIVE_CLIENT_ID }}
+      DRIVE_REFRESH_TOKEN: ${{ secrets.DRIVE_REFRESH_TOKEN }}
+      # Optional. Set it to a folder id — including one inside a Shared Drive — to put builds
+      # there instead of in TaskStripBackups. With Drive for desktop mirroring that folder, the
+      # APK lands in Finder on its own.
+      DRIVE_FOLDER_ID: ${{ secrets.DRIVE_FOLDER_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # assembleDebug rather than `build`: it compiles every source file and runs the Room
+      # annotation processor, which is where a bad migration or a missing DAO shows up.
+      - name: Build
+        run: ./gradlew --no-daemon assembleDebug
+
+      # There is a unit-test source set now, and what it holds is the half of the sync contract
+      # this side owns: the merge rules are written once in Kotlin and once in Swift, and two
+      # devices that answer a merge differently disagree with each other forever. The Mac runs its
+      # copy of these same cases on every push; this runs ours.
+      - name: Test
+        run: ./gradlew --no-daemon testDebugUnitTest
+
+      - name: Upload the APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: TaskStrip-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: warn
+
+      # Puts the build in the same Drive folder the apps already use, so the phone can install it
+      # without going through GitHub. Skipped entirely when the secrets aren't set, so a fork or a
+      # contributor's push doesn't fail on credentials it was never going to have.
+      #
+      # The client is the app's own OAuth client, which is a desktop/installed client and so has
+      # no secret — a refresh token alone is enough to mint an access token. The drive.file scope
+      # limits what this can touch to files this project's apps created, which is why it can write
+      # the folder at all and why it cannot read the rest of the Drive.
+      - name: Put the APK in Google Drive
+        if: ${{ env.DRIVE_CLIENT_ID != '' && env.DRIVE_REFRESH_TOKEN != '' }}
+        run: python3 .github/scripts/upload_to_drive.py app/build/outputs/apk/debug/app-debug.apk

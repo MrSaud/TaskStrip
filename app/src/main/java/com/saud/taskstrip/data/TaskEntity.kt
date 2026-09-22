@@ -1,11 +1,29 @@
 package com.saud.taskstrip.data
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
+import java.util.UUID
 
-@Entity(tableName = "tasks")
+@Entity(
+    tableName = "tasks",
+    indices = [Index(value = ["syncId"], unique = true)]
+)
 data class TaskEntity(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** The id both devices agree on.
+     *
+     * The primary key above is this device's own and means nothing on the other one — which is
+     * exactly why backup/restore can only overwrite: with no shared name for a row there is no
+     * way to tell "the same strip, edited" from "a different strip". Minted once, never
+     * regenerated, and the same shape as SyncNoteEntity's, which has worked this way already. */
+    val syncId: String = UUID.randomUUID().toString(),
+    /** Last edit, as milliseconds. The merge's first and strongest question: newer wins. */
+    val updatedAt: Long = System.currentTimeMillis(),
+    /** Kept as a tombstone so a delete can reach the other device. Dropping the row instead would
+     * make a delete indistinguishable from "they haven't heard of this yet", and it would come
+     * back from the dead on the next sync. */
+    val isDeleted: Boolean = false,
     val title: String,
     // Superseded by `tags` — kept only so old rows/backups still map onto the table; no longer
     // read or written by the UI.

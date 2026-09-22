@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.device.audio-input</key>
+	<true/>
+	<!-- The keychain group the iPhone and iPad apps use too. Credential passwords live in it, in
+	     iCloud Keychain, so they reach every device. It belongs to the team, not to a bundle id,
+	     which is why the Mac can keep com.saud.taskstrip.mac and still share it. -->
+	<!-- Phase 5: the board syncs through CloudKit (CKSyncEngine), and iCloud wakes the app with a
+	     silent push when another device changed something. SwiftData's own mirroring stays off
+	     (BoardSchema.configuration), so this entitlement only serves the sync. -->
+	<key>com.apple.developer.icloud-container-identifiers</key>
+	<array>
+		<string>iCloud.com.saud.taskstrip</string>
+	</array>
+	<key>com.apple.developer.icloud-services</key>
+	<array>
+		<string>CloudKit</string>
+	</array>
+	<key>com.apple.developer.aps-environment</key>
+	<string>development</string>
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.saud.taskstrip.shared</string>
+	</array>
+</dict>
+</plist>

@@ -7,12 +7,13 @@ import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 
+/** The isDeleted filter outlives the board sync that needed it — see TaskDao. */
 @Dao
 interface StorageItemDao {
-    @Query("SELECT * FROM storage_items ORDER BY createdAt DESC")
+    @Query("SELECT * FROM storage_items WHERE isDeleted = 0 ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<StorageItemEntity>>
 
-    @Query("SELECT * FROM storage_items")
+    @Query("SELECT * FROM storage_items WHERE isDeleted = 0")
     suspend fun getAllOnce(): List<StorageItemEntity>
 
     @Insert

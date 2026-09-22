@@ -7,6 +7,7 @@ import android.speech.RecognizerIntent
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -23,16 +24,20 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudUpload
@@ -48,6 +53,7 @@ import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.NoteAdd
 import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.SwapVert
@@ -63,6 +69,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -76,6 +84,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -92,9 +101,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.saud.taskstrip.TaskViewModel
+import com.saud.taskstrip.ReminderViewModel
 import com.saud.taskstrip.data.Priority
 import com.saud.taskstrip.data.TaskActionLogEntry
 import com.saud.taskstrip.data.TaskEntity
+import com.saud.taskstrip.backup.BackupViewModel
 import com.saud.taskstrip.notifications.DigestPrefs
 import com.saud.taskstrip.notifications.DigestScheduler
 import com.saud.taskstrip.notifications.WeeklyDigestPrefs
@@ -106,24 +117,31 @@ import com.saud.taskstrip.ui.components.DateRangeFilterDialog
 import com.saud.taskstrip.ui.components.FlightStripRow
 import com.saud.taskstrip.ui.components.StripHeight
 import com.saud.taskstrip.ui.components.formatBoardHeaderClock
+import com.saud.taskstrip.ui.components.formatGregorianHeaderLine
+import com.saud.taskstrip.ui.components.formatHijriHeaderLine
 import com.saud.taskstrip.ui.components.isDueTodayOrOverdue
 import com.saud.taskstrip.ui.theme.AmberTab
 import com.saud.taskstrip.ui.theme.BayBackground
 import com.saud.taskstrip.ui.theme.BaySurface
 import com.saud.taskstrip.ui.theme.InkColor
 import com.saud.taskstrip.ui.theme.Paper
+import com.saud.taskstrip.ui.theme.PriorityUrgent
 import com.saud.taskstrip.ui.theme.tabColor
 import com.saud.taskstrip.voice.VoiceCommandParser
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 private enum class ProgressSort { ASCENDING, DESCENDING }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreen(
     viewModel: TaskViewModel,
+    reminderViewModel: ReminderViewModel,
+    backupViewModel: BackupViewModel,
     onAddClick: () -> Unit,
+    onReminderEditClick: (Long) -> Unit,
     onTaskClick: (Long) -> Unit,
     onArchiveClick: () -> Unit,
     onSketchesClick: () -> Unit,
@@ -135,7 +153,8 @@ fun HomeScreen(
     onRemindersClick: () -> Unit,
     onNewReminderClick: () -> Unit,
     onNewReminderByVoice: (String) -> Unit,
-    onStorageClick: () -> Unit
+    onStorageClick: () -> Unit,
+    onSyncNotesClick: () -> Unit = {}
 ) {
     val tasks by viewModel.tasks.collectAsStateWithLifecycle()
     val quote by viewModel.quote.collectAsStateWithLifecycle()
@@ -151,6 +170,24 @@ fun HomeScreen(
     var menuExpanded by remember { mutableStateOf(false) }
     var newStripMenuExpanded by remember { mutableStateOf(false) }
     var reminderMenuExpanded by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val pagerState = rememberPagerState(pageCount = { BOARD_PAGE_COUNT })
+    // The reminders half of the toolbar. Search is deliberately not here: one search box serves
+    // whichever page is showing, because "find the thing I typed" is the same question on both.
+    var reminderSortDescending by remember { mutableStateOf(false) }
+    var reminderTagFilter by remember { mutableStateOf<String?>(null) }
+    var reminderSortMenuExpanded by remember { mutableStateOf(false) }
+    val backupState by backupViewModel.uiState.collectAsStateWithLifecycle()
+    // Restore replaces everything on this device, so the menu asks before it does — the screen has
+    // a list and a passphrase field in front of it, and one tap from a menu has neither.
+    var confirmQuickRestore by remember { mutableStateOf(false) }
+    var reminderTagMenuExpanded by remember { mutableStateOf(false) }
+    val reminders by reminderViewModel.reminders.collectAsStateWithLifecycle()
+    val reminderTagEmojis = remember(reminders) {
+        reminders.filter { it.tag.isNotBlank() }.associate { it.tag to it.tagEmoji }
+    }
+    val reminderTags = remember(reminderTagEmojis) { reminderTagEmojis.keys.sorted() }
+
     var searchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var filterMenuExpanded by remember { mutableStateOf(false) }
@@ -270,14 +307,19 @@ fun HomeScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
                     } else {
-                        Column {
-                            Text("THE BOARD", style = MaterialTheme.typography.titleLarge, color = Paper)
-                            Text(
-                                text = formatBoardHeaderClock(nowMillis),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Paper.copy(alpha = 0.6f)
-                            )
-                        }
+                        // The dates used to hang off this title and had a quarter of the screen
+                        // to do it in — see BoardDateStrip, which now carries them at full width.
+                        //
+                        // titleLarge wrapped "THE BOARD" onto two lines: six action icons leave
+                        // the title about 113dp and the name needs about 117dp at that size. The
+                        // name no longer has to be the largest thing on the screen now that the
+                        // date strip below carries its own weight.
+                        Text(
+                            text = "THE BOARD",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = Paper,
+                            maxLines = 1
+                        )
                     }
                 },
                 actions = {
@@ -292,6 +334,10 @@ fun HomeScreen(
                         IconButton(onClick = { searchActive = true }) {
                             Icon(Icons.Default.Search, contentDescription = "Search", tint = Paper)
                         }
+                        // The two pages ask different questions of their contents, so they get
+                        // different controls. Search is above this and shared: "find what I typed"
+                        // means the same thing on both.
+                        if (pagerState.currentPage == PAGE_STRIPS) {
                         IconButton(onClick = { todayOnly = !todayOnly }) {
                             Icon(
                                 Icons.Default.Today,
@@ -384,6 +430,84 @@ fun HomeScreen(
                                 }
                             )
                         }
+                        } else {
+                            IconButton(onClick = { reminderSortMenuExpanded = true }) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.Sort,
+                                    contentDescription = "Sort by time",
+                                    tint = Paper
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = reminderSortMenuExpanded,
+                                onDismissRequest = { reminderSortMenuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("SOONEST FIRST") },
+                                    trailingIcon = {
+                                        if (!reminderSortDescending) {
+                                            Icon(Icons.Default.Check, contentDescription = null, tint = AmberTab)
+                                        }
+                                    },
+                                    onClick = {
+                                        reminderSortDescending = false
+                                        reminderSortMenuExpanded = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("LATEST FIRST") },
+                                    trailingIcon = {
+                                        if (reminderSortDescending) {
+                                            Icon(Icons.Default.Check, contentDescription = null, tint = AmberTab)
+                                        }
+                                    },
+                                    onClick = {
+                                        reminderSortDescending = true
+                                        reminderSortMenuExpanded = false
+                                    }
+                                )
+                            }
+                            if (reminderTags.isNotEmpty()) {
+                                IconButton(onClick = { reminderTagMenuExpanded = true }) {
+                                    Icon(
+                                        Icons.Default.FilterList,
+                                        contentDescription = "Filter by tag",
+                                        tint = if (reminderTagFilter != null) AmberTab else Paper
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = reminderTagMenuExpanded,
+                                    onDismissRequest = { reminderTagMenuExpanded = false }
+                                ) {
+                                    reminderTags.forEach { tag ->
+                                        DropdownMenuItem(
+                                            text = {
+                                                val emoji = reminderTagEmojis[tag].orEmpty()
+                                                Text(if (emoji.isBlank()) tag.uppercase() else "$emoji ${tag.uppercase()}")
+                                            },
+                                            trailingIcon = {
+                                                if (reminderTagFilter == tag) {
+                                                    Icon(Icons.Default.Check, contentDescription = null, tint = AmberTab)
+                                                }
+                                            },
+                                            onClick = {
+                                                reminderTagFilter = if (reminderTagFilter == tag) null else tag
+                                                reminderTagMenuExpanded = false
+                                            }
+                                        )
+                                    }
+                                    if (reminderTagFilter != null) {
+                                        DropdownMenuItem(
+                                            text = { Text("CLEAR FILTER") },
+                                            onClick = {
+                                                reminderTagFilter = null
+                                                reminderTagMenuExpanded = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
                         IconButton(onClick = { menuExpanded = true }) {
                             Icon(Icons.Default.MoreVert, contentDescription = "Menu", tint = Paper)
                         }
@@ -418,6 +542,22 @@ fun HomeScreen(
                                 onClick = {
                                     menuExpanded = false
                                     onStorageClick()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("QUICK BACKUP") },
+                                leadingIcon = { Icon(Icons.Default.CloudUpload, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    backupViewModel.quickBackup()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("QUICK RESTORE") },
+                                leadingIcon = { Icon(Icons.Default.Restore, contentDescription = null) },
+                                onClick = {
+                                    menuExpanded = false
+                                    confirmQuickRestore = true
                                 }
                             )
                             DropdownMenuItem(
@@ -518,7 +658,7 @@ fun HomeScreen(
                             leadingIcon = { Icon(Icons.Default.Alarm, contentDescription = null) },
                             onClick = {
                                 reminderMenuExpanded = false
-                                onRemindersClick()
+                                scope.launch { pagerState.animateScrollToPage(PAGE_REMINDERS) }
                             }
                         )
                         DropdownMenuItem(
@@ -548,13 +688,34 @@ fun HomeScreen(
                     }
                 }
                 Spacer(Modifier.width(10.dp))
+                SmallFloatingActionButton(
+                    onClick = onSyncNotesClick,
+                    containerColor = BaySurface,
+                    contentColor = Paper
+                ) {
+                    Icon(Icons.Default.Sync, contentDescription = "Sync notes")
+                }
+                Spacer(Modifier.width(10.dp))
                 Box {
                     SmallFloatingActionButton(
-                        onClick = { newStripMenuExpanded = true },
+                        onClick = {
+                            if (pagerState.currentPage == PAGE_REMINDERS) {
+                                reminderMenuExpanded = true
+                            } else {
+                                newStripMenuExpanded = true
+                            }
+                        },
                         containerColor = BaySurface,
                         contentColor = Paper
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = "New strip")
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = if (pagerState.currentPage == PAGE_REMINDERS) {
+                                "New reminder"
+                            } else {
+                                "New strip"
+                            }
+                        )
                     }
                     DropdownMenu(expanded = newStripMenuExpanded, onDismissRequest = { newStripMenuExpanded = false }) {
                         DropdownMenuItem(
@@ -590,8 +751,20 @@ fun HomeScreen(
         }
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
+            BoardDateStrip(nowMillis)
+            QuickBackupDialogs(
+                state = backupState,
+                latestBackupName = backupViewModel.latestBackupName,
+                confirmRestore = confirmQuickRestore,
+                onConfirmRestore = {
+                    confirmQuickRestore = false
+                    backupViewModel.restoreLatest()
+                },
+                onCancelRestore = { confirmQuickRestore = false },
+                onDismissMessage = { backupViewModel.dismissMessages() }
+            )
             quote?.let { QuoteOfDayCard(it) }
-            if (allTags.isNotEmpty()) {
+            if (allTags.isNotEmpty() && pagerState.currentPage == PAGE_STRIPS) {
                 LazyRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
@@ -612,7 +785,21 @@ fun HomeScreen(
                     }
                 }
             }
-            Box(Modifier.weight(1f)) {
+            BoardPageTabs(
+                current = pagerState.currentPage,
+                onSelect = { page -> scope.launch { pagerState.animateScrollToPage(page) } }
+            )
+            HorizontalPager(state = pagerState, modifier = Modifier.weight(1f)) { page ->
+                if (page == PAGE_REMINDERS) {
+                    RemindersList(
+                        viewModel = reminderViewModel,
+                        searchQuery = if (searchActive) searchQuery else "",
+                        sortDescending = reminderSortDescending,
+                        tagFilter = reminderTagFilter,
+                        onEditClick = onReminderEditClick
+                    )
+                } else {
+                    Box(Modifier.fillMaxSize()) {
                 if (tasks.isEmpty()) {
                     EmptyBoard()
                 } else if (visibleTasks.isEmpty()) {
@@ -650,6 +837,8 @@ fun HomeScreen(
                             viewModel.updateTask(task.copy(actionLog = task.actionLog + TaskActionLogEntry(text, System.currentTimeMillis())))
                         },
                         onDelete = { viewModel.deleteTask(task) },
+                        // The leftward swipe belongs to the pager here — see FlightStripRow.
+                        enableSwipeToDelete = false,
                         blockerTask = task.blockedByTaskId?.let { id -> tasks.find { it.id == id } },
                         modifier = Modifier
                             .graphicsLayer { translationY = visualOffset }
@@ -712,6 +901,8 @@ fun HomeScreen(
                                 viewModel.updateTask(task.copy(actionLog = task.actionLog + TaskActionLogEntry(text, System.currentTimeMillis())))
                             },
                             onDelete = { viewModel.deleteTask(task) },
+                        // The leftward swipe belongs to the pager here — see FlightStripRow.
+                        enableSwipeToDelete = false,
                             trailingActions = {
                                 IconButton(onClick = { pendingArchive = task }) {
                                     Icon(
@@ -726,6 +917,8 @@ fun HomeScreen(
                 }
             }
         }
+    }
+    }
     }
     }
     }
@@ -791,6 +984,148 @@ fun HomeScreen(
             dismissButton = {
                 TextButton(onClick = { pendingArchive = null }) { Text("CANCEL") }
             }
+        )
+    }
+}
+
+/** The board's quick backup and restore, and what they have to say.
+ *
+ * Both live in the menu so a save or a rollback is one tap, and both report back rather than
+ * happening silently — a backup nobody saw succeed is a backup nobody trusts.
+ *
+ * Restore asks first. It replaces every strip, reminder, credential and library item on this
+ * device with whatever is in the backup, and unlike the Backup & Restore screen there is no list
+ * and no passphrase field in front of it to make that obvious.
+ */
+@Composable
+private fun QuickBackupDialogs(
+    state: com.saud.taskstrip.backup.BackupUiState,
+    latestBackupName: String?,
+    confirmRestore: Boolean,
+    onConfirmRestore: () -> Unit,
+    onCancelRestore: () -> Unit,
+    onDismissMessage: () -> Unit
+) {
+    if (confirmRestore) {
+        AlertDialog(
+            onDismissRequest = onCancelRestore,
+            title = { Text("RESTORE THE LATEST BACKUP?", style = MaterialTheme.typography.titleMedium) },
+            text = {
+                Text(
+                    "Everything on this device — strips, reminders, credentials and the storage " +
+                        "library — is replaced by " +
+                        // Named when it is known. The list may not have been loaded yet, and
+                        // inventing a name would be worse than admitting which one it is.
+                        (latestBackupName?.let { "\"$it\"" } ?: "the most recent backup on Drive") +
+                        ". This can't be undone."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = onConfirmRestore) { Text("RESTORE", color = PriorityUrgent) }
+            },
+            dismissButton = { TextButton(onClick = onCancelRestore) { Text("CANCEL") } }
+        )
+    }
+
+    if (state.isBusy && state.busyMessage.isNotBlank()) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(state.busyMessage.uppercase(), style = MaterialTheme.typography.titleMedium) },
+            text = { Text("Don't close the app until this finishes.") },
+            confirmButton = {}
+        )
+    }
+
+    val message = state.errorMessage ?: state.lastActionSucceeded
+    if (!state.isBusy && message != null) {
+        AlertDialog(
+            onDismissRequest = onDismissMessage,
+            title = {
+                // Neither word names the action: one dialog reports both, and a restore that
+                // failed saying "BACKUP FAILED" is worse than saying nothing.
+                Text(
+                    if (state.errorMessage != null) "COULDN'T DO THAT" else "DONE",
+                    style = MaterialTheme.typography.titleMedium
+                )
+            },
+            text = { Text(message) },
+            confirmButton = { TextButton(onClick = onDismissMessage) { Text("OK") } }
+        )
+    }
+}
+
+const val PAGE_STRIPS = 0
+const val PAGE_REMINDERS = 1
+private const val BOARD_PAGE_COUNT = 2
+
+/** The two faces of the board.
+ *
+ * Reminders used to be somewhere you navigated to and came back from. It asks the same question a
+ * strip does — what do I have to deal with — about things that happen at a time rather than things
+ * that sit in a queue, so it reads better as the board's other page than as another screen.
+ */
+@Composable
+private fun BoardPageTabs(current: Int, onSelect: (Int) -> Unit) {
+    TabRow(
+        selectedTabIndex = current,
+        containerColor = BayBackground,
+        contentColor = AmberTab
+    ) {
+        Tab(
+            selected = current == PAGE_STRIPS,
+            onClick = { onSelect(PAGE_STRIPS) },
+            text = { Text("STRIPS", style = MaterialTheme.typography.labelLarge) },
+            selectedContentColor = AmberTab,
+            unselectedContentColor = Paper.copy(alpha = 0.5f)
+        )
+        Tab(
+            selected = current == PAGE_REMINDERS,
+            onClick = { onSelect(PAGE_REMINDERS) },
+            text = { Text("REMINDERS", style = MaterialTheme.typography.labelLarge) },
+            selectedContentColor = AmberTab,
+            unselectedContentColor = Paper.copy(alpha = 0.5f)
+        )
+    }
+}
+
+/** The board's date header, on a full-width row of its own under the app bar.
+ *
+ * It used to hang off the app bar's title, which shares its row with six action icons and is left
+ * with roughly a quarter of the screen — narrower than the dates themselves, so they wrapped and
+ * were then cut off by the bar's fixed height. Nothing here is shortened to make it fit; it simply
+ * has the width it always needed.
+ *
+ * The clock sits apart on the right because it is the one part that changes every second, and the
+ * two calendar lines beside it do not.
+ */
+@Composable
+private fun BoardDateStrip(nowMillis: Long) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = formatGregorianHeaderLine(nowMillis),
+                style = MaterialTheme.typography.labelSmall,
+                color = Paper.copy(alpha = 0.65f),
+                maxLines = 1
+            )
+            Text(
+                text = formatHijriHeaderLine(nowMillis),
+                style = MaterialTheme.typography.labelSmall,
+                color = Paper.copy(alpha = 0.45f),
+                maxLines = 1
+            )
+        }
+        Spacer(Modifier.width(12.dp))
+        Text(
+            text = formatBoardHeaderClock(nowMillis),
+            style = MaterialTheme.typography.titleMedium,
+            color = AmberTab,
+            maxLines = 1
         )
     }
 }

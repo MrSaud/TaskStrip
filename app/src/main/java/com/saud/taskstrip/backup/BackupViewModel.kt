@@ -80,19 +80,69 @@ class BackupViewModel(application: Application) : AndroidViewModel(application) 
 
     fun refreshBackups() {
         val account = _uiState.value.account ?: return
+        viewModelScope.launch { loadBackups(account) }
+    }
+
+    /** Pulled out of [refreshBackups] so [restoreLatest] can wait for the list rather than fire a
+     * refresh and hope it lands first. */
+    private suspend fun loadBackups(account: GoogleSignInAccount): List<DriveBackupFile> {
+        _uiState.value = _uiState.value.copy(isBusy = true, busyMessage = "Loading backups…")
+        val context = getApplication<Application>()
+        val token = DriveAuthHelper.getAccessToken(context, account)
+        if (token == null) {
+            _uiState.value = _uiState.value.copy(isBusy = false, errorMessage = "Couldn't reach Google Drive")
+            return emptyList()
+        }
+        val folderId = DriveApi.ensureBackupFolder(token)
+        val backups = if (folderId != null) DriveApi.listBackups(token, folderId) else emptyList()
+        _uiState.value = _uiState.value.copy(isBusy = false, backups = backups)
+        return backups
+    }
+
+    /** Signed in, or an explanation.
+     *
+     * The quick actions are one tap from the board's menu, so there is no screen in front of them
+     * to have already said this. Doing nothing at all — which is what the screen's own buttons do
+     * when signed out, since the screen shows the state anyway — would just look broken. */
+    private fun requireAccount(): GoogleSignInAccount? {
+        val account = _uiState.value.account
+        if (account == null) {
+            _uiState.value = _uiState.value.copy(
+                errorMessage = "Sign in to Google Drive first — open Backup & Restore."
+            )
+        }
+        return account
+    }
+
+    /** A backup, straight from the menu. */
+    fun quickBackup() {
+        if (requireAccount() == null) return
+        performBackup()
+    }
+
+    /** The newest backup on Drive, restored without going through the list.
+     *
+     * Loads the list first when it hasn't been loaded yet: the board's menu can be opened before
+     * the backup screen ever has, and "there are no backups" and "nobody has looked yet" are not
+     * the same answer to give somebody about to replace everything they have.
+     */
+    fun restoreLatest() {
+        val account = requireAccount() ?: return
         viewModelScope.launch {
-            _uiState.value = _uiState.value.copy(isBusy = true, busyMessage = "Loading backups…")
-            val context = getApplication<Application>()
-            val token = DriveAuthHelper.getAccessToken(context, account)
-            if (token == null) {
-                _uiState.value = _uiState.value.copy(isBusy = false, errorMessage = "Couldn't reach Google Drive")
+            val backups = _uiState.value.backups.ifEmpty { loadBackups(account) }
+            val newest = backups.firstOrNull()
+            if (newest == null) {
+                _uiState.value = _uiState.value.copy(errorMessage = "No backups found on Drive.")
                 return@launch
             }
-            val folderId = DriveApi.ensureBackupFolder(token)
-            val backups = if (folderId != null) DriveApi.listBackups(token, folderId) else emptyList()
-            _uiState.value = _uiState.value.copy(isBusy = false, backups = backups)
+            performRestore(newest)
         }
     }
+
+    /** What [restoreLatest] would replace everything with, for the confirmation to name. Null when
+     * the list hasn't been loaded, which the menu treats as "the newest one" rather than lying. */
+    val latestBackupName: String?
+        get() = _uiState.value.backups.firstOrNull()?.name
 
     /** Shared by [performBackup] and [backupThenSignOut] — uploads a fresh backup and reports
      * success/failure into [_uiState], but leaves isBusy/refreshBackups to the caller since the

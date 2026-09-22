@@ -78,6 +78,10 @@ dependencies {
     implementation("com.google.android.gms:play-services-auth:21.2.0")
 
     testImplementation("junit:junit:4.13.2")
+    // The real org.json. Android ships one, but the stub in the unit-test classpath throws on
+    // every call ("not mocked"), and SyncBoardDocument is built on it — so without this the one
+    // half of the sync contract that has no tests would stay that way.
+    testImplementation("org.json:json:20240303")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
