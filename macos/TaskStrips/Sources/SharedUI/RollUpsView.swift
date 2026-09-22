@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 /// Which roll-up is on screen. Two separate screens on Android; one sheet with a switch here,
@@ -128,8 +127,7 @@ struct RollUpsView: View {
     }
 
     private func copySummary() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(summary.plainText, forType: .string)
+        Platform.copy(summary.plainText)
         // The button says so rather than a toast: a sheet has nowhere to put one, and a button
         // that reads "Copied" is the same acknowledgement without the transient overlay.
         didCopy = true

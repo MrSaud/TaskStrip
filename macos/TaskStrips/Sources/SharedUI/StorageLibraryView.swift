@@ -1,4 +1,6 @@
+#if os(macOS)
 import AppKit
+#endif
 import QuickLook
 import SwiftData
 import SwiftUI
@@ -25,6 +27,13 @@ struct StorageLibraryView: View {
     @State private var previewURL: URL?
     /// The key monitor, held only while the library is on screen.
     @State private var spaceMonitor: Any?
+    /// iOS's picker is a sheet, not a modal call; this is which kind of file it was opened for.
+    @State private var importing: ImportRequest?
+
+    private struct ImportRequest: Identifiable {
+        let id = UUID()
+        let type: StorageItemType?
+    }
 
     private var store: AttachmentStore { .shared }
     private var availableTags: [String] { StorageLibrary.availableTags(in: items) }
@@ -85,8 +94,24 @@ struct StorageLibraryView: View {
         // The system panel, not a window of our own: it reads anything the Mac can read, which is
         // the whole point of asking for it by name.
         .quickLookPreview($previewURL)
+        #if os(macOS)
         .onAppear { startWatchingForSpace() }
         .onDisappear { stopWatchingForSpace() }
+        #else
+        .fileImporter(
+            isPresented: Binding(get: { importing != nil }, set: { if !$0 { importing = nil } }),
+            allowedContentTypes: Self.contentTypes(for: importing?.type),
+            allowsMultipleSelection: true
+        ) { result in
+            let type = importing?.type
+            importing = nil
+            switch result {
+            case .success(let urls): add(urls, as: type)
+            case .failure(let error):
+                problem = StorageProblem(title: "Couldn't add that file", message: error.localizedDescription)
+            }
+        }
+        #endif
     }
 
     private var empty: some View {
@@ -167,8 +192,8 @@ struct StorageLibraryView: View {
     private func thumbnail(for item: StorageItem) -> some View {
         // Videos have no still to show without decoding a frame, so they get their category's
         // symbol rather than a blank tile.
-        if item.type == .image, let image = NSImage(contentsOf: store.url(forRelativePath: item.path)) {
-            Image(nsImage: image)
+        if item.type == .image, let image = Platform.image(contentsOf: store.url(forRelativePath: item.path)) {
+            image
                 .resizable()
                 .aspectRatio(contentMode: .fill)
         } else {
@@ -235,7 +260,9 @@ struct StorageLibraryView: View {
         // Named the way Finder names it, space hint included, because that's where the shortcut
         // is worth discovering.
         Button("Quick Look (Space)") { quickLook(item) }
+        #if os(macOS)
         Button("Show in Finder") { reveal(item) }
+        #endif
         Button(item.isTagged ? "Change Tag…" : "Tag…") { taggingItem = item }
         Divider()
         Button("Delete…", role: .destructive) { pendingDeletion = item }
@@ -273,6 +300,7 @@ struct StorageLibraryView: View {
 
     /// `type` narrows the open panel; nil takes anything and lets the file decide where it lands.
     private func addFiles(of type: StorageItemType?) {
+        #if os(macOS)
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
@@ -282,8 +310,24 @@ struct StorageLibraryView: View {
         case .document, nil: break
         }
         guard panel.runModal() == .OK else { return }
+        add(panel.urls, as: type)
+        #else
+        importing = ImportRequest(type: type)
+        #endif
+    }
 
-        for url in panel.urls {
+    private static func contentTypes(for type: StorageItemType?) -> [UTType] {
+        switch type {
+        case .image: [.image]
+        case .video: [.movie]
+        case .document, nil: [.item]
+        }
+    }
+
+    private func add(_ urls: [URL], as type: StorageItemType?) {
+        for url in urls {
+            let scoped = url.startAccessingSecurityScopedResource()
+            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             do {
                 let resolved = type ?? StorageItemType.inferred(
                     mimeType: UTType(filenameExtension: url.pathExtension)?.preferredMIMEType,
@@ -318,6 +362,7 @@ struct StorageLibraryView: View {
     }
 
     // MARK: - The space bar
+    #if os(macOS)
 
     /// Watches the app's own key events while the library is up, rather than SwiftUI's
     /// `.onKeyPress`.
@@ -367,6 +412,8 @@ struct StorageLibraryView: View {
         return true
     }
 
+    #endif
+
     /// Opens the preview, and selects what it's previewing — so space closes it again and the
     /// next space reopens the same thing.
     private func quickLook(_ item: StorageItem) {
@@ -383,9 +430,11 @@ struct StorageLibraryView: View {
         previewURL = url
     }
 
+    #if os(macOS)
     private func reveal(_ item: StorageItem) {
         NSWorkspace.shared.activateFileViewerSelecting([store.url(forRelativePath: item.path)])
     }
+    #endif
 
     private func delete(_ item: StorageItem) {
         store.remove(relativePath: item.path, kind: item.type.attachmentKind)

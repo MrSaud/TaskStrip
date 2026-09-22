@@ -1,4 +1,6 @@
+#if os(macOS)
 import AppKit
+#endif
 import SwiftUI
 
 /// The quote of the day, mirroring HomeScreen.kt's QuoteOfDayCard.
@@ -28,7 +30,9 @@ struct QuoteOfDayCard: View {
             Menu {
                 Button("Copy Text") { copyText() }
                 Button("Copy as Image") { copyImage() }
+                #if os(macOS)
                 Button("Save Image…") { saveImage() }
+                #endif
             } label: {
                 Label(copied ? "Copied" : "Share", systemImage: copied ? "checkmark" : "square.and.arrow.up")
             }
@@ -71,31 +75,28 @@ struct QuoteOfDayCard: View {
     }
 
     @MainActor
-    private func renderedImage() -> NSImage? {
+    private func renderedImage() -> CGImage? {
         let renderer = ImageRenderer(content: shareable)
         // Retina, so the picture doesn't look soft everywhere it's pasted.
         renderer.scale = 2
-        return renderer.nsImage
+        return renderer.cgImage
     }
 
     private func copyText() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString("\u{201C}\(quote.text)\u{201D} — \(quote.author)", forType: .string)
+        Platform.copy("\u{201C}\(quote.text)\u{201D} — \(quote.author)")
         flash()
     }
 
     private func copyImage() {
         guard let image = renderedImage() else { return }
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.writeObjects([image])
+        Platform.copy(image)
         flash()
     }
 
+    #if os(macOS)
     private func saveImage() {
         guard let image = renderedImage(),
-              let tiff = image.tiffRepresentation,
-              let bitmap = NSBitmapImageRep(data: tiff),
-              let png = bitmap.representation(using: .png, properties: [:])
+              let png = NSBitmapImageRep(cgImage: image).representation(using: .png, properties: [:])
         else { return }
 
         let panel = NSSavePanel()
@@ -104,6 +105,7 @@ struct QuoteOfDayCard: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         try? png.write(to: url)
     }
+    #endif
 
     /// Says it happened, then goes back to normal — a clipboard write is otherwise silent.
     private func flash() {

@@ -1,4 +1,7 @@
+#if os(macOS)
 import AppKit
+#endif
+import QuickLook
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -18,6 +21,9 @@ struct AttachmentsSection: View {
 
     @State private var failure: String?
     @State private var isPickingFromLibrary = false
+    /// iOS opens a file in Quick Look over the sheet; the Mac hands it to its default app.
+    @State private var previewURL: URL?
+    @State private var isPickingFiles = false
     @StateObject private var recorder = VoiceRecorder()
 
     var body: some View {
@@ -82,6 +88,15 @@ struct AttachmentsSection: View {
                 onCancel: { isPickingFromLibrary = false }
             )
         }
+        #if os(iOS)
+        .quickLookPreview($previewURL)
+        .fileImporter(isPresented: $isPickingFiles, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+            switch result {
+            case .success(let urls): attach(urls)
+            case .failure(let error): failure = error.localizedDescription
+            }
+        }
+        #endif
     }
 
     private func row(for attachment: TaskAttachment) -> some View {
@@ -115,7 +130,11 @@ struct AttachmentsSection: View {
             Spacer()
 
             Button {
+                #if os(macOS)
                 NSWorkspace.shared.open(store.url(for: attachment))
+                #else
+                previewURL = store.url(for: attachment)
+                #endif
             } label: {
                 Image(systemName: "arrow.up.forward.app")
             }
@@ -123,6 +142,7 @@ struct AttachmentsSection: View {
             .help("Open")
             .disabled(!store.exists(attachment))
 
+            #if os(macOS)
             Button {
                 NSWorkspace.shared.activateFileViewerSelecting([store.url(for: attachment)])
             } label: {
@@ -131,6 +151,7 @@ struct AttachmentsSection: View {
             .buttonStyle(.borderless)
             .help("Show in Finder")
             .disabled(!store.exists(attachment))
+            #endif
 
             Button(role: .destructive) {
                 attachments.removeAll { $0.id == attachment.id }
@@ -203,17 +224,24 @@ struct AttachmentsSection: View {
     }
 
     private func pickFiles() {
+        #if os(macOS)
         let panel = NSOpenPanel()
         panel.allowsMultipleSelection = true
         panel.canChooseDirectories = false
         panel.prompt = "Attach"
         panel.message = "Choose files to attach to this strip."
         guard panel.runModal() == .OK else { return }
+        attach(panel.urls)
+        #else
+        isPickingFiles = true
+        #endif
+    }
 
+    private func attach(_ urls: [URL]) {
         var problems: [String] = []
-        for url in panel.urls {
+        for url in urls {
             do {
-                let attachment = try store.add(contentsOf: url)
+                let attachment = try Platform.withAccess(to: url) { try store.add(contentsOf: $0) }
                 attachments.append(attachment)
                 onAdded(attachment)
             } catch {
