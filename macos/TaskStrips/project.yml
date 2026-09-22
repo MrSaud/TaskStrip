@@ -27,6 +27,8 @@ targets:
       # Models, stores, backup, crypto and logic: everything that isn't a screen. Compiled into
       # the Mac app and the iPhone/iPad app alike, so it must build on both.
       - path: Sources/Core
+      # SwiftUI views that work unchanged on the Mac and the iPhone/iPad.
+      - path: Sources/SharedUI
       # Compiled into both the app and the widget: it is the format they agree on.
       - path: Sources/Shared
     dependencies:
@@ -103,6 +105,7 @@ targets:
         excludes:
           - "TaskStripsiOS.entitlements"
       - path: Sources/Core
+      - path: Sources/SharedUI
       - path: Sources/Shared
     info:
       path: Sources/TaskStripsiOS/Info.plist

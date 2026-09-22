@@ -1,9 +1,7 @@
 import SwiftData
 import SwiftUI
 
-/// The iPhone and iPad app. For now it is a shell over the shared models and stores in Core — the
-/// real screens come in Phase 3 — but it opens a store with the same schema the Mac uses, so every
-/// model already has to compile and load here.
+/// The iPhone and iPad app, over the same models and stores in Core that the Mac uses.
 @main
 struct TaskStripsiOSApp: App {
     static let sharedModelContainer: ModelContainer = {
@@ -28,40 +26,15 @@ struct TaskStripsiOSApp: App {
         let marker = Keychain(location: .iCloud(accessGroup: Keychain.sharedAccessGroup))
             .value(service: "com.saud.taskstrip.integration-check", account: Keychain.crossDeviceMarkerAccount)
         print("KEYCHAIN-CHECK", marker.map { "found marker written \($0)" } ?? "no marker yet")
+        SampleBoard.seedIfAsked(into: Self.sharedModelContainer)
     }
     #endif
 
     var body: some Scene {
         WindowGroup {
-            PlaceholderBoard()
+            BoardScreen()
+                .preferredColorScheme(.dark)
         }
         .modelContainer(Self.sharedModelContainer)
-    }
-}
-
-private struct PlaceholderBoard: View {
-    @Query(
-        filter: #Predicate<TaskItem> { !$0.isDone && !$0.isArchived && !$0.isTombstoned },
-        sort: \TaskItem.orderIndex
-    )
-    private var strips: [TaskItem]
-
-    var body: some View {
-        NavigationStack {
-            Group {
-                if strips.isEmpty {
-                    ContentUnavailableView(
-                        "No strips yet",
-                        systemImage: "rectangle.stack",
-                        description: Text("The iPhone and iPad board is on its way.")
-                    )
-                } else {
-                    List(strips) { strip in
-                        Text(strip.title)
-                    }
-                }
-            }
-            .navigationTitle("Task Strips")
-        }
     }
 }
