@@ -10,7 +10,9 @@ enum CloudSchema {
     static let version: Int64 = 1
 
     static let containerID = "iCloud.com.saud.taskstrip"
-    static let zoneName = "Board"
+    /// The real board's zone, "Board". The sync test board has its own zone, so test data can
+    /// never land among real strips — they share the Development environment.
+    static let zoneName = AppLaunch.isSyncTesting ? "BoardTest" : "Board"
     static let zoneID = CKRecordZone.ID(zoneName: zoneName, ownerName: CKCurrentUserDefaultName)
 
     static func recordID(_ name: String) -> CKRecord.ID {

@@ -86,7 +86,12 @@ struct TaskStripsApp: App {
 
     init() {
         Self.movePasswordsToICloudKeychain()
-        // Phase 5: only on the sync test board (-SyncTestStore); a no-op otherwise.
+        #if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("-EraseTestDataFromBoardZone") {
+            Task { await SchemaSeeder.eraseLegacyTestZone { print($0); fflush(stdout) } }
+        }
+        #endif
+        // Debug builds; the real board only syncs once it's been turned on in Settings.
         if BoardSync.isAllowed {
             let container = Self.sharedModelContainer
             Task { @MainActor in BoardSync.shared.start(container: container) }

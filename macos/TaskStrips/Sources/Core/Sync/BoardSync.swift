@@ -53,7 +53,7 @@ final class BoardSync: ObservableObject {
     private var stateURL: URL { BoardLocation.syncDirectory.appending(path: "engine-state.json") }
     private var digestsURL: URL { BoardLocation.syncDirectory.appending(path: "page-digests.json") }
     private var orphansURL: URL { BoardLocation.syncDirectory.appending(path: "orphan-attachments.json") }
-    private let defaults = UserDefaults(suiteName: "com.saud.taskstrip.synctest") ?? .standard
+    private let defaults = UserDefaults(suiteName: AppLaunch.isSyncTesting ? "com.saud.taskstrip.synctest" : "com.saud.taskstrip.sync") ?? .standard
     private static let enabledKey = "sync.enabled"
 
     private var heldDeletions: [CKRecord.ID] = []
@@ -73,15 +73,24 @@ final class BoardSync: ObservableObject {
 
     // MARK: - Starting and stopping
 
+    /// On by default for the test board; off for the real one until someone turns it on, on each
+    /// device — the first real upload is a decision, not a side effect of launching.
     var isEnabled: Bool {
-        get { defaults.object(forKey: Self.enabledKey) as? Bool ?? true }
+        get { defaults.object(forKey: Self.enabledKey) as? Bool ?? AppLaunch.isSyncTesting }
         set { defaults.set(newValue, forKey: Self.enabledKey) }
     }
 
-    /// Only ever on the sync test board, and never under a test suite.
+    /// Debug builds only until Phase 7 (they sync with the Development environment), and never
+    /// under a test suite. On the real board it still has to be turned on, per device.
     static var isAllowed: Bool {
-        AppLaunch.isSyncTesting && !AppLaunch.isUITesting && !AppLaunch.isUnitTesting
+        #if DEBUG
+        !AppLaunch.isUITesting && !AppLaunch.isUnitTesting
+        #else
+        false
+        #endif
     }
+
+    var isTestBoard: Bool { AppLaunch.isSyncTesting }
 
     func start(container: ModelContainer) {
         guard Self.isAllowed, engine == nil else { return }
@@ -143,6 +152,7 @@ final class BoardSync: ObservableObject {
     /// new, and whatever iCloud already has comes down and merges by record name.
     func turnOn() {
         guard let container else { return }
+        if !AppLaunch.isSyncTesting { SyncNoteFold.run(in: container.mainContext) }
         resetLocalBookkeeping()
         isEnabled = true
         start(container: container)

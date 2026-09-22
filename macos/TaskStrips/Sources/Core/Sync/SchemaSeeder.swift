@@ -11,6 +11,21 @@ import Foundation
 ///
 /// Production is a separate step (Phase 7): the CloudKit Console copies this schema across.
 enum SchemaSeeder {
+    /// Phase 6: removes the Board zone the sync test board used before it got a zone of its own,
+    /// so the real board starts in an empty zone. `-EraseTestDataFromBoardZone`; Debug only.
+    static func eraseLegacyTestZone(log: (String) -> Void) async {
+        let database = CKContainer(identifier: CloudSchema.containerID).privateCloudDatabase
+        let zoneID = CKRecordZone.ID(zoneName: "Board", ownerName: CKCurrentUserDefaultName)
+        do {
+            _ = try await database.modifyRecordZones(saving: [], deleting: [zoneID])
+            log("ERASE Board zone deleted")
+        } catch let error as CKError where error.code == .zoneNotFound {
+            log("ERASE Board zone was already gone")
+        } catch {
+            log("ERASE failed: \(error.localizedDescription)")
+        }
+    }
+
     static let zoneName = "SchemaSeed"
 
     static func run(log: (String) -> Void) async {

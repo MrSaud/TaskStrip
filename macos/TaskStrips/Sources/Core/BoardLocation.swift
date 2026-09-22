@@ -17,5 +17,14 @@ enum BoardLocation {
 
     static var mediaDirectory: URL { directory.appending(path: "Media", directoryHint: .isDirectory) }
 
-    static var syncDirectory: URL { directory.appending(path: "Sync", directoryHint: .isDirectory) }
+    /// Per CloudKit environment: a Debug build syncs with Development, a Release build with
+    /// Production, and what one knows about the other's records is worthless — so moving to
+    /// Production starts from scratch instead of believing Development's records are there.
+    static var syncDirectory: URL {
+        #if DEBUG
+        directory.appending(path: "Sync-Development", directoryHint: .isDirectory)
+        #else
+        directory.appending(path: "Sync-Production", directoryHint: .isDirectory)
+        #endif
+    }
 }

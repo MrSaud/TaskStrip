@@ -23,9 +23,10 @@ struct SyncSettingsSection: View {
                 Button("Turn On") { sync.turnOn() }
             }
         } header: {
-            Text("iCloud Sync — test board")
+            Text(sync.isTestBoard ? "iCloud Sync — test board" : "iCloud Sync")
         } footer: {
-            Text("Phase 5: this syncs only the separate test board, never your real one. "
+            Text((sync.isTestBoard ? "This syncs only the separate test board, never your real one. " : "")
+                 + "Turn On uploads this board and brings down what iCloud has. "
                  + "Turn Off keeps this board and iCloud's copy. Erase deletes iCloud's copy; "
                  + "every device keeps its own board and stops syncing.")
                 .font(.caption)
