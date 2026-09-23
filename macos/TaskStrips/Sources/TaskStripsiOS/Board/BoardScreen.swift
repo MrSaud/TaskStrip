@@ -248,6 +248,16 @@ struct BoardScreen: View {
             .task {
                 ReminderScheduler.shared.sync(allTasks)
                 if showQuote { quote = await QuoteOfTheDay.today() }
+                #if DEBUG
+                // `-OpenLink <url>`: opens a link on launch, which is how a message: link can be
+                // tried on a real phone from a Mac — there's no way to tap one from here.
+                if let index = ProcessInfo.processInfo.arguments.firstIndex(of: "-OpenLink"),
+                   index + 1 < ProcessInfo.processInfo.arguments.count,
+                   let url = URL(string: ProcessInfo.processInfo.arguments[index + 1]) {
+                    try? await Task.sleep(for: .seconds(1))
+                    Platform.open(url)
+                }
+                #endif
             }
         }
     }

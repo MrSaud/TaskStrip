@@ -396,6 +396,15 @@ struct TaskEditView: View {
                     .buttonStyle(.plain)
                     .help(link.url)
                     Spacer()
+                    #if os(iOS)
+                    // Tested on the phone: iOS opens Mail but lands in the inbox rather than the
+                    // message. Saying so beats letting someone think the link is broken.
+                    if EmailLink.isMessage(link.url) {
+                        Text("opens on the Mac")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
+                    #endif
                     Button(role: .destructive) {
                         links.removeAll { $0.id == link.id }
                     } label: {
