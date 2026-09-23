@@ -86,6 +86,7 @@ struct BoardScreen: View {
 
     @State private var page: Page = Page.atLaunch
     @ObservedObject private var documents = DocumentIndexer.shared
+    @State private var showReview = false
 
     /// The order the panes sit in across the board, which is not the order they're declared in:
     /// the inbox reads better beside the strips than beyond the notes.
@@ -289,6 +290,14 @@ struct BoardScreen: View {
                     SketchCanvasView(noteID: sketch.id)
                 }
             }
+            .sheet(isPresented: $showReview) {
+                NavigationStack {
+                    WeeklyReviewView(tasks: allTasks) { strip in
+                        showReview = false
+                        editing = strip
+                    }
+                }
+            }
             .sheet(item: $editing) { task in
                 NavigationStack {
                     TaskEditView(
@@ -412,6 +421,11 @@ struct BoardScreen: View {
                 // A search field switched off with something typed into it would go on filtering
                 // a board nobody can see the filter for.
                 if !showSearch { filter.search = "" }
+            }
+            // Icon alone, like the calendar beside it: the bottom bar has room for three words,
+            // not five.
+            quickAction("The week in review", systemImage: "calendar.badge.clock", iconOnly: true) {
+                showReview = true
             }
             // The calendar is a switch rather than a place to go, so it wears its icon alone:
             // four words of label is what pushed the others onto two lines on a phone.

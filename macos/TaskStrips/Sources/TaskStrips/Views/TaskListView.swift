@@ -49,6 +49,7 @@ struct TaskListView: View {
     @State private var isPresentingNewTask = false
     @State private var isCapturingVoice = false
     @State private var showArchive = false
+    @State private var showReview = false
     @State private var showStorage = false
     @State private var showCredentials = false
     @State private var showSketches = false
@@ -272,6 +273,12 @@ struct TaskListView: View {
                         onSaved: {},
                         onDeleted: {}
                     )
+                }
+            }
+            .sheet(isPresented: $showReview) {
+                WeeklyReviewView(tasks: activeTasks) { strip in
+                    showReview = false
+                    editingTask = strip
                 }
             }
             .sheet(isPresented: $showArchive) {
@@ -652,6 +659,16 @@ struct TaskListView: View {
                     Label("Archived Strips", systemImage: "archivebox")
                 }
                 .help("Archived Strips (⇧⌘R)")
+            }
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    showReview = true
+                } label: {
+                    // The count is the point: a review nobody opens is a review that says
+                    // nothing, and a number on the button is what makes somebody open it.
+                    Label("The Week in Review", systemImage: "calendar.badge.clock")
+                }
+                .help("The week in review — what's stalled, abandoned, or waiting too long")
             }
             ToolbarItem(placement: .navigation) {
                 Button {
