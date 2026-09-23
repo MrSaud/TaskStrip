@@ -82,13 +82,18 @@ struct QuoteOfDayCard: View {
             }
         }
         .padding(14)
-        .background(TaskStripTheme.baySurface, in: RoundedRectangle(cornerRadius: 4))
-        .overlay(
-            RoundedRectangle(cornerRadius: 4)
-                .stroke(TaskStripTheme.paper.opacity(0.15), lineWidth: 1)
-        )
+        // The board's own background rather than a card on top of it: in daylight the surface
+        // colour reads as a white panel stuck over the paper, which is the one thing on the board
+        // that looks like it came from somewhere else. A hairline underneath is enough to separate
+        // it from the strips.
+        .background(TaskStripTheme.bayBackground)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(TaskStripTheme.paper.opacity(0.12))
+                .frame(height: 1)
+        }
         .padding(.horizontal, 14)
-        .padding(.vertical, 6)
+        .padding(.vertical, 2)
     }
 
     /// The card as a picture, drawn at the same proportions Android's renderer uses so a quote
