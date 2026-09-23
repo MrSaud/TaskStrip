@@ -49,6 +49,27 @@ struct TaskTallyEntry: Codable, Hashable, Identifiable {
     /// Added by stopping the clock rather than typed in, which is worth telling apart when a
     /// total looks wrong.
     var fromTimer: Bool = false
+
+    init(id: UUID = UUID(), amount: Double = 0, at: Date = .now, note: String = "", fromTimer: Bool = false) {
+        self.id = id
+        self.amount = amount
+        self.at = at
+        self.note = note
+        self.fromTimer = fromTimer
+    }
+
+    /// Read field by field, each one allowed to be missing. A default written next to a property
+    /// does nothing for a decoder — it is only used when Swift writes the initialiser, never when
+    /// it reads one — so a row stored before a field existed would otherwise fail to decode and
+    /// take the whole store down with it.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        amount = try container.decodeIfPresent(Double.self, forKey: .amount) ?? 0
+        at = try container.decodeIfPresent(Date.self, forKey: .at) ?? .now
+        note = try container.decodeIfPresent(String.self, forKey: .note) ?? ""
+        fromTimer = try container.decodeIfPresent(Bool.self, forKey: .fromTimer) ?? false
+    }
 }
 
 /// A running total on a strip: hours spent, money spent, anything that accumulates.
@@ -60,6 +81,10 @@ struct TaskTally: Codable, Hashable, Identifiable {
     var name: String = ""
     var unit: TallyUnit = .hours
     var entries: [TaskTallyEntry] = []
+    /// The thresholds already announced — 90, 100 — so a budget speaks once at each rather than
+    /// on every entry after it. Kept on the tally so it travels with the strip: a budget passed
+    /// on the Mac doesn't announce itself again on the phone.
+    var announced: [Int] = []
     /// A budget, or a goal. Optional because most tallies are just a total — a strip that is
     /// simply accumulating hours has no number it is aiming at or must stay under.
     var target: Double?
@@ -82,6 +107,28 @@ struct TaskTally: Codable, Hashable, Identifiable {
     var isOverTarget: Bool {
         guard let target, target > 0 else { return false }
         return total > target
+    }
+
+    init(id: UUID = UUID(), name: String = "", unit: TallyUnit = .hours, entries: [TaskTallyEntry] = [], announced: [Int] = [], target: Double? = nil) {
+        self.id = id
+        self.name = name
+        self.unit = unit
+        self.entries = entries
+        self.announced = announced
+        self.target = target
+    }
+
+    /// As with an entry: every field may be missing, because a tally stored by an earlier version
+    /// of the app has only the fields that version knew about. `announced` arrived after tallies
+    /// themselves did, and without this a strip with a total on it stopped loading at all.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        unit = try container.decodeIfPresent(TallyUnit.self, forKey: .unit) ?? .hours
+        entries = try container.decodeIfPresent([TaskTallyEntry].self, forKey: .entries) ?? []
+        announced = try container.decodeIfPresent([Int].self, forKey: .announced) ?? []
+        target = try container.decodeIfPresent(Double.self, forKey: .target)
     }
 
     /// The name a tally made by the timer gets, so there's something to add to before anybody

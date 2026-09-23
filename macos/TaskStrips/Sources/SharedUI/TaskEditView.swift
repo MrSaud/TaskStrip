@@ -454,6 +454,9 @@ struct TaskEditView: View {
         task.waitingOnFollowUpDays = hasFollowUp ? Int(waitingOnFollowUpDays) : nil
         task.linkedSketchID = linkedSketchID
         task.tallies = tallies
+        // A budget edited up to its limit here should say so, the same as one reached by the
+        // clock.
+        StripActions.announceTallyTargets(on: task)
 
         if editingTask == nil {
             modelContext.insert(task)

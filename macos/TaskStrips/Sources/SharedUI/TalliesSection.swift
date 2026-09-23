@@ -18,6 +18,9 @@ struct TalliesSection: View {
     @State private var newTarget = ""
     @State private var expanded: Set<UUID> = []
     @State private var amounts: [UUID: String] = [:]
+    /// What each addition was for, and when it happened — kept per tally while it's being typed.
+    @State private var notes: [UUID: String] = [:]
+    @State private var dates: [UUID: Date] = [:]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -74,16 +77,32 @@ struct TalliesSection: View {
                 }
             }
 
-            // Two taps to add: type the number, press return.
-            HStack(spacing: 8) {
-                TextField("Add \(tally.wrappedValue.unit.label.lowercased())", text: amountBinding(tally.wrappedValue.id))
-                    #if os(iOS)
-                    .keyboardType(.decimalPad)
-                    #endif
-                    .onSubmit { add(to: tally) }
-                Button("Add") { add(to: tally) }
-                    .buttonStyle(.borderless)
-                    .disabled(Double(amounts[tally.wrappedValue.id] ?? "") == nil)
+            // The number, what it was for, and when it happened. The date is today unless it
+            // isn't: hours are written up the morning after as often as on the day.
+            VStack(spacing: 6) {
+                HStack(spacing: 8) {
+                    TextField("Add \(tally.wrappedValue.unit.label.lowercased())", text: amountBinding(tally.wrappedValue.id))
+                        #if os(iOS)
+                        .keyboardType(.decimalPad)
+                        #endif
+                        .frame(maxWidth: 110)
+                        .onSubmit { add(to: tally) }
+                    TextField("What for (optional)", text: noteBinding(tally.wrappedValue.id))
+                        .onSubmit { add(to: tally) }
+                }
+                HStack(spacing: 8) {
+                    DatePicker(
+                        "On",
+                        selection: dateBinding(tally.wrappedValue.id),
+                        displayedComponents: .date
+                    )
+                    .labelsHidden()
+                    .font(.caption)
+                    Spacer(minLength: 0)
+                    Button("Add") { add(to: tally) }
+                        .buttonStyle(.bordered)
+                        .disabled(Double(amounts[tally.wrappedValue.id] ?? "") == nil)
+                }
             }
 
             if expanded.contains(tally.wrappedValue.id) {
@@ -124,7 +143,7 @@ struct TalliesSection: View {
                             .font(.caption2)
                             .foregroundStyle(.tertiary)
                     }
-                    if !entry.note.isEmpty, !entry.fromTimer {
+                    if !entry.note.isEmpty {
                         Text(entry.note)
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -217,12 +236,28 @@ struct TalliesSection: View {
     private func add(to tally: Binding<TaskTally>) {
         let id = tally.wrappedValue.id
         guard let amount = Double(amounts[id] ?? ""), amount != 0 else { return }
-        tally.wrappedValue = StripTally.adding(amount, to: tally.wrappedValue)
+        tally.wrappedValue = StripTally.adding(
+            amount,
+            to: tally.wrappedValue,
+            note: (notes[id] ?? "").trimmingCharacters(in: .whitespaces),
+            at: dates[id] ?? .now
+        )
         amounts[id] = ""
+        notes[id] = ""
+        // The date stays where it was put: several entries from the same day usually arrive
+        // together.
     }
 
     private func amountBinding(_ id: UUID) -> Binding<String> {
         Binding(get: { amounts[id] ?? "" }, set: { amounts[id] = $0 })
+    }
+
+    private func noteBinding(_ id: UUID) -> Binding<String> {
+        Binding(get: { notes[id] ?? "" }, set: { notes[id] = $0 })
+    }
+
+    private func dateBinding(_ id: UUID) -> Binding<Date> {
+        Binding(get: { dates[id] ?? .now }, set: { dates[id] = $0 })
     }
 
     private func toggle(_ id: UUID) {

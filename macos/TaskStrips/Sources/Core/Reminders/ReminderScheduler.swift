@@ -126,6 +126,29 @@ final class ReminderScheduler {
         )
     }
 
+    /// Says a total has reached its target, now rather than at some hour in the future.
+    ///
+    /// Announced immediately because it has already happened: a budget reached at four o'clock is
+    /// not news at nine tomorrow.
+    func announce(_ alerts: [StripTallyAlerts.Alert], stripID: UUID) {
+        guard isEnabled else { return }
+        for alert in alerts {
+            let content = UNMutableNotificationContent()
+            content.title = alert.title
+            content.body = alert.body
+            content.sound = .default
+            center.add(
+                UNNotificationRequest(
+                    identifier: StripTallyAlerts.identifier(stripID: stripID, alert: alert),
+                    content: content,
+                    // A second, rather than nothing: an immediate request while the app is in
+                    // front is delivered and gone before anyone looks up.
+                    trigger: UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+                )
+            )
+        }
+    }
+
     /// The same contract for a standalone reminder: always clears first, so this is the cancel
     /// path too. Its identifier is namespaced because a strip and a reminder are different things
     /// that both have a uuid, and the system's identifiers are one flat namespace.

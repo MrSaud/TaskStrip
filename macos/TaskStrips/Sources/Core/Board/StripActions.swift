@@ -46,6 +46,19 @@ enum StripActions {
         // And it goes into the strip's own total, so the clock is a way of entering a value
         // rather than a second record of the same hours.
         task.tallies = StripTally.recording(seconds: spent, in: task.tallies, at: now)
+        announceTallyTargets(on: task)
+    }
+
+    /// Says so when a total has reached nine tenths of its target, or all of it. Called wherever
+    /// a total changes — the clock stopping, and the editor saving.
+    static func announceTallyTargets(on task: TaskItem, scheduler: ReminderScheduler = .shared) {
+        let (edited, alerts) = StripTallyAlerts.check(task.tallies, stripTitle: task.title)
+        task.tallies = edited
+        guard !alerts.isEmpty else { return }
+        scheduler.announce(alerts, stripID: task.id)
+        for alert in alerts {
+            task.actionLog.append(TaskActionLogEntry(text: alert.body, timestamp: .now))
+        }
     }
 
     static func toggleTimer(on task: TaskItem, in all: [TaskItem], now: Date = .now) {

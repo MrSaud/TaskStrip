@@ -161,4 +161,31 @@ final class StripTallyRoundTripTests: XCTestCase {
         let decoded = try JSONDecoder().decode([TaskTally].self, from: Data("[]".utf8))
         XCTAssertTrue(decoded.isEmpty)
     }
+
+    /// The bug this test exists for: `announced` was added to a tally after tallies had already
+    /// been stored, and a default written beside a property does nothing for a decoder. Every
+    /// strip carrying a total stopped loading — the store itself crashed on the way in.
+    func testATallyStoredBeforeAFieldExistedStillDecodes() throws {
+        let old = """
+        [{"id":"7EB6EE98-6EAF-41DE-B5A7-3A7AC385591F","name":"Cost","unit":{"money":{"currency":"KWD"}},
+          "entries":[{"id":"B7DDB300-E8B2-4D1B-AE20-478E4F3FA5D3","amount":150,"at":721000000,"note":"Deposit","fromTimer":false}]}]
+        """
+        let decoded = try JSONDecoder().decode([TaskTally].self, from: Data(old.utf8))
+        XCTAssertEqual(decoded.count, 1)
+        XCTAssertEqual(decoded.first?.name, "Cost")
+        XCTAssertEqual(decoded.first?.total, 150)
+        XCTAssertEqual(decoded.first?.announced, [])
+        XCTAssertNil(decoded.first?.target)
+    }
+
+    /// The same for an entry, which is the shape most likely to gain a field next.
+    func testAnEntryMissingItsNewerFieldsStillDecodes() throws {
+        let old = """
+        [{"id":"B7DDB300-E8B2-4D1B-AE20-478E4F3FA5D3","amount":2,"at":721000000}]
+        """
+        let decoded = try JSONDecoder().decode([TaskTallyEntry].self, from: Data(old.utf8))
+        XCTAssertEqual(decoded.first?.amount, 2)
+        XCTAssertEqual(decoded.first?.note, "")
+        XCTAssertEqual(decoded.first?.fromTimer, false)
+    }
 }
