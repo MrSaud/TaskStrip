@@ -56,7 +56,7 @@ struct BoardScreen: View {
     @State private var now = Date.now
 
     @State private var page: Page = .strips
-    @State private var search = ""
+    @State private var filter = BoardFilter()
     @State private var editing: TaskItem?
     @State private var isCreating = false
     @State private var destination: Destination?
@@ -75,7 +75,7 @@ struct BoardScreen: View {
     private var showsStripControls: Bool { isWide || page == .strips }
 
     private var stripsPage: some View {
-        StripsPage(strips: boardTasks, allTasks: allTasks, search: search, onEdit: { editing = $0 })
+        StripsPage(strips: boardTasks, allTasks: allTasks, filter: $filter, onEdit: { editing = $0 })
     }
 
     var body: some View {
@@ -123,10 +123,13 @@ struct BoardScreen: View {
             .navigationTitle("Task Strips")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(TaskStripTheme.bayBackground, for: .navigationBar)
-            .searchable(if: showsStripControls, text: $search, prompt: "Search strips")
+            .searchable(if: showsStripControls, text: $filter.search, prompt: "Search strips")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { menu }
                 if showsStripControls {
+                    ToolbarItem(placement: .primaryAction) {
+                        BoardFilterMenu(filter: $filter)
+                    }
                     ToolbarItem(placement: .primaryAction) {
                         Button {
                             isCapturingVoice = true
@@ -318,7 +321,7 @@ private struct BoardPageTabs: View {
 private struct StripsPage: View {
     let strips: [TaskItem]
     let allTasks: [TaskItem]
-    let search: String
+    @Binding var filter: BoardFilter
     let onEdit: (TaskItem) -> Void
 
     @Environment(\.modelContext) private var modelContext
@@ -327,27 +330,29 @@ private struct StripsPage: View {
     @State private var pendingArchive: TaskItem?
     @State private var pendingDeletion: TaskItem?
 
-    private var query: String { search.trimmingCharacters(in: .whitespaces) }
-
-    private var visible: [TaskItem] {
-        guard !query.isEmpty else { return strips }
-        return strips.filter {
-            $0.title.localizedCaseInsensitiveContains(query) || $0.notes.localizedCaseInsensitiveContains(query)
-                || $0.tags.contains { $0.localizedCaseInsensitiveContains(query) }
-        }
-    }
-
+    private var visible: [TaskItem] { filter.apply(to: strips) }
     private var active: [TaskItem] { visible.filter { !$0.isDone } }
     private var completed: [TaskItem] { visible.filter(\.isDone) }
 
+    /// The board's tags for the chips, plus a selected one that has since left the board, so a
+    /// filter can always be switched off again.
+    private var tags: [String] {
+        var seen = Set<String>()
+        var all = strips.flatMap(\.tags).filter { seen.insert($0.lowercased()).inserted }
+        if let tag = filter.tag, !seen.contains(tag.lowercased()) { all.append(tag) }
+        return all.sorted { $0.lowercased() < $1.lowercased() }
+    }
+
     var body: some View {
+        VStack(spacing: 0) {
+        if !tags.isEmpty { TagChips(tags: tags, selected: $filter.tag) }
         List {
             ForEach(active) { strip in
                 row(strip)
             }
             // A filtered list has gaps, and dragging within it would renumber the board around
             // strips that aren't showing — the Mac turns reordering off for the same reason.
-            .onMove(perform: query.isEmpty ? move : nil)
+            .onMove(perform: filter.allowsReordering ? move : nil)
 
             if !completed.isEmpty {
                 Section {
@@ -382,7 +387,13 @@ private struct StripsPage: View {
                 ContentUnavailableView("No strips yet", systemImage: "rectangle.stack",
                                        description: Text("Tap + to file one."))
             } else if visible.isEmpty {
-                ContentUnavailableView.search(text: query)
+                ContentUnavailableView(
+                    "Nothing matches",
+                    systemImage: "line.3.horizontal.decrease.circle",
+                    description: Text(filter.trimmedSearch.isEmpty
+                                      ? "No strip fits these filters."
+                                      : "No strip matches \u{201C}\(filter.trimmedSearch)\u{201D} with these filters.")
+                )
             }
         }
         .alert(
@@ -417,6 +428,7 @@ private struct StripsPage: View {
             }
         } message: {
             Text("Deleting a strip is permanent. Archiving keeps it.")
+        }
         }
     }
 

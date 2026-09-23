@@ -13,6 +13,16 @@ enum ProgressSort: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 }
 
+extension ProgressSort {
+    var asFilterSort: BoardFilter.Sort {
+        switch self {
+        case .manual: .manual
+        case .progressAscending: .progressAscending
+        case .progressDescending: .progressDescending
+        }
+    }
+}
+
 struct TaskListView: View {
     @Environment(\.modelContext) private var modelContext
     @Query(filter: #Predicate<TaskItem> { !$0.isTombstoned }, sort: \TaskItem.orderIndex)
@@ -70,35 +80,23 @@ struct TaskListView: View {
         Array(Set(activeTasks.flatMap(\.tags))).sorted()
     }
 
-    private var filtered: [TaskItem] {
-        var result = activeTasks
-        let trimmedSearch = searchText.trimmingCharacters(in: .whitespaces)
-        if !trimmedSearch.isEmpty {
-            result = result.filter { $0.title.localizedCaseInsensitiveContains(trimmedSearch) }
-        }
-        if let tag = tagFilter {
-            result = result.filter { $0.tags.contains(tag) }
-        }
-        if dueFrom != nil || dueTo != nil {
-            result = result.filter { task in
-                guard let due = task.dueAt else { return false }
-                if let from = dueFrom, due < from { return false }
-                if let to = dueTo, due > to { return false }
-                return true
-            }
-        }
-        switch sortMode {
-        case .manual: break
-        case .progressAscending: result.sort { $0.progress < $1.progress }
-        case .progressDescending: result.sort { $0.progress > $1.progress }
-        }
-        return result
+    /// The board's own controls, as the shared rules read them — the same ones the iPhone board
+    /// uses, so "what does this filter show" has one answer (see BoardFilter).
+    private var filter: BoardFilter {
+        BoardFilter(
+            search: searchText,
+            tag: tagFilter,
+            dueFrom: dueFrom,
+            dueTo: dueTo,
+            sort: sortMode.asFilterSort
+        )
     }
 
-    private var canReorder: Bool {
-        sortMode == .manual && tagFilter == nil && dueFrom == nil && dueTo == nil
-            && searchText.trimmingCharacters(in: .whitespaces).isEmpty
+    private var filtered: [TaskItem] {
+        filter.apply(to: activeTasks)
     }
+
+    private var canReorder: Bool { filter.allowsReordering }
 
     private func blocker(for task: TaskItem) -> TaskItem? {
         StripActions.blocker(for: task, in: allTasks)
