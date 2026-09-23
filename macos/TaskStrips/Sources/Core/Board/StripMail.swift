@@ -31,6 +31,32 @@ enum StripMail {
         return "Email message"
     }
 
+    /// The link back to a message, read out of an email file.
+    ///
+    /// Mail drags a message out in more than one shape: sometimes as a `message:` URL, sometimes
+    /// as the message itself, a .eml file. Every email carries a Message-ID, which is exactly what
+    /// a `message:` URL points at — so a dropped file can still become a link to the message in
+    /// Mail rather than only a copy of it on disk.
+    static func messageLink(fromEmail text: String) -> String? {
+        for line in text.split(separator: "\n", omittingEmptySubsequences: false).prefix(400) {
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            // Headers stop at the first blank line; nothing after it is a Message-ID.
+            if trimmed.isEmpty { break }
+            guard trimmed.lowercased().hasPrefix("message-id:") else { continue }
+            let value = trimmed.dropFirst("message-id:".count).trimmingCharacters(in: .whitespaces)
+            guard value.hasPrefix("<"), value.hasSuffix(">"), value.count > 2 else { continue }
+            let escaped = value
+                .addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(.init(charactersIn: "-._~@")))
+            guard let escaped else { return nil }
+            return "message://\(escaped)"
+        }
+        return nil
+    }
+
+    static func isEmailFile(_ url: URL) -> Bool {
+        ["eml", "emlx", "mbox"].contains(url.pathExtension.lowercased())
+    }
+
     // MARK: - The email a strip is sent as
 
     static func subject(for task: TaskItem) -> String {

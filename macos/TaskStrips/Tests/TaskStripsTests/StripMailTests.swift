@@ -25,6 +25,15 @@ final class StripMailTests: XCTestCase {
 
     // MARK: - An email linked to a strip
 
+    /// The exact shape Mail puts on the pasteboard when a message is dragged out of it: one
+    /// colon, no slashes, and the angle brackets already escaped.
+    func testTheLinkMailActuallyHandsOverIsRecognised() {
+        let dragged = "message:%3C1372329598.91023@mail.example.com%3E"
+        XCTAssertTrue(StripMail.isMessageLink(dragged))
+        XCTAssertEqual(StripMail.label(for: dragged), "Email message")
+        XCTAssertNotNil(URL(string: dragged), "it has to survive being made into a URL")
+    }
+
     func testAMessageLinkIsToldApartFromAWebPage() {
         XCTAssertTrue(StripMail.isMessageLink("message://%3C123@mail.example%3E"))
         XCTAssertTrue(StripMail.isMessageLink("mailto:someone@example.com"))
@@ -119,5 +128,47 @@ final class StripMailTests: XCTestCase {
             StripMail.note(forFilesLeftBehind: ["a.mov", "b.zip"]),
             "\n(a.mov, b.zip were too large to attach.)"
         )
+    }
+
+    // MARK: - An email dropped as a file
+
+    private let sample = """
+    From: someone@example.com
+    To: me@example.com
+    Subject: The quote
+    Message-ID: <CAF123abc@mail.example.com>
+    Date: Mon, 1 Sep 2026 10:00:00 +0300
+
+    Message-ID: <not-this-one@example.com>
+    The body of the email.
+    """
+
+    func testTheLinkBackToAMessageIsReadOutOfTheFile() throws {
+        let link = try XCTUnwrap(StripMail.messageLink(fromEmail: sample))
+        XCTAssertTrue(link.hasPrefix("message://"), link)
+        XCTAssertTrue(link.contains("CAF123abc"), link)
+        // The angle brackets have to be escaped or the URL ends at the first one.
+        XCTAssertFalse(link.contains("<"), link)
+        XCTAssertTrue(StripMail.isMessageLink(link))
+    }
+
+    /// Only the headers count. A message quoting another message's id in its body would otherwise
+    /// link to the wrong email entirely.
+    func testOnlyTheHeaderIsRead() throws {
+        let link = try XCTUnwrap(StripMail.messageLink(fromEmail: sample))
+        XCTAssertFalse(link.contains("not-this-one"), link)
+    }
+
+    func testAFileWithNoMessageIdLinksToNothing() {
+        XCTAssertNil(StripMail.messageLink(fromEmail: "Subject: no id here\n\nbody"))
+        XCTAssertNil(StripMail.messageLink(fromEmail: ""))
+        // A malformed one is no id at all.
+        XCTAssertNil(StripMail.messageLink(fromEmail: "Message-ID: 123\n\nbody"))
+    }
+
+    func testAnEmailFileIsToldApartFromAnyOtherFile() {
+        XCTAssertTrue(StripMail.isEmailFile(URL(fileURLWithPath: "/tmp/The quote.eml")))
+        XCTAssertTrue(StripMail.isEmailFile(URL(fileURLWithPath: "/tmp/x.EML")))
+        XCTAssertFalse(StripMail.isEmailFile(URL(fileURLWithPath: "/tmp/report.pdf")))
     }
 }

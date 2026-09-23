@@ -9,6 +9,9 @@ struct TaskRowView: View {
 
     private var isBlocked: Bool { blocker != nil && blocker?.isDone == false }
 
+    private var emailCount: Int { task.links.filter { StripMail.isMessageLink($0.url) }.count }
+    private var linkCount: Int { task.links.count - emailCount }
+
     private var isOverdue: Bool {
         guard !task.isDone, let due = task.dueAt else { return false }
         return due <= .now
@@ -59,6 +62,18 @@ struct TaskRowView: View {
                     }
                     if !task.attachments.isEmpty {
                         Label("\(task.attachments.count)", systemImage: "paperclip")
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(TaskStripTheme.paper.opacity(0.6))
+                    }
+                    // A linked email and a linked page are both worth seeing from the board:
+                    // a link nobody can tell is there is a link nobody opens.
+                    if emailCount > 0 {
+                        Label("\(emailCount)", systemImage: "envelope")
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(TaskStripTheme.amber.opacity(0.85))
+                    }
+                    if linkCount > 0 {
+                        Label("\(linkCount)", systemImage: "link")
                             .font(.system(.caption2, design: .monospaced))
                             .foregroundStyle(TaskStripTheme.paper.opacity(0.6))
                     }

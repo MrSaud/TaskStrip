@@ -481,12 +481,12 @@ struct TaskListView: View {
             .onTapGesture(count: 1) { selectedTaskID = task.id }
             // Dropped on a strip, a file joins that strip. The board behind it catches anything
             // dropped between the rows — see the destination on the list itself.
-            .dropDestination(for: URL.self) { urls, _ in
-                // A file joins the strip; an email dragged out of Mail is linked to it instead,
-                // since the message lives in Mail and a copy of it would only go stale.
-                let attached = attach(BoardDrop.usableFiles(among: urls), to: task)
-                let linked = link(BoardDrop.messageLinks(among: urls), to: task)
-                return attached || linked
+            // Providers rather than `dropDestination(for: URL.self)`: a message dragged out of
+            // Mail arrives as several things at once — a `message:` URL, the subject, and a
+            // promise of the .eml — and SwiftUI's URL drop resolves the promise, so the strip got
+            // a copy of the email instead of a link to it. This reads the URL and its name.
+            .onDrop(of: [.url, .fileURL], isTargeted: nil) { providers in
+                accept(providers, on: task)
             }
             .tag(task.id)
         // Swipe gestures need an actual trackpad and expose no accessibility action, so a
@@ -800,20 +800,62 @@ struct TaskListView: View {
         StripMailSender.send(StripMailSender.draft(for: task, files: files))
     }
 
-    /// Files an email dragged from Mail as a link on the strip. The same message dropped twice
-    /// doesn't become two links.
-    private func link(_ urls: [URL], to task: TaskItem) -> Bool {
-        guard !urls.isEmpty else { return false }
-        var added = 0
-        for url in urls {
-            let address = url.absoluteString
-            guard !task.links.contains(where: { $0.url == address }) else { continue }
-            task.links.append(TaskLink(url: address, label: ""))
-            task.actionLog.append(TaskActionLogEntry(text: "Linked an email"))
-            added += 1
+    /// What was dropped on a strip: a file joins it, an email from Mail is linked to it.
+    ///
+    /// The loading is asynchronous and the drop has to answer straight away, so this says yes to
+    /// anything it recognises and does the work as it arrives.
+    private func accept(_ providers: [NSItemProvider], on task: TaskItem) -> Bool {
+        var recognised = false
+        for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
+            recognised = true
+            provider.loadItem(forTypeIdentifier: UTType.url.identifier) { item, _ in
+                guard let url = Self.url(from: item) else { return }
+                if url.isFileURL {
+                    Task { @MainActor in _ = attach([url], to: task) }
+                    return
+                }
+                guard StripMail.isMessageLink(url.absoluteString) else { return }
+                // Mail sends the subject alongside the link, which is what the strip should show:
+                // the URL itself is an opaque message id.
+                provider.loadItem(forTypeIdentifier: "public.url-name") { name, _ in
+                    let subject = Self.text(from: name)
+                    Task { @MainActor in _ = link(url, named: subject, to: task) }
+                }
+            }
         }
-        if added > 0 { selectedTaskID = task.id }
-        return added > 0
+        return recognised
+    }
+
+    private static func url(from item: NSSecureCoding?) -> URL? {
+        if let url = item as? URL { return url }
+        if let data = item as? Data { return URL(dataRepresentation: data, relativeTo: nil) }
+        if let text = item as? String { return URL(string: text) }
+        return nil
+    }
+
+    private static func text(from item: NSSecureCoding?) -> String {
+        if let text = item as? String { return text }
+        if let data = item as? Data { return String(data: data, encoding: .utf8) ?? "" }
+        return ""
+    }
+
+    /// Files an email dragged from Mail as a link on the strip, under its own subject. The same
+    /// message dropped twice doesn't become two links.
+    @discardableResult
+    private func link(_ url: URL, named subject: String, to task: TaskItem) -> Bool {
+        let address = url.absoluteString
+        guard !task.links.contains(where: { $0.url == address }) else { return false }
+        let label = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        task.links.append(TaskLink(url: address, label: label))
+        task.actionLog.append(TaskActionLogEntry(text: "Linked an email"))
+        selectedTaskID = task.id
+        return true
+    }
+
+    private func link(_ urls: [URL], to task: TaskItem) -> Bool {
+        var added = false
+        for url in urls where link(url, named: "", to: task) { added = true }
+        return added
     }
 
     private func attach(_ urls: [URL], to task: TaskItem) -> Bool {
@@ -825,6 +867,13 @@ struct TaskListView: View {
             ) else { continue }
             task.attachments.append(attachment)
             attached += 1
+            // Mail sometimes drops the message itself rather than a link to it. The file is kept,
+            // and the message it came from is linked as well, so the strip can still open it.
+            if StripMail.isEmailFile(url),
+               let text = try? String(contentsOf: url, encoding: .utf8),
+               let link = StripMail.messageLink(fromEmail: text) {
+                _ = self.link([URL(string: link)].compactMap { $0 }, to: task)
+            }
         }
         if attached > 0 { selectedTaskID = task.id }
         return attached > 0
