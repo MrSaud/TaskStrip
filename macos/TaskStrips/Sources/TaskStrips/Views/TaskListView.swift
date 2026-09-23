@@ -481,13 +481,14 @@ struct TaskListView: View {
             .onTapGesture(count: 1) { selectedTaskID = task.id }
             // Dropped on a strip, a file joins that strip. The board behind it catches anything
             // dropped between the rows — see the destination on the list itself.
-            // Providers rather than `dropDestination(for: URL.self)`: a message dragged out of
-            // Mail arrives as several things at once — a `message:` URL, the subject, and a
-            // promise of the .eml — and SwiftUI's URL drop resolves the promise, so the strip got
-            // a copy of the email instead of a link to it. This reads the URL and its name.
-            .onDrop(of: [.url, .fileURL], isTargeted: nil) { providers in
-                accept(providers, on: task)
-            }
+            // AppKit, not SwiftUI: see MailDropCatcher for what Mail actually sends and why
+            // SwiftUI's drop couldn't be talked into taking the link out of it.
+            .background(
+                MailDropCatcher(
+                    onEmail: { url, subject in link(url, named: subject, to: task) },
+                    onFiles: { files in _ = attach(BoardDrop.usableFiles(among: files), to: task) }
+                )
+            )
             .tag(task.id)
         // Swipe gestures need an actual trackpad and expose no accessibility action, so a
         // mouse-only user (or VoiceOver) would have no way to reach these at all — the context
@@ -798,45 +799,6 @@ struct TaskListView: View {
     private func sendByEmail(_ task: TaskItem) {
         let files = task.attachments.map { AttachmentStore.shared.url(for: $0) }
         StripMailSender.send(StripMailSender.draft(for: task, files: files))
-    }
-
-    /// What was dropped on a strip: a file joins it, an email from Mail is linked to it.
-    ///
-    /// The loading is asynchronous and the drop has to answer straight away, so this says yes to
-    /// anything it recognises and does the work as it arrives.
-    private func accept(_ providers: [NSItemProvider], on task: TaskItem) -> Bool {
-        var recognised = false
-        for provider in providers where provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
-            recognised = true
-            provider.loadItem(forTypeIdentifier: UTType.url.identifier) { item, _ in
-                guard let url = Self.url(from: item) else { return }
-                if url.isFileURL {
-                    Task { @MainActor in _ = attach([url], to: task) }
-                    return
-                }
-                guard StripMail.isMessageLink(url.absoluteString) else { return }
-                // Mail sends the subject alongside the link, which is what the strip should show:
-                // the URL itself is an opaque message id.
-                provider.loadItem(forTypeIdentifier: "public.url-name") { name, _ in
-                    let subject = Self.text(from: name)
-                    Task { @MainActor in _ = link(url, named: subject, to: task) }
-                }
-            }
-        }
-        return recognised
-    }
-
-    private static func url(from item: NSSecureCoding?) -> URL? {
-        if let url = item as? URL { return url }
-        if let data = item as? Data { return URL(dataRepresentation: data, relativeTo: nil) }
-        if let text = item as? String { return URL(string: text) }
-        return nil
-    }
-
-    private static func text(from item: NSSecureCoding?) -> String {
-        if let text = item as? String { return text }
-        if let data = item as? Data { return String(data: data, encoding: .utf8) ?? "" }
-        return ""
     }
 
     /// Files an email dragged from Mail as a link on the strip, under its own subject. The same
