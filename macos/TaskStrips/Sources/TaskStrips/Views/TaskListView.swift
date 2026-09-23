@@ -398,6 +398,7 @@ struct TaskListView: View {
         actions.toggleSelectionDone = { toggleDone(task) }
         actions.archiveSelection = { archive(task) }
         actions.deleteSelection = { requestDelete(task) }
+        actions.emailSelection = { sendByEmail(task) }
         actions.moveSelection = { move in
             guard reorderable else { return }
             _ = BoardOrdering.move(task, move, in: visible)
@@ -481,7 +482,11 @@ struct TaskListView: View {
             // Dropped on a strip, a file joins that strip. The board behind it catches anything
             // dropped between the rows — see the destination on the list itself.
             .dropDestination(for: URL.self) { urls, _ in
-                attach(BoardDrop.usableFiles(among: urls), to: task)
+                // A file joins the strip; an email dragged out of Mail is linked to it instead,
+                // since the message lives in Mail and a copy of it would only go stale.
+                let attached = attach(BoardDrop.usableFiles(among: urls), to: task)
+                let linked = link(BoardDrop.messageLinks(among: urls), to: task)
+                return attached || linked
             }
             .tag(task.id)
         // Swipe gestures need an actual trackpad and expose no accessibility action, so a
@@ -493,6 +498,11 @@ struct TaskListView: View {
                 editingTask = task
             } label: {
                 Label("Edit…", systemImage: "square.and.pencil")
+            }
+            Button {
+                sendByEmail(task)
+            } label: {
+                Label("Send by Email…", systemImage: "envelope")
             }
             Divider()
             Button {
@@ -783,6 +793,29 @@ struct TaskListView: View {
     /// which is the only behaviour that's safe when the thing dragged might be someone's only
     /// copy.
     @discardableResult
+    /// Opens a mail draft holding the strip: what it is, what's written on it, and the files on
+    /// it that are small enough to send.
+    private func sendByEmail(_ task: TaskItem) {
+        let files = task.attachments.map { AttachmentStore.shared.url(for: $0) }
+        StripMailSender.send(StripMailSender.draft(for: task, files: files))
+    }
+
+    /// Files an email dragged from Mail as a link on the strip. The same message dropped twice
+    /// doesn't become two links.
+    private func link(_ urls: [URL], to task: TaskItem) -> Bool {
+        guard !urls.isEmpty else { return false }
+        var added = 0
+        for url in urls {
+            let address = url.absoluteString
+            guard !task.links.contains(where: { $0.url == address }) else { continue }
+            task.links.append(TaskLink(url: address, label: ""))
+            task.actionLog.append(TaskActionLogEntry(text: "Linked an email"))
+            added += 1
+        }
+        if added > 0 { selectedTaskID = task.id }
+        return added > 0
+    }
+
     private func attach(_ urls: [URL], to task: TaskItem) -> Bool {
         guard !urls.isEmpty else { return false }
         var attached = 0

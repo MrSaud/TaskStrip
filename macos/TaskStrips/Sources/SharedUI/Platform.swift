@@ -38,6 +38,16 @@ enum Platform {
         #endif
     }
 
+    /// Opens a link with whatever handles it — a browser, or Mail for a message a strip was
+    /// filed from.
+    static func open(_ url: URL) {
+        #if os(macOS)
+        NSWorkspace.shared.open(url)
+        #else
+        UIApplication.shared.open(url)
+        #endif
+    }
+
     static func copy(_ text: String) {
         #if os(macOS)
         NSPasteboard.general.clearContents()

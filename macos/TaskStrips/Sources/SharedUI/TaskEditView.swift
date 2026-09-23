@@ -47,6 +47,9 @@ struct TaskEditView: View {
     @State private var linkedSketchID: String?
     @State private var isPickingSketch = false
     @State private var openingLinkedSketch = false
+    #if os(iOS)
+    @State private var isEmailing = false
+    #endif
 
     private let attachmentStore = AttachmentStore.shared
 
@@ -249,6 +252,12 @@ struct TaskEditView: View {
                 SketchListView(onPick: { linkedSketchID = $0.id })
             }
         }
+        #if os(iOS)
+        .sheet(isPresented: $isEmailing) {
+            StripMailComposer(draft: emailDraft) { isEmailing = false }
+                .ignoresSafeArea()
+        }
+        #endif
         .canvasPresentation(isPresented: $openingLinkedSketch) {
             if let linkedSketchID {
                 NavigationStack {
@@ -372,8 +381,20 @@ struct TaskEditView: View {
         VStack(alignment: .leading) {
             ForEach(links) { link in
                 HStack {
-                    Text(link.label.isEmpty ? link.url : link.label)
+                    // A link you can't open is a note about a link. An email dragged from Mail
+                    // is a message: URL — an id, not an address — so it's named rather than
+                    // shown, and opening it takes you back to the message it came from.
+                    Button {
+                        open(link)
+                    } label: {
+                        Label(
+                            link.label.isEmpty ? StripMail.label(for: link.url) : link.label,
+                            systemImage: StripMail.isMessageLink(link.url) ? "envelope" : "link"
+                        )
                         .lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+                    .help(link.url)
                     Spacer()
                     Button(role: .destructive) {
                         links.removeAll { $0.id == link.id }
@@ -389,7 +410,60 @@ struct TaskEditView: View {
                 Button("Add", action: addLink)
                     .disabled(newLinkURL.trimmingCharacters(in: .whitespaces).isEmpty)
             }
+
+            // Sends what's on screen, files included, in whatever writes mail here. A strip is
+            // often the answer to someone else's question.
+            Button {
+                sendByEmail()
+            } label: {
+                Label("Send by Email…", systemImage: "envelope")
+            }
+            .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+            .padding(.top, 4)
         }
+    }
+
+    /// The strip as it stands in the editor, saved or not — sending what's on screen rather than
+    /// what was last written down is what someone means by "send this".
+    private func draftedStrip() -> TaskItem {
+        let task = TaskItem(
+            title: title.trimmingCharacters(in: .whitespaces),
+            orderIndex: editingTask?.orderIndex ?? nextOrderIndex,
+            priority: priority
+        )
+        task.notes = notes
+        task.dueAt = hasDueDate ? dueAt : nil
+        task.progress = Int(progress)
+        task.isDone = editingTask?.isDone ?? false
+        task.tags = tags
+        task.links = links
+        task.contacts = contacts
+        return task
+    }
+
+    private var emailDraft: StripMailSender.Draft {
+        StripMailSender.draft(
+            for: draftedStrip(),
+            files: attachments.map { attachmentStore.url(for: $0) }
+        )
+    }
+
+    private func sendByEmail() {
+        #if os(macOS)
+        StripMailSender.send(emailDraft)
+        #else
+        if StripMailComposer.canSend {
+            isEmailing = true
+        } else if let url = StripMail.mailtoURL(subject: emailDraft.subject, body: emailDraft.body) {
+            // No mail account set up for the composer, so hand it to whatever does have one.
+            Platform.open(url)
+        }
+        #endif
+    }
+
+    private func open(_ link: TaskLink) {
+        guard let url = URL(string: link.url.trimmingCharacters(in: .whitespaces)) else { return }
+        Platform.open(url)
     }
 
     private func addLink() {
