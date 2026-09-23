@@ -332,3 +332,20 @@ final class ShareOntoAStripTests: XCTestCase {
         XCTAssertEqual(strips.first?.links.count, 1)
     }
 }
+
+extension StripMailTests {
+    func testAStripSharedToSomeoneElseLeadsWithItsName() {
+        let task = strip("Renew the passport", notes: "Booked for Tuesday.", progress: 40)
+        let text = StripMail.shareText(for: task)
+
+        XCTAssertTrue(text.hasPrefix("Renew the passport\n\n"), text)
+        XCTAssertTrue(text.contains("Progress: 40%"), text)
+        XCTAssertTrue(text.contains("Booked for Tuesday."), text)
+    }
+
+    /// Whatever it's sent through, it's the same strip in the same words.
+    func testTheSharedTextAndTheEmailSayTheSameThing() {
+        let task = strip(notes: "Something worth passing on.", tags: ["HOME"])
+        XCTAssertTrue(StripMail.shareText(for: task).hasSuffix(StripMail.body(for: task)))
+    }
+}

@@ -505,6 +505,9 @@ struct TaskListView: View {
             } label: {
                 Label("Send by Email…", systemImage: "envelope")
             }
+            ShareLink(item: StripMail.shareText(for: task), subject: Text(task.title)) {
+                Label("Share…", systemImage: "square.and.arrow.up")
+            }
             Divider()
             Button {
                 toggleDone(task)

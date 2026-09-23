@@ -52,6 +52,14 @@ enum StripMail {
         return lines.joined(separator: "\n")
     }
 
+    /// The strip as a message to somebody: its name, then everything the email body carries.
+    ///
+    /// The same words whichever way it leaves — mail, a message, a note to yourself — because a
+    /// strip read on someone else's phone should say what it says here.
+    static func shareText(for task: TaskItem) -> String {
+        "\(subject(for: task))\n\n\(body(for: task))"
+    }
+
     /// A mailto: URL, for when there's no mail client to talk to properly. Everything is escaped,
     /// because a subject with an ampersand in it would otherwise lose half the body.
     static func mailtoURL(to recipient: String = "", subject: String, body: String) -> URL? {

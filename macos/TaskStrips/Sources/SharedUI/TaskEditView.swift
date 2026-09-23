@@ -420,12 +420,22 @@ struct TaskEditView: View {
                     .disabled(newLinkURL.trimmingCharacters(in: .whitespaces).isEmpty)
             }
 
-            // Sends what's on screen, files included, in whatever writes mail here. A strip is
-            // often the answer to someone else's question.
-            Button {
-                sendByEmail()
-            } label: {
-                Label("Send by Email…", systemImage: "envelope")
+            // Two ways out to somebody else: mail, which can carry the files, and the share
+            // sheet, which can reach anything else on the device — a message, a note, a chat.
+            // Neither is collaboration: what leaves is a copy of what the strip says today.
+            HStack(spacing: 14) {
+                Button {
+                    sendByEmail()
+                } label: {
+                    Label("Send by Email…", systemImage: "envelope")
+                }
+                ShareLink(
+                    item: StripMail.shareText(for: draftedStrip()),
+                    subject: Text(title),
+                    message: Text("")
+                ) {
+                    Label("Share…", systemImage: "square.and.arrow.up")
+                }
             }
             .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
             .padding(.top, 4)
