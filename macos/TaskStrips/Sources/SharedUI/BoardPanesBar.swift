@@ -11,7 +11,7 @@ struct BoardPanesBar: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            ForEach(BoardPane.allCases) { pane in
+            ForEach(BoardPane.onThisPlatform) { pane in
                 let isOn = panes.shows(pane)
                 let isLast = panes.isOnlyPane(pane)
                 Button {

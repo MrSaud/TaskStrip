@@ -148,6 +148,10 @@ struct TaskListView: View {
                         )
                         .frame(minWidth: 320, idealWidth: 440, maxWidth: .infinity)
                     }
+                    if panes.shows(.inbox) {
+                        InboxView()
+                            .frame(minWidth: 240, idealWidth: 300, maxWidth: .infinity)
+                    }
                     if panes.shows(.notes) {
                         NotesView(isEmbedded: true, nextOrderIndex: nextOrderIndex)
                             .frame(minWidth: 240, idealWidth: 300, maxWidth: .infinity)

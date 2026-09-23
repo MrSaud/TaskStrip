@@ -11,6 +11,8 @@ enum BoardPane: String, CaseIterable, Identifiable, Equatable {
     case strips
     case reminders
     case notes
+    /// The Mac's only: what's arrived in Mail lately.
+    case inbox
 
     var id: String { rawValue }
 
@@ -20,6 +22,7 @@ enum BoardPane: String, CaseIterable, Identifiable, Equatable {
         case .strips: return "STRIPS"
         case .reminders: return "REMINDERS"
         case .notes: return "NOTES"
+        case .inbox: return "INBOX"
         }
     }
 
@@ -29,10 +32,21 @@ enum BoardPane: String, CaseIterable, Identifiable, Equatable {
         case .strips: return "list.bullet.rectangle"
         case .reminders: return "bell"
         case .notes: return "note.text"
+        case .inbox: return "tray"
         }
     }
 
     var flag: BoardPanes { BoardPanes(pane: self) }
+
+    /// The panes this device can actually show. The inbox is read out of Mail, and only a Mac
+    /// lets an app do that — iOS gives no access to Mail's messages at all.
+    static var onThisPlatform: [BoardPane] {
+        #if os(macOS)
+        allCases
+        #else
+        allCases.filter { $0 != .inbox }
+        #endif
+    }
 }
 
 /// Which panes are showing, remembered per device.
@@ -50,6 +64,7 @@ struct BoardPanes: OptionSet, Equatable {
         case .strips: self = BoardPanes(rawValue: 1 << 0)
         case .reminders: self = BoardPanes(rawValue: 1 << 1)
         case .notes: self = BoardPanes(rawValue: 1 << 2)
+        case .inbox: self = BoardPanes(rawValue: 1 << 4)
         case .today: self = BoardPanes(rawValue: 1 << 3)
         }
     }
@@ -58,12 +73,13 @@ struct BoardPanes: OptionSet, Equatable {
     static let reminders = BoardPanes(pane: .reminders)
     static let notes = BoardPanes(pane: .notes)
     static let today = BoardPanes(pane: .today)
+    static let inbox = BoardPanes(pane: .inbox)
 
     /// What a Mac or an iPad opens with: everything, since the reason to have the room is to use
     /// it. Whatever gets in the way is one tap from gone, and it stays gone.
     static let everything: BoardPanes = [.strips, .reminders, .notes]
 
-    var showing: [BoardPane] { BoardPane.allCases.filter { contains($0.flag) } }
+    var showing: [BoardPane] { BoardPane.onThisPlatform.filter { contains($0.flag) } }
 
     func shows(_ pane: BoardPane) -> Bool { contains(pane.flag) }
 
@@ -86,13 +102,15 @@ struct BoardPanes: OptionSet, Equatable {
     /// The next pane on its own, for a swipe on a board showing a single pane. Nil at the ends,
     /// like the phone's pager: running off the edge stops rather than looping.
     func single(after pane: BoardPane) -> BoardPanes? {
-        guard let index = BoardPane.allCases.firstIndex(of: pane), index + 1 < BoardPane.allCases.count else { return nil }
-        return BoardPanes(pane: BoardPane.allCases[index + 1])
+        let panes = BoardPane.onThisPlatform
+        guard let index = panes.firstIndex(of: pane), index + 1 < panes.count else { return nil }
+        return BoardPanes(pane: panes[index + 1])
     }
 
     func single(before pane: BoardPane) -> BoardPanes? {
-        guard let index = BoardPane.allCases.firstIndex(of: pane), index > 0 else { return nil }
-        return BoardPanes(pane: BoardPane.allCases[index - 1])
+        let panes = BoardPane.onThisPlatform
+        guard let index = panes.firstIndex(of: pane), index > 0 else { return nil }
+        return BoardPanes(pane: panes[index - 1])
     }
 
     /// The one pane showing, if only one is.
