@@ -54,7 +54,6 @@ targets:
         CFBundleIconName: AppIcon
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
-        NSAppleEventsUsageDescription: Reading the inbox asks Mail for the newest few messages. Nothing is marked, moved or sent.
         NSLocationWhenInUseUsageDescription: The board shows the temperature where you are, to the nearest neighbourhood.
         NSCalendarsWriteOnlyAccessUsageDescription: Blocking time for a strip puts an event in your calendar.
         NSCalendarsFullAccessUsageDescription: Showing what today already costs means reading today's events.

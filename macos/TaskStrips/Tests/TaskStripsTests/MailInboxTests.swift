@@ -11,50 +11,6 @@ final class MailInboxTests: XCTestCase {
         ].joined(separator: "\n") + "\n"
     }
 
-    func testEachLineBecomesAMessage() throws {
-        let messages = MailInbox.parse(reply, now: now)
-        XCTAssertEqual(messages.count, 2)
-
-        let first = try XCTUnwrap(messages.first)
-        XCTAssertEqual(first.subject, "The quarterly figures")
-        XCTAssertEqual(first.sender, "Ahmad Alenezi <ahmad@example.com>")
-        XCTAssertEqual(first.receivedAt, Date(timeIntervalSince1970: 1_799_990_000))
-        XCTAssertFalse(first.isRead)
-        XCTAssertTrue(messages[1].isRead)
-    }
-
-    func testAMessageWithNoSubjectStillReadsAsSomething() {
-        XCTAssertEqual(MailInbox.parse(reply, now: now)[1].subject, "(no subject)")
-    }
-
-    func testTheSenderIsShownByNameWhereThereIsOne() {
-        let messages = MailInbox.parse(reply, now: now)
-        XCTAssertEqual(messages[0].senderName, "Ahmad Alenezi")
-        XCTAssertEqual(messages[1].senderName, "notifications@example.com", "an address with no name stays as it is")
-    }
-
-    /// The same link Mail hands over when a message is dragged out of it, so a message in this
-    /// list can be filed onto a strip exactly as a dragged one is.
-    func testAMessageCarriesTheLinkThatOpensIt() throws {
-        let link = try XCTUnwrap(MailInbox.parse(reply, now: now).first?.link)
-        XCTAssertTrue(link.hasPrefix("message://"), link)
-        XCTAssertTrue(link.contains("CAF123"), link)
-        XCTAssertFalse(link.contains("<"), "the brackets have to be escaped")
-        XCTAssertTrue(EmailLink.isMessage(link))
-    }
-
-    func testNonsenseIsNoMessage() {
-        XCTAssertTrue(MailInbox.parse("").isEmpty)
-        XCTAssertTrue(MailInbox.parse("just some words\n").isEmpty, "too few fields to be a message")
-        XCTAssertTrue(MailInbox.parse("one\ttwo\tthree\n").isEmpty)
-    }
-
-    func testAMessageWithNoDateIsTakenAsJustNow() {
-        let messages = MailInbox.parse("id\tSubject\tsomeone@example.com\t\tfalse\n", now: now)
-        XCTAssertEqual(messages.first?.receivedAt, now)
-    }
-
-    /// Only a Mac can read Mail, so only a Mac is offered the pane.
     func testTheInboxIsOfferedOnlyWhereItCanBeRead() {
         #if os(macOS)
         XCTAssertTrue(BoardPane.onThisPlatform.contains(.inbox))

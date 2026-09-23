@@ -87,18 +87,6 @@ final class MailInboxMergeTests: XCTestCase {
         XCTAssertEqual(MailInboxMerge.filtered(messages, account: "Work", unreadOnly: true).map(\.id), ["b@x"])
     }
 
-    func testMailsLineCarriesTheAccountItCameInOn() {
-        let line = "id@x\tHello\tSomeone <a@b.com>\t1000\tfalse\tsales@swapkuwait.com"
-        let parsed = MailInbox.parse(line)
-        XCTAssertEqual(parsed.first?.account, "sales@swapkuwait.com")
-    }
-
-    func testAnOlderLineWithNoAccountStillParses() {
-        let parsed = MailInbox.parse("id@x\tHello\tSomeone <a@b.com>\t1000\tfalse")
-        XCTAssertEqual(parsed.count, 1)
-        XCTAssertNil(parsed.first?.account)
-    }
-
     /// The cache on disk was written before messages knew their account.
     func testACachedListFromTheOldFormatStillDecodes() throws {
         let old = """

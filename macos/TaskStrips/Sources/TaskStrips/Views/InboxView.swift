@@ -3,29 +3,24 @@ import SwiftUI
 
 /// The inbox, to glance at: who wrote, what about, and when. Clicking one opens it in Mail,
 /// which is where it lives — this is a list beside the board, not a mail client.
+///
+/// Read from the servers, the same way the phone and iPad read it, so the three show the same
+/// list. Mail's own accounts were easier — no password, and Exchange came free — but only the Mac
+/// could ask, and an inbox that differs by device isn't much of an inbox.
 struct InboxView: View {
-    @ObservedObject private var reader = MailReader.shared
     @ObservedObject private var server = IMAPReader.shared
 
     @AppStorage(AppSettingsKey.inboxAccount) private var account = ""
     @AppStorage(AppSettingsKey.inboxUnreadOnly) private var unreadOnly = false
 
-    /// Both sources as one list. A Mac can have mail twice over — an account in Mail and the same
-    /// one set up here over IMAP — so the two are merged and the duplicates dropped rather than
-    /// one being preferred and the other hidden.
-    private var everything: [MailMessage] {
-        MailInboxMerge.merged([reader.messages, server.messages])
-    }
+    private var everything: [MailMessage] { server.messages }
 
     private var messages: [MailMessage] {
         MailInboxMerge.filtered(everything, account: account, unreadOnly: unreadOnly)
     }
 
-    /// Both readers' complaints, since either half can fail while the other still has a list.
-    private var problem: String? {
-        let problems = [reader.problem, server.problem].compactMap { $0 }
-        return problems.isEmpty ? nil : problems.joined(separator: "\n")
-    }
+    /// One line per account that wouldn't answer — the other seven still have a list.
+    private var problem: String? { server.problem }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -37,10 +32,7 @@ struct InboxView: View {
             }
         }
         .background(TaskStripTheme.bayBackground)
-        .task {
-            reader.refresh()
-            server.refresh()
-        }
+        .task { server.refresh() }
     }
 
     private var header: some View {
@@ -69,7 +61,7 @@ struct InboxView: View {
                 account: $account,
                 unreadOnly: $unreadOnly
             )
-            if reader.isReading || server.isReading {
+            if server.isReading {
                 ProgressView()
                     .controlSize(.small)
             } else {
@@ -80,7 +72,7 @@ struct InboxView: View {
                         .font(.caption)
                 }
                 .buttonStyle(.plain)
-                .help("Ask Mail and the servers again")
+                .help("Ask the servers again")
             }
         }
         .padding(.horizontal, 12)
@@ -159,6 +151,15 @@ struct InboxView: View {
                     unreadOnly = false
                 }
                 .buttonStyle(.link)
+            } else if !server.hasAccounts {
+                Text("No mail account yet")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+                Text("Settings › Add an account reads your inbox here, and on your iPhone and iPad.")
+                    .font(.caption)
+                    .foregroundStyle(.tertiary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
             } else {
                 Text(problem ?? "Nothing in the inbox.")
                     .font(.caption)
@@ -173,10 +174,7 @@ struct InboxView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func refresh() {
-        reader.refresh(force: true)
-        server.refresh(force: true)
-    }
+    private func refresh() { server.refresh(force: true) }
 
     private func open(_ message: MailMessage) {
         guard let link = message.link, let url = URL(string: link) else { return }

@@ -2,8 +2,13 @@ import Foundation
 
 /// Reads the inbox from every account that's been set up, and keeps the last list it got.
 ///
-/// This is the half that works on a phone: Mail can't be asked anything there, so the app asks
-/// the server itself. On a Mac both are available, and the pane shows whichever is set up.
+/// The only way the app reads mail, on all three platforms. The Mac used to ask Mail itself,
+/// which needed no password and could reach Exchange — but only the Mac could do it, so the
+/// inbox on the phone was a different inbox. One client against the servers is one list
+/// everywhere, which is worth more than the accounts it costs.
+///
+/// The accounts are asked at the same time rather than one after another: eight accounts, each
+/// a TLS handshake and a round trip or two, is a minute in a row and a couple of seconds at once.
 @MainActor
 final class IMAPReader: ObservableObject {
     static let shared = IMAPReader()
@@ -21,6 +26,9 @@ final class IMAPReader: ObservableObject {
 
     private init() {
         messages = cache.messages
+        // Accounts used to live in this device's settings; they belong in the synced keychain
+        // with their passwords. Nothing to do once it's done, on any device.
+        _ = store.migrateLocalAccountsIfNeeded()
     }
 
     var hasAccounts: Bool { !store.accounts.isEmpty }
@@ -45,21 +53,40 @@ final class IMAPReader: ObservableObject {
             var collected: [MailMessage] = []
             var failures: [String] = []
 
-            for account in accounts {
-                guard let password = passwords[account.id] else {
-                    failures.append("\(account.name): no password saved")
-                    continue
+            // Each account is a separate connection and none waits on another; the order they
+            // come back in doesn't matter, since dates decide the list.
+            await withTaskGroup(of: (String, Result<[MailMessage], Error>).self) { group in
+                for account in accounts {
+                    guard let password = passwords[account.id] else {
+                        failures.append("\(account.name): no password saved")
+                        continue
+                    }
+                    group.addTask {
+                        do {
+                            let read = try await IMAPConnection(account: account, password: password).fetchNewest()
+                            // The server doesn't say whose mailbox this was; the account that
+                            // asked does.
+                            return (account.name, .success(read.map {
+                                var message = $0
+                                message.account = account.name
+                                return message
+                            }))
+                        } catch {
+                            return (account.name, .failure(error))
+                        }
+                    }
                 }
-                do {
-                    let read = try await IMAPConnection(account: account, password: password).fetchNewest()
-                    // The server doesn't say whose mailbox this was; the account that asked does.
-                    collected += read.map { var message = $0; message.account = account.name; return message }
-                } catch {
-                    failures.append("\(account.name): \(error.localizedDescription)")
+                for await (name, outcome) in group {
+                    switch outcome {
+                    case .success(let read): collected += read
+                    case .failure(let error): failures.append("\(name): \(error.localizedDescription)")
+                    }
                 }
             }
 
-            let newest = MailInbox.newest(collected)
+            // Merged rather than only sorted: the same message can arrive twice when one address
+            // forwards to another, and both accounts are being read.
+            let newest = MailInboxMerge.merged([collected])
             await MainActor.run {
                 isReading = false
                 if !newest.isEmpty {

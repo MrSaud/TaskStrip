@@ -10,8 +10,7 @@ struct MailMessage: Identifiable, Equatable, Codable {
     var sender: String
     var receivedAt: Date
     var isRead: Bool
-    /// Which account it arrived on, where that's known — Mail names the account a message's
-    /// mailbox belongs to, and an IMAP account knows its own name. Older cached lists have none,
+    /// Which account it arrived on: the one that asked for it. Older cached lists have none,
     /// which is why it's optional rather than blank.
     var account: String?
 
@@ -33,55 +32,28 @@ struct MailMessage: Identifiable, Equatable, Codable {
     }
 }
 
-/// Reads what Mail hands back. Kept apart from the asking so the shape of a line is pinned by a
-/// test rather than by a mail app being open.
+/// What the pane does with what a server hands back.
 enum MailInbox {
-    /// One message per line, tab-separated, because a subject can contain anything except a tab
-    /// and a newline — which is why they're the separators rather than a comma or a colon.
-    static let separator = "\t"
-
-    static func parse(_ text: String, now: Date = .now) -> [MailMessage] {
-        text.split(separator: "\n", omittingEmptySubsequences: true).compactMap { line in
-            let fields = line.components(separatedBy: separator)
-            guard fields.count >= 5 else { return nil }
-            let seconds = Double(fields[3].trimmingCharacters(in: .whitespaces))
-            return MailMessage(
-                id: fields[0].trimmingCharacters(in: .whitespaces),
-                subject: fields[1].isEmpty ? "(no subject)" : fields[1],
-                sender: fields[2],
-                receivedAt: seconds.map { Date(timeIntervalSince1970: $0) } ?? now,
-                isRead: fields[4].trimmingCharacters(in: .whitespaces).lowercased() == "true",
-                account: fields.count > 5 ? fields[5].trimmingCharacters(in: .whitespaces) : nil
-            )
-        }
-    }
-
     /// How many to show. Enough to see what's arrived since the last look, few enough to glance
     /// at beside a board.
     static let count = 15
 
-    /// How many to take from each end of each account's inbox. Four is enough that a busy
-    /// account still shows something after the dates are sorted, and few enough that eight
-    /// accounts answer in about ten seconds.
-    static let perAccount = 4
-
-    /// How many to ask a server for before picking. Mail hands messages over in the order its mailbox
-    /// holds them, which is not the order they arrived — the first one it offered here was from
-    /// 2014 — so the last stretch is taken and sorted. Kept small: on a 30,000-message unified
-    /// inbox, each property of a dozen messages costs Mail a couple of seconds.
+    /// How many to ask each account for before picking. A mailbox holds its messages in arrival
+    /// order, so the last stretch is the newest — taken, then sorted with every other account's.
+    /// Kept small: it's a glance beside a board, and eight accounts asking at once.
     static let askFor = 8
 
-    /// The newest first, however Mail happened to hand them over.
+    /// The newest first, however the servers happened to hand them over.
     static func newest(_ messages: [MailMessage], count: Int = count) -> [MailMessage] {
         Array(messages.sorted { $0.receivedAt > $1.receivedAt }.prefix(count))
     }
 }
 
-/// The last list Mail gave, kept so the pane has something to show the moment it opens.
+/// The last list the servers gave, kept so the pane has something to show the moment it opens.
 ///
-/// Mail answers when it feels like it — on a thirty-thousand-message unified inbox the same
-/// request took five seconds once and timed out at thirty the next — so the pane shows what it
-/// last saw and quietly refreshes behind that, rather than making someone wait to see anything.
+/// Eight accounts over TLS is a few seconds at best, and a server that's having a bad morning is
+/// longer — so the pane shows what it last saw and refreshes quietly behind it, rather than
+/// making someone wait to see anything.
 struct MailInboxCache {
     private let defaults: UserDefaults
     private let key: String

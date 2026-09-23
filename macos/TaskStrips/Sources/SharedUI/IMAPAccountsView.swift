@@ -12,6 +12,9 @@ struct IMAPAccountsView: View {
     @State private var port = "993"
     @State private var problem: String?
     @State private var isTesting = false
+    /// What DNS said about the address being typed, once it has said it.
+    @State private var provider: MailHost.Provider?
+    @State private var lookingUp = false
 
     private let store = IMAPAccountStore()
 
@@ -48,11 +51,16 @@ struct IMAPAccountsView: View {
                     .textInputAutocapitalization(.never)
                     #endif
                     .onChange(of: email) { _, address in
-                        guard host.isEmpty || host.hasPrefix("imap."), let guess = IMAPHost.guess(for: address) else {
-                            return
-                        }
+                        guard host.isEmpty || host.hasPrefix("imap.") || host.hasSuffix("awsapps.com")
+                            || host.hasSuffix("office365.com"),
+                            let guess = IMAPHost.guess(for: address)
+                        else { return }
+                        // The guess by name goes in straight away so the field is never empty,
+                        // and DNS replaces it a second later if it knows better.
                         host = guess.host
                         port = String(guess.port)
+                        provider = nil
+                        lookUp(address)
                     }
                 SecureField("Password", text: $password)
                 TextField("Server", text: $host)
@@ -61,7 +69,19 @@ struct IMAPAccountsView: View {
                     #endif
                 TextField("Port", text: $port)
 
-                if IMAPHost.refusesPasswords(email) {
+                if lookingUp {
+                    Text("Looking up the server…")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
+                // What DNS found outranks what the address looks like: kfas.org.kw reads like a
+                // company running its own mail and is in fact Microsoft's.
+                if let note = provider?.note {
+                    Label(note, systemImage: provider == .microsoft ? "exclamationmark.triangle" : "info.circle")
+                        .font(.caption)
+                        .foregroundStyle(provider == .microsoft ? TaskStripTheme.urgent : .secondary)
+                } else if IMAPHost.refusesPasswords(email) {
                     Label(
                         "Microsoft doesn't allow a password here — Outlook and Hotmail need OAuth, "
                             + "which this app doesn't do yet.",
@@ -94,14 +114,34 @@ struct IMAPAccountsView: View {
             } header: {
                 Text("Add an account")
             } footer: {
-                Text("The password is kept in your iCloud keychain, like the other credentials — "
-                     + "never in the app's own store or its backups. Mail is read over TLS, headers "
+                Text("The account and its password are kept in your iCloud keychain, like the other "
+                     + "credentials — never in the app's own store or its backups — so adding it "
+                     + "here adds it on your Mac, iPhone and iPad. Mail is read over TLS, headers "
                      + "only, and left unread.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         .onAppear { accounts = store.accounts }
+    }
+
+    /// Asks DNS who runs this domain's mail. Slow answers are nobody's problem: the field is
+    /// already filled with the guess, and a lookup for an address that's since been edited is
+    /// dropped rather than overwriting what's there.
+    private func lookUp(_ address: String) {
+        lookingUp = true
+        Task {
+            let found = await MailHost.best(for: address)
+            await MainActor.run {
+                lookingUp = false
+                guard email == address else { return }
+                provider = found.provider
+                if !found.host.isEmpty {
+                    host = found.host
+                    port = String(found.port)
+                }
+            }
+        }
     }
 
     /// Signs in before saving: a wrong password is worth catching while the person is still
@@ -131,6 +171,7 @@ struct IMAPAccountsView: View {
                 password = ""
                 host = ""
                 port = "993"
+                provider = nil
                 IMAPReader.shared.refresh(force: true)
             }
         }

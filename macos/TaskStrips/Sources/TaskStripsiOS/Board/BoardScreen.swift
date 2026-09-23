@@ -8,7 +8,26 @@ import SwiftUI
 /// are no trailing swipe actions on the board, and delete lives in the editor and in a completed
 /// strip's menu, behind a confirm.
 struct BoardScreen: View {
-    enum Page: Hashable { case today, strips, reminders, inbox }
+    enum Page: Hashable {
+        case today, strips, reminders, inbox
+
+        /// The board, unless a Debug build was told otherwise — `-Page inbox` opens straight onto
+        /// the inbox, which is the only way to see a page of a real phone from a Mac.
+        static var atLaunch: Page {
+            #if DEBUG
+            let arguments = ProcessInfo.processInfo.arguments
+            if let index = arguments.firstIndex(of: "-Page"), index + 1 < arguments.count {
+                switch arguments[index + 1] {
+                case "today": return .today
+                case "reminders": return .reminders
+                case "inbox": return .inbox
+                default: break
+                }
+            }
+            #endif
+            return .strips
+        }
+    }
 
     /// Everything else in the app, one sheet at a time, from the board's menu.
     enum Destination: String, Identifiable, CaseIterable {
@@ -65,7 +84,7 @@ struct BoardScreen: View {
     @State private var quote: Quote?
     @State private var now = Date.now
 
-    @State private var page: Page = .strips
+    @State private var page: Page = Page.atLaunch
     @State private var filter = BoardFilter()
     @State private var editing: TaskItem?
     @State private var isCreating = false
