@@ -110,7 +110,11 @@ final class IMAPReader: ObservableObject {
     ///
     /// Not kept: a list of headers is small enough to cache, and a folder of everyone's mail on
     /// disk is a different thing to be responsible for. Re-opening a message asks again.
-    func body(for message: MailMessage) async -> Outcome {
+    ///
+    /// The limit is what stops a phone downloading a slide deck to show two paragraphs. Asking
+    /// for the whole message is a second, deliberate fetch, made when someone wants a file out
+    /// of it.
+    func body(for message: MailMessage, limit: Int = MailBodyParser.byteLimit) async -> Outcome {
         guard let accountID = message.accountID, let uid = message.uid,
               let account = store.accounts.first(where: { $0.id == accountID })
         else {
@@ -120,7 +124,7 @@ final class IMAPReader: ObservableObject {
             return .failure("No password saved for \(account.name).")
         }
         do {
-            let body = try await IMAPConnection(account: account, password: password).fetchBody(uid: uid)
+            let body = try await IMAPConnection(account: account, password: password).fetchBody(uid: uid, limit: limit)
             return .success(body)
         } catch {
             return .failure(error.localizedDescription)

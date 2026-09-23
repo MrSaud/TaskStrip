@@ -80,6 +80,24 @@ struct AttachmentStore {
         return TaskAttachment(kind: kind, path: relativePath, name: name)
     }
 
+    /// Saves bytes the app already holds — a file out of a mail message, which was never on
+    /// disk to be copied from.
+    @discardableResult
+    func add(_ data: Data, named name: String, kind explicitKind: AttachmentKind? = nil) throws -> TaskAttachment {
+        // A filename out of a message is whatever the sender typed. Separators become dashes so
+        // the name can't climb out of the folder it's filed in, and a name that is only dots
+        // isn't a name at all.
+        var safeName = name
+            .replacingOccurrences(of: "/", with: "-")
+            .replacingOccurrences(of: "\\", with: "-")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        if safeName.isEmpty || safeName.allSatisfy({ $0 == "." }) { safeName = "attachment" }
+        let kind = explicitKind ?? AttachmentKind.inferred(fromExtension: (safeName as NSString).pathExtension)
+        let relativePath = Self.relativePath(for: safeName, kind: kind)
+        try write(data, toRelativePath: relativePath)
+        return TaskAttachment(kind: kind, path: relativePath, name: safeName)
+    }
+
     /// Every file under a folder of the store, as paths relative to its root.
     ///
     /// Used for the sketch notes a backup carries: nothing in the app points at them, so the only

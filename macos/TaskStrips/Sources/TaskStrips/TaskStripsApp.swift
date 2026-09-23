@@ -95,15 +95,22 @@ struct TaskStripsApp: App {
                 let reader = IMAPReader.shared
                 reader.refresh(force: true)
                 try? await Task.sleep(for: .seconds(12))
-                guard let newest = reader.messages.first else {
-                    print("READ-CHECK no messages"); fflush(stdout); return
+                let wanted = ProcessInfo.processInfo.arguments.firstIndex(of: "-CheckMessageReading")
+                    .flatMap { $0 + 1 < ProcessInfo.processInfo.arguments.count ? Int(ProcessInfo.processInfo.arguments[$0 + 1]) : nil } ?? 0
+                guard reader.messages.indices.contains(wanted) else {
+                    print("READ-CHECK no message at \(wanted)"); fflush(stdout); return
                 }
+                let newest = reader.messages[wanted]
+                print("READ-CHECK subject prefix: \(newest.subject.prefix(12))…")
                 print("READ-CHECK asking for uid \(newest.uid.map(String.init) ?? "—") of \(newest.account ?? "—")")
                 switch await reader.body(for: newest) {
                 case .success(let body):
                     print("READ-CHECK ok: \(body.text.count) characters, \(body.text.split(separator: "\n").count) lines, "
                           + "fromHTML \(body.fromHTML), truncated \(body.isTruncated), "
                           + "non-ASCII \(body.text.unicodeScalars.contains { $0.value > 127 })")
+                    for file in body.attachments {
+                        print("READ-CHECK file: \(file.name) (\(file.type), \(file.size)\(file.isInline ? ", inline" : ""))")
+                    }
                 case .failure(let problem):
                     print("READ-CHECK failed: \(problem)")
                 }

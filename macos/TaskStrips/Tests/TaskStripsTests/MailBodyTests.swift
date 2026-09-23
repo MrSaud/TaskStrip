@@ -187,3 +187,182 @@ final class MailBodyTests: XCTestCase {
         )
     }
 }
+
+/// The files that come with a message, which are half of what a work inbox is for.
+final class MailAttachmentTests: XCTestCase {
+    private func message(_ text: String) -> Data {
+        Data(text.replacingOccurrences(of: "\n", with: "\r\n").utf8)
+    }
+
+    private let invoice = Data("%PDF-1.4 a small pretend invoice".utf8)
+
+    private func messageWithInvoice(disposition: String = "attachment; filename=\"invoice.pdf\"") -> Data {
+        message("""
+        Content-Type: multipart/mixed; boundary="B"
+
+        --B
+        Content-Type: text/plain; charset=utf-8
+
+        The invoice is attached.
+        --B
+        Content-Type: application/pdf
+        Content-Disposition: \(disposition)
+        Content-Transfer-Encoding: base64
+
+        \(invoice.base64EncodedString())
+        --B--
+        """)
+    }
+
+    func testAnAttachmentIsFoundBesideTheText() {
+        let body = MailBodyParser.read(messageWithInvoice())
+        XCTAssertEqual(body.text, "The invoice is attached.")
+        XCTAssertEqual(body.attachments.count, 1)
+        XCTAssertEqual(body.attachments.first?.name, "invoice.pdf")
+        XCTAssertEqual(body.attachments.first?.type, "application/pdf")
+        // The bytes are the file, decoded — not the base64 that carried it.
+        XCTAssertEqual(body.attachments.first?.bytes, invoice)
+    }
+
+    func testCapitalsInAFilenameSurvive() {
+        let body = MailBodyParser.read(messageWithInvoice(disposition: "attachment; filename=\"Invoice-July.PDF\""))
+        XCTAssertEqual(body.attachments.first?.name, "Invoice-July.PDF")
+    }
+
+    /// An Arabic filename arrives either as an encoded word or as RFC 2231 percent-encoding.
+    func testANonEnglishFilenameIsReadable() {
+        let encodedWord = MailBodyParser.read(messageWithInvoice(
+            disposition: "attachment; filename=\"=?UTF-8?B?2YXZhNmBLnBkZg==?=\""
+        ))
+        XCTAssertEqual(encodedWord.attachments.first?.name, "ملف.pdf")
+
+        let extended = MailBodyParser.read(messageWithInvoice(
+            disposition: "attachment; filename*=UTF-8''%D9%85%D9%84%D9%81.pdf"
+        ))
+        XCTAssertEqual(extended.attachments.first?.name, "ملف.pdf")
+    }
+
+    func testAFileWithNoNameIsNamedAfterWhatItIs() {
+        let body = MailBodyParser.read(messageWithInvoice(disposition: "attachment"))
+        XCTAssertEqual(body.attachments.first?.name, "attachment.pdf")
+    }
+
+    /// A signature logo is not what anyone means by an attachment, but it shouldn't vanish.
+    func testInlineImagesComeLastAndSaySoS() {
+        let body = MailBodyParser.read(message("""
+        Content-Type: multipart/mixed; boundary="B"
+
+        --B
+        Content-Type: image/png
+        Content-Disposition: inline; filename="logo.png"
+        Content-Transfer-Encoding: base64
+
+        \(Data("PNG".utf8).base64EncodedString())
+        --B
+        Content-Type: application/pdf
+        Content-Disposition: attachment; filename="invoice.pdf"
+        Content-Transfer-Encoding: base64
+
+        \(invoice.base64EncodedString())
+        --B--
+        """))
+        XCTAssertEqual(body.attachments.map(\.name), ["invoice.pdf", "logo.png"])
+        XCTAssertEqual(body.attachments.first?.isInline, false)
+        XCTAssertEqual(body.attachments.last?.isInline, true)
+    }
+
+    func testAPlainMessageHasNoAttachments() {
+        XCTAssertTrue(MailBodyParser.read(message("Content-Type: text/plain\n\nJust words.")).attachments.isEmpty)
+    }
+
+    /// The text and HTML versions of a message are not files that came with it.
+    func testTheAlternativeVersionsAreNotListedAsFiles() {
+        let body = MailBodyParser.read(message("""
+        Content-Type: multipart/alternative; boundary="A"
+
+        --A
+        Content-Type: text/plain; charset=utf-8
+
+        Hello.
+        --A
+        Content-Type: text/html; charset=utf-8
+
+        <p>Hello.</p>
+        --A--
+        """))
+        XCTAssertTrue(body.attachments.isEmpty)
+    }
+
+    func testAttachedTextIsAFileRatherThanTheMessage() {
+        let body = MailBodyParser.read(message("""
+        Content-Type: multipart/mixed; boundary="B"
+
+        --B
+        Content-Type: text/plain; charset=utf-8
+
+        See the notes.
+        --B
+        Content-Type: text/plain; charset=utf-8
+        Content-Disposition: attachment; filename="notes.txt"
+
+        The notes themselves.
+        --B--
+        """))
+        XCTAssertEqual(body.text, "See the notes.")
+        XCTAssertEqual(body.attachments.map(\.name), ["notes.txt"])
+    }
+
+    func testSizeIsSaidInSomethingAPersonReads() {
+        let attachment = MailAttachment(name: "big.pdf", type: "application/pdf", bytes: Data(count: 412_000))
+        XCTAssertTrue(attachment.size.contains("412"), attachment.size)
+    }
+}
+
+/// Putting a file from a message onto a strip, which is the reason the inbox is here at all.
+final class MailAttachmentFilingTests: XCTestCase {
+    private var root: URL!
+    private var store: AttachmentStore!
+
+    override func setUpWithError() throws {
+        try super.setUpWithError()
+        root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        store = AttachmentStore(root: root)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: root)
+        try super.tearDownWithError()
+    }
+
+    func testBytesOutOfAMessageBecomeAFileOnDisk() throws {
+        let bytes = Data("%PDF-1.4 invoice".utf8)
+        let attachment = try store.add(bytes, named: "invoice.pdf")
+        XCTAssertEqual(attachment.name, "invoice.pdf")
+        XCTAssertEqual(attachment.kind, .document)
+        XCTAssertEqual(try Data(contentsOf: store.url(for: attachment)), bytes)
+    }
+
+    func testAnImageIsFiledAsAnImage() throws {
+        let attachment = try store.add(Data("PNG".utf8), named: "photo.png")
+        XCTAssertEqual(attachment.kind, .image)
+    }
+
+    /// A filename out of a mail message is whatever the sender typed, including a slash.
+    func testAFilenameCannotEscapeTheStore() throws {
+        for name in ["../../escape.txt", "..", "/etc/passwd", ""] {
+            let attachment = try store.add(Data("x".utf8), named: name)
+            let written = store.url(for: attachment).standardizedFileURL.path
+            XCTAssertTrue(written.hasPrefix(root.standardizedFileURL.path + "/"), written)
+            XCTAssertTrue(FileManager.default.fileExists(atPath: written), written)
+        }
+    }
+
+    func testTwoFilesOfTheSameNameDontOverwriteEachOther() throws {
+        let first = try store.add(Data("one".utf8), named: "invoice.pdf")
+        let second = try store.add(Data("two".utf8), named: "invoice.pdf")
+        XCTAssertNotEqual(first.path, second.path)
+        XCTAssertEqual(try Data(contentsOf: store.url(for: first)), Data("one".utf8))
+        XCTAssertEqual(try Data(contentsOf: store.url(for: second)), Data("two".utf8))
+    }
+}

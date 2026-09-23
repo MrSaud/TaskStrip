@@ -6,6 +6,24 @@ import Foundation
 /// and an HTML version of the same message, the HTML wrapped around inline images, everything
 /// base64'd or quoted-printable'd and in whichever charset the sender's mail program liked. This
 /// takes all that and hands back the reading.
+/// A file that came with a message: the bytes, and what to call it.
+struct MailAttachment: Identifiable, Equatable {
+    /// Stable within one message, which is all this needs: the list is rebuilt on every fetch.
+    var id: String { "\(name)-\(bytes.count)" }
+    var name: String
+    var type: String
+    var bytes: Data
+
+    /// "412 KB", for a row that has to say whether this is worth waiting for.
+    var size: String {
+        ByteCountFormatter.string(fromByteCount: Int64(bytes.count), countStyle: .file)
+    }
+
+    /// Inline images are part of the layout rather than something someone attached — a signature
+    /// logo, a tracking pixel — so they're listed after the real files and can be told apart.
+    var isInline = false
+}
+
 struct MailBody: Equatable {
     var text: String
     /// True when the plain-text version was missing and this was made out of the HTML one, which
@@ -13,6 +31,8 @@ struct MailBody: Equatable {
     var fromHTML = false
     /// The fetch stopped at the size limit, so the tail is missing.
     var isTruncated = false
+    /// The files that came with it, real attachments first.
+    var attachments: [MailAttachment] = []
 
     static let empty = MailBody(text: "")
 }
@@ -22,12 +42,85 @@ enum MailBodyParser {
     /// twenty-megabyte ones with a slide deck inside, which nobody wants to wait for on a phone.
     static let byteLimit = 256 * 1024
 
+    /// What "fetch the whole thing" means, for a message whose attachments someone actually
+    /// wants. Above this nothing is fetched at all: it's a strip's attachment, not a film.
+    static let wholeMessageLimit = 25 * 1024 * 1024
+
     /// Reads a whole RFC 822 message — headers, then body.
     static func read(_ raw: Data, wasTruncated: Bool = false) -> MailBody {
         let part = part(from: raw)
         var body = text(of: part) ?? MailBody(text: "")
         body.isTruncated = wasTruncated || body.isTruncated
+        let files = attachments(in: part)
+        // A logo in a signature is not what anyone means by an attachment, so the files someone
+        // deliberately attached are listed first.
+        body.attachments = files.filter { !$0.isInline } + files.filter(\.isInline)
         return body
+    }
+
+    /// Every file in the tree: anything that isn't the reading.
+    ///
+    /// A part counts as a file if it was attached on purpose, or if it simply isn't text — a PDF,
+    /// an image, a spreadsheet. A truncated fetch cuts the last one short, which is why an
+    /// attachment is worth having only when the whole message came down.
+    static func attachments(in part: Part) -> [MailAttachment] {
+        if part.type.hasPrefix("multipart/"), let boundary = part.boundary {
+            return pieces(of: part.body, boundary: boundary)
+                .map { self.part(from: $0) }
+                .flatMap { attachments(in: $0) }
+        }
+
+        let disposition = part.disposition.lowercased()
+        let attached = disposition.hasPrefix("attachment")
+        let inline = disposition.hasPrefix("inline")
+        let isText = part.type.hasPrefix("text/") || part.type.isEmpty
+        guard attached || !isText else { return [] }
+        // A part with nothing in it is a part the fetch didn't reach.
+        guard !part.body.isEmpty else { return [] }
+
+        return [
+            MailAttachment(
+                name: filename(of: part),
+                type: part.type,
+                bytes: decoded(part.body, encoding: part.encoding),
+                isInline: inline && !attached
+            ),
+        ]
+    }
+
+    /// What to call the file. Mail says so twice — in the disposition and in the content type —
+    /// and non-English names arrive encoded in one of two different ways.
+    static func filename(of part: Part) -> String {
+        for (header, keys) in [(part.disposition, ["filename*", "filename"]), (part.typeHeader, ["name*", "name"])] {
+            for key in keys {
+                guard let raw = parameter(key, in: header) else { continue }
+                let name = key.hasSuffix("*") ? extended(raw) : IMAPHeaders.decodeWords(raw)
+                if !name.isEmpty { return name }
+            }
+        }
+        // Nothing named it, so the type does: image/png becomes attachment.png.
+        let extensionName = part.type.split(separator: "/").last.map(String.init) ?? "dat"
+        return "attachment.\(extensionName)"
+    }
+
+    /// RFC 2231: `filename*=UTF-8\'\'%D9%85%D9%84%D9%81.pdf` — the charset, the language, then
+    /// percent-encoded bytes.
+    static func extended(_ raw: String) -> String {
+        let pieces = raw.split(separator: "'", maxSplits: 2, omittingEmptySubsequences: false)
+        guard pieces.count == 3 else { return raw.removingPercentEncoding ?? raw }
+        let charset = String(pieces[0])
+        var bytes = Data()
+        var rest = Substring(pieces[2])
+        while let character = rest.first {
+            if character == "%", rest.count >= 3, let byte = UInt8(rest.dropFirst().prefix(2), radix: 16) {
+                bytes.append(byte)
+                rest = rest.dropFirst(3)
+            } else {
+                bytes.append(contentsOf: Array(String(character).utf8))
+                rest = rest.dropFirst()
+            }
+        }
+        return IMAPHeaders.string(from: bytes, charset: charset) ?? raw
     }
 
     // MARK: - One part of the tree
@@ -37,6 +130,8 @@ enum MailBodyParser {
         var charset = "utf-8"
         var encoding = ""
         var boundary: String?
+        /// The whole Content-Type line, kept for the parameters a filename can hide in.
+        var typeHeader = ""
         var disposition = ""
         var body = Data()
     }
@@ -60,10 +155,13 @@ enum MailBodyParser {
                 } ?? "text/plain"
                 part.charset = parameter("charset", in: value) ?? "utf-8"
                 part.boundary = parameter("boundary", in: value)
+                part.typeHeader = value
             case "content-transfer-encoding":
                 part.encoding = value.lowercased()
             case "content-disposition":
-                part.disposition = value.lowercased()
+                // Not lowercased wholesale any more: the filename lives in here and a file
+                // called Invoice.PDF should keep its capitals.
+                part.disposition = value
             default: continue
             }
         }
@@ -83,7 +181,7 @@ enum MailBodyParser {
         }
 
         // An attachment is not the message, even when it happens to be text.
-        guard !part.disposition.hasPrefix("attachment") else { return nil }
+        guard !part.disposition.lowercased().hasPrefix("attachment") else { return nil }
 
         let bytes = decoded(part.body, encoding: part.encoding)
         guard let text = IMAPHeaders.string(from: bytes, charset: part.charset) else { return nil }

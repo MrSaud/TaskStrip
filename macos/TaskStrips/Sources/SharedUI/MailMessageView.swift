@@ -113,18 +113,24 @@ struct MailMessageView: View {
             .frame(maxWidth: .infinity)
         } else {
             ScrollView {
-                VStack(alignment: .leading, spacing: 10) {
+                VStack(alignment: .leading, spacing: 14) {
                     Text(loaded?.text.isEmpty == false ? loaded!.text : "This message has no text — only attachments.")
                         .font(.callout)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                    if loaded?.isTruncated == true {
-                        Text("Only the first part of a long message is fetched.")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 16)
+
+                    if let loaded, !loaded.attachments.isEmpty || loaded.isTruncated {
+                        MailAttachmentsView(
+                            attachments: loaded.attachments,
+                            isTruncated: loaded.isTruncated,
+                            onFetchWholeMessage: { Task { await read(force: true, whole: true) } }
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 16)
                     }
                 }
-                .padding(16)
             }
         }
     }
@@ -140,11 +146,14 @@ struct MailMessageView: View {
         return components.url
     }
 
-    private func read(force: Bool = false) async {
+    /// `whole` is the second, deliberate fetch: the reading is worth a couple of hundred
+    /// kilobytes, and the files are worth the rest only when someone says so.
+    private func read(force: Bool = false, whole: Bool = false) async {
         if !force, loaded != nil { return }
         isReading = true
         problem = nil
-        switch await IMAPReader.shared.body(for: message) {
+        let limit = whole ? MailBodyParser.wholeMessageLimit : MailBodyParser.byteLimit
+        switch await IMAPReader.shared.body(for: message, limit: limit) {
         case .success(let read):
             loaded = read
         case .failure(let failure):
