@@ -17,12 +17,32 @@ struct TalliesSection: View {
     @State private var newCustomUnit = ""
     @State private var newTarget = ""
     @State private var expanded: Set<UUID> = []
+    /// The total about to be removed, while it's being asked about. A total is a history of
+    /// entries, and removing one throws all of them away.
+    @State private var deleting: TaskTally?
     @State private var amounts: [UUID: String] = [:]
     /// What each addition was for, and when it happened — kept per tally while it's being typed.
     @State private var notes: [UUID: String] = [:]
     @State private var dates: [UUID: Date] = [:]
 
     var body: some View {
+        content
+            .confirmationDialog(
+                deleting.map { "Remove \($0.name.isEmpty ? "this total" : $0.name)?" } ?? "Remove this total?",
+                isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                titleVisibility: .visible
+            ) {
+                Button("Remove", role: .destructive) {
+                    if let deleting { remove(tally: deleting.id) }
+                    deleting = nil
+                }
+                Button("Keep it", role: .cancel) { deleting = nil }
+            } message: {
+                Text(deletionWarning)
+            }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 10) {
             if tallies.isEmpty && !adding {
                 Text("Nothing counted on this strip yet — hours, money, anything that adds up.")
@@ -164,7 +184,7 @@ struct TalliesSection: View {
             HStack {
                 Spacer(minLength: 0)
                 Button(role: .destructive) {
-                    remove(tally: tally.id)
+                    deleting = tally
                 } label: {
                     Label("Remove this total", systemImage: "trash")
                         .font(.caption)
@@ -231,6 +251,18 @@ struct TalliesSection: View {
         newUnit = "hours"
         newCustomUnit = ""
         newTarget = ""
+    }
+
+    /// Says what goes with it. "Remove" on its own doesn't tell anybody they're throwing away
+    /// eleven entries and forty hours.
+    private var deletionWarning: String {
+        guard let deleting else { return "" }
+        let total = StripTally.formatted(deleting.total, unit: deleting.unit)
+        switch deleting.entries.count {
+        case 0: return "Nothing has been added to it yet."
+        case 1: return "Its one entry goes too — \(total)."
+        default: return "Its \(deleting.entries.count) entries go too, adding up to \(total)."
+        }
     }
 
     private func add(to tally: TaskTally) {
