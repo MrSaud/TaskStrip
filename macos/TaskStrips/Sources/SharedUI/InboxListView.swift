@@ -10,10 +10,19 @@ struct InboxListView: View {
     @ObservedObject private var reader = IMAPReader.shared
     @Environment(\.openURL) private var openURL
 
+    @AppStorage(AppSettingsKey.inboxAccount) private var account = ""
+    @AppStorage(AppSettingsKey.inboxUnreadOnly) private var unreadOnly = false
+
+    /// The same narrowing the Mac's pane does, over the same list — the phone simply has one
+    /// source feeding it rather than two.
+    private var messages: [MailMessage] {
+        MailInboxMerge.filtered(reader.messages, account: account, unreadOnly: unreadOnly)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if showsHeader { header }
-            if reader.messages.isEmpty {
+            if messages.isEmpty {
                 empty
             } else {
                 list
@@ -28,12 +37,24 @@ struct InboxListView: View {
             Label("INBOX", systemImage: "tray")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(TaskStripTheme.amber)
+            if !account.isEmpty {
+                Text(account)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
             Spacer(minLength: 0)
             if reader.problem != nil, !reader.messages.isEmpty {
                 Image(systemName: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(TaskStripTheme.high)
             }
+            InboxFilterMenu(
+                accounts: MailInboxMerge.accounts(in: reader.messages),
+                account: $account,
+                unreadOnly: $unreadOnly
+            )
             if reader.isReading {
                 ProgressView().controlSize(.small)
             } else {
@@ -52,7 +73,7 @@ struct InboxListView: View {
 
     private var list: some View {
         List {
-            ForEach(reader.messages) { message in
+            ForEach(messages) { message in
                 VStack(alignment: .leading, spacing: 2) {
                     HStack(spacing: 6) {
                         if !message.isRead {
@@ -72,12 +93,23 @@ struct InboxListView: View {
                     Text(message.subject)
                         .lineLimit(2)
                         .fontWeight(message.isRead ? .regular : .semibold)
+                    if account.isEmpty, let name = message.account, !name.isEmpty {
+                        Text(name)
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
                 }
                 .listRowBackground(Color.clear)
                 .contextMenu {
                     Button("Copy Subject") { Platform.copy(message.subject) }
                     if let link = message.link {
                         Button("Copy Link") { Platform.copy(link) }
+                    }
+                    if let name = message.account, !name.isEmpty, name != account {
+                        Divider()
+                        Button("Show Only \(name)") { account = name }
                     }
                 }
             }
@@ -92,7 +124,16 @@ struct InboxListView: View {
             Image(systemName: "tray")
                 .font(.largeTitle)
                 .foregroundStyle(.secondary)
-            if !reader.hasAccounts {
+            if !reader.messages.isEmpty {
+                Text(account.isEmpty ? "Nothing unread." : "Nothing from \(account).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Show everything") {
+                    account = ""
+                    unreadOnly = false
+                }
+                .buttonStyle(.borderless)
+            } else if !reader.hasAccounts {
                 Text("No mail account yet")
                     .font(.headline)
                     .foregroundStyle(.secondary)

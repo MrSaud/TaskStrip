@@ -52,7 +52,8 @@ final class IMAPReader: ObservableObject {
                 }
                 do {
                     let read = try await IMAPConnection(account: account, password: password).fetchNewest()
-                    collected += read
+                    // The server doesn't say whose mailbox this was; the account that asked does.
+                    collected += read.map { var message = $0; message.account = account.name; return message }
                 } catch {
                     failures.append("\(account.name): \(error.localizedDescription)")
                 }

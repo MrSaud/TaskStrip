@@ -7,17 +7,31 @@ struct InboxView: View {
     @ObservedObject private var reader = MailReader.shared
     @ObservedObject private var server = IMAPReader.shared
 
-    /// Mail's list, or the server's when Mail has nothing — a Mac can have either set up, and on
-    /// this one Mail's scripting is the less reliable of the two.
+    @AppStorage(AppSettingsKey.inboxAccount) private var account = ""
+    @AppStorage(AppSettingsKey.inboxUnreadOnly) private var unreadOnly = false
+
+    /// Both sources as one list. A Mac can have mail twice over — an account in Mail and the same
+    /// one set up here over IMAP — so the two are merged and the duplicates dropped rather than
+    /// one being preferred and the other hidden.
+    private var everything: [MailMessage] {
+        MailInboxMerge.merged([reader.messages, server.messages])
+    }
+
     private var messages: [MailMessage] {
-        reader.messages.isEmpty ? server.messages : reader.messages
+        MailInboxMerge.filtered(everything, account: account, unreadOnly: unreadOnly)
+    }
+
+    /// Both readers' complaints, since either half can fail while the other still has a list.
+    private var problem: String? {
+        let problems = [reader.problem, server.problem].compactMap { $0 }
+        return problems.isEmpty ? nil : problems.joined(separator: "\n")
     }
 
     var body: some View {
         VStack(spacing: 0) {
             header
             if messages.isEmpty {
-                empty(reader.problem ?? server.problem ?? "Nothing in the inbox.")
+                empty
             } else {
                 list
             }
@@ -34,27 +48,39 @@ struct InboxView: View {
             Label("INBOX", systemImage: "tray")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(TaskStripTheme.amber)
+            // Whose inbox, when it isn't everyone's — otherwise a short list looks like lost mail.
+            if !account.isEmpty {
+                Text(account)
+                    .font(.system(.caption2, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
             Spacer(minLength: 0)
             // A refresh that failed while a list is up is worth a mark, not a page of apology.
-            if reader.problem != nil, !messages.isEmpty {
+            if let problem, !everything.isEmpty {
                 Image(systemName: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(TaskStripTheme.high)
-                    .help(reader.problem ?? "")
+                    .help(problem)
             }
-            if reader.isReading {
+            InboxFilterMenu(
+                accounts: MailInboxMerge.accounts(in: everything),
+                account: $account,
+                unreadOnly: $unreadOnly
+            )
+            if reader.isReading || server.isReading {
                 ProgressView()
                     .controlSize(.small)
             } else {
                 Button {
-                    reader.refresh(force: true)
-                    server.refresh(force: true)
+                    refresh()
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.caption)
                 }
                 .buttonStyle(.plain)
-                .help("Ask Mail again")
+                .help("Ask Mail and the servers again")
             }
         }
         .padding(.horizontal, 12)
@@ -87,6 +113,14 @@ struct InboxView: View {
                         Text(message.subject)
                             .lineLimit(2)
                             .fontWeight(message.isRead ? .regular : .semibold)
+                        // Which account it landed in, while the list is showing all of them.
+                        if account.isEmpty, let name = message.account, !name.isEmpty {
+                            Text(name)
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
                     }
                     .contentShape(Rectangle())
                 }
@@ -97,6 +131,10 @@ struct InboxView: View {
                     Button("Copy Link") {
                         if let link = message.link { Platform.copy(link) }
                     }
+                    if let name = message.account, !name.isEmpty, name != account {
+                        Divider()
+                        Button("Show Only \(name)") { account = name }
+                    }
                 }
             }
         }
@@ -104,25 +142,40 @@ struct InboxView: View {
         .scrollContentBackground(.hidden)
     }
 
-    private func empty(_ problem: String) -> some View {
+    /// Nothing to show — which is a different sentence depending on whether there's no mail or
+    /// just none that gets past the filter.
+    private var empty: some View {
         VStack(spacing: 8) {
             Spacer()
             Image(systemName: "tray")
                 .font(.largeTitle)
                 .foregroundStyle(.secondary)
-            Text(problem)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 16)
-            Button("Try again") {
-                reader.refresh(force: true)
-                server.refresh(force: true)
-            }
+            if !everything.isEmpty {
+                Text(account.isEmpty ? "Nothing unread." : "Nothing from \(account).")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Button("Show everything") {
+                    account = ""
+                    unreadOnly = false
+                }
                 .buttonStyle(.link)
+            } else {
+                Text(problem ?? "Nothing in the inbox.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 16)
+                Button("Try again") { refresh() }
+                    .buttonStyle(.link)
+            }
             Spacer()
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private func refresh() {
+        reader.refresh(force: true)
+        server.refresh(force: true)
     }
 
     private func open(_ message: MailMessage) {

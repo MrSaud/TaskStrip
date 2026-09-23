@@ -10,6 +10,10 @@ struct MailMessage: Identifiable, Equatable, Codable {
     var sender: String
     var receivedAt: Date
     var isRead: Bool
+    /// Which account it arrived on, where that's known — Mail names the account a message's
+    /// mailbox belongs to, and an IMAP account knows its own name. Older cached lists have none,
+    /// which is why it's optional rather than blank.
+    var account: String?
 
     /// The link that opens this message back in Mail.
     var link: String? {
@@ -46,7 +50,8 @@ enum MailInbox {
                 subject: fields[1].isEmpty ? "(no subject)" : fields[1],
                 sender: fields[2],
                 receivedAt: seconds.map { Date(timeIntervalSince1970: $0) } ?? now,
-                isRead: fields[4].trimmingCharacters(in: .whitespaces).lowercased() == "true"
+                isRead: fields[4].trimmingCharacters(in: .whitespaces).lowercased() == "true",
+                account: fields.count > 5 ? fields[5].trimmingCharacters(in: .whitespaces) : nil
             )
         }
     }
@@ -55,7 +60,12 @@ enum MailInbox {
     /// at beside a board.
     static let count = 15
 
-    /// How many to ask Mail for before picking. Mail hands messages over in the order its mailbox
+    /// How many to take from each end of each account's inbox. Four is enough that a busy
+    /// account still shows something after the dates are sorted, and few enough that eight
+    /// accounts answer in about ten seconds.
+    static let perAccount = 4
+
+    /// How many to ask a server for before picking. Mail hands messages over in the order its mailbox
     /// holds them, which is not the order they arrived — the first one it offered here was from
     /// 2014 — so the last stretch is taken and sorted. Kept small: on a 30,000-message unified
     /// inbox, each property of a dozen messages costs Mail a couple of seconds.

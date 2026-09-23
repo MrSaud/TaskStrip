@@ -43,7 +43,9 @@ final class MailReader: ObservableObject {
                 isReading = false
                 switch outcome {
                 case .success(let text):
-                    let read = MailInbox.newest(MailInbox.parse(text))
+                    // Merged with itself, which is how the duplicate from a mailbox short enough
+                    // to be both its own head and tail gets dropped.
+                    let read = MailInboxMerge.merged([MailInbox.parse(text)])
                     if !read.isEmpty {
                         messages = read
                         cache.messages = read
@@ -65,42 +67,73 @@ final class MailReader: ObservableObject {
 
     /// The whole conversation with Mail, in one script.
     ///
-    /// The newest are at the *end* of the unified inbox, not the start: it lists each account's
-    /// inbox one after another, so its first messages are the oldest of the first account — on a
-    /// real inbox the first one it offered was from 2014. So the last stretch is taken, and the
-    /// five properties are read from that slice in one request each rather than message by
-    /// message, which is the difference between a second and a timeout.
+    /// Account by account rather than through the unified inbox. The unified inbox lists each
+    /// account's messages one after another, so any slice of it is one account's mail: asking for
+    /// its last eight returned eight messages from the same address, and the newest mail in every
+    /// other account was invisible. Asked per account, ten seconds buys a few from each — which is
+    /// what "recent" has to mean on a Mac with eight accounts in it.
+    ///
+    /// Both ends of each mailbox are taken because Mail's message order is its own business: the
+    /// unified inbox holds the newest last, an account's own INBOX holds them first, and a mailbox
+    /// re-sorted by hand holds them wherever it likes. Dates decide afterwards, and the duplicate
+    /// a short mailbox produces by being both ends at once is dropped by Message-ID.
     ///
     /// Everything is wrapped in a timeout: Mail downloading mail is Mail that doesn't answer, and
     /// a pane that spins forever is worse than one that says so.
     private static let script = """
-    with timeout of \(Int(scriptTimeout)) seconds
-        tell application "Mail"
-            set box to inbox
-            set total to count of messages of box
-            if total is 0 then return ""
-            set startAt to total - \(MailInbox.askFor - 1)
-            if startAt < 1 then set startAt to 1
-            -- The range is asked for five times rather than held in a variable: a variable holds
-            -- a list of references, and Mail won't read a property off one of those ("Can't get
-            -- message id of {message id 43742 of mailbox…}"). Asked as a range it answers with a
-            -- list of values, which is the whole point of asking in bulk.
-            set theIDs to message id of (messages startAt thru total of box)
-            set theSubjects to subject of (messages startAt thru total of box)
-            set theSenders to sender of (messages startAt thru total of box)
-            set theDates to date received of (messages startAt thru total of box)
-            set theReads to read status of (messages startAt thru total of box)
-        end tell
-    end timeout
-
     set epoch to date "Thursday, 1 January 1970 at 00:00:00"
-    set output to ""
-    repeat with i from 1 to (count of theIDs)
-        set output to output & (item i of theIDs) & tab & (item i of theSubjects) & tab & ¬
-            (item i of theSenders) & tab & (((item i of theDates) - epoch) as string) & tab & ¬
-            (item i of theReads) & linefeed
-    end repeat
-    return output
+
+    -- The five properties are read from a range in one request each rather than message by
+    -- message, which is the difference between a second and a timeout. The range is asked for
+    -- five times rather than held in a variable: a variable holds a list of references, and Mail
+    -- won't read a property off one of those ("Can't get message id of {message id 43742 of
+    -- mailbox…}").
+    on slice(box, startAt, endAt, accountName, epoch)
+        set output to ""
+        tell application "Mail"
+            set theIDs to message id of (messages startAt thru endAt of box)
+            set theSubjects to subject of (messages startAt thru endAt of box)
+            set theSenders to sender of (messages startAt thru endAt of box)
+            set theDates to date received of (messages startAt thru endAt of box)
+            set theReads to read status of (messages startAt thru endAt of box)
+        end tell
+        repeat with i from 1 to (count of theIDs)
+            set output to output & (item i of theIDs) & tab & (item i of theSubjects) & tab & ¬
+                (item i of theSenders) & tab & (((item i of theDates) - epoch) as string) & tab & ¬
+                (item i of theReads) & tab & accountName & linefeed
+        end repeat
+        return output
+    end slice
+
+    with timeout of \(Int(scriptTimeout)) seconds
+        set output to ""
+        tell application "Mail" to set theAccounts to every account
+        repeat with a in theAccounts
+            -- One account's failure is not the list's: a server that's down shouldn't empty the
+            -- pane of the seven accounts that are fine.
+            try
+                tell application "Mail"
+                    set isOn to enabled of a
+                    set accountName to name of a
+                    -- "is" ignores case, which matters: Exchange calls it Inbox and everyone
+                    -- else calls it INBOX.
+                    set box to first mailbox of a whose name is "Inbox"
+                    set total to count of messages of box
+                end tell
+                if isOn and total > 0 then
+                    set headEnd to \(MailInbox.perAccount)
+                    if total < headEnd then set headEnd to total
+                    set output to output & my slice(box, 1, headEnd, accountName, epoch)
+                    set tailStart to total - (\(MailInbox.perAccount) - 1)
+                    if tailStart < 1 then set tailStart to 1
+                    if tailStart > headEnd then
+                        set output to output & my slice(box, tailStart, total, accountName, epoch)
+                    end if
+                end if
+            end try
+        end repeat
+        return output
+    end timeout
     """
 
     /// What Mail is given to answer in, and a little longer before the process is pulled out from
@@ -111,9 +144,10 @@ final class MailReader: ObservableObject {
     private static let scriptTimeout: TimeInterval = 90
     private static let processTimeout: TimeInterval = 100
 
-    /// What to ask when Mail can't manage the proper question: five messages by index, no count
-    /// of a mailbox with thirty thousand in it. They may be the oldest Mail holds rather than the
-    /// newest — the list sorts what it gets — but something beats a pane of apology.
+    /// What to ask when Mail can't manage the proper question: five messages by index of the
+    /// unified inbox, no account walk and no count of a mailbox with thirty thousand in it. They
+    /// may be one account's oldest rather than everyone's newest — the list sorts what it gets —
+    /// but something beats a pane of apology.
     private static let fallbackScript = """
     with timeout of \(Int(scriptTimeout)) seconds
         tell application "Mail"
@@ -124,7 +158,7 @@ final class MailReader: ObservableObject {
                     set m to message i of box
                     set output to output & (message id of m) & tab & (subject of m) & tab & ¬
                         (sender of m) & tab & (((date received of m) - (date "Thursday, 1 January 1970 at 00:00:00")) as string) & tab & ¬
-                        (read status of m) & linefeed
+                        (read status of m) & tab & (name of account of mailbox of m) & linefeed
                 end try
             end repeat
             return output

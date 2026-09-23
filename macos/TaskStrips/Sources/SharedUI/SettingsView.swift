@@ -13,6 +13,10 @@ enum AppSettingsKey {
     static let showMenuBar = "showMenuBarGlance"
     /// Which lists the board keeps on screen at once, where there's room for more than one.
     static let boardPanes = "boardPanes"
+    /// Which account the inbox pane is showing; empty means all of them.
+    static let inboxAccount = "inbox.account"
+    /// Whether the inbox pane hides what's already been read.
+    static let inboxUnreadOnly = "inbox.unreadOnly"
     /// Which calendar the board's date line speaks in.
     static let dateStyle = "boardDateStyle"
     /// Digits, a face, or no clock at all.
