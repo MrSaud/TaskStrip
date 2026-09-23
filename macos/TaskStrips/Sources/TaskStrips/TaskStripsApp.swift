@@ -108,6 +108,11 @@ struct TaskStripsApp: App {
                     print("READ-CHECK ok: \(body.text.count) characters, \(body.text.split(separator: "\n").count) lines, "
                           + "fromHTML \(body.fromHTML), truncated \(body.isTruncated), "
                           + "non-ASCII \(body.text.unicodeScalars.contains { $0.value > 127 })")
+                    // The picture the Mark Up button makes — its size only. A message drawn to
+                    // a file in /tmp is a copy of someone's mail left lying around.
+                    if let image = MailSnapshot.image(of: newest, body: body) {
+                        print("READ-CHECK snapshot: \(image.width)x\(image.height)")
+                    }
                     for file in body.attachments {
                         print("READ-CHECK file: \(file.name) (\(file.type), \(file.size)\(file.isInline ? ", inline" : ""))")
                     }

@@ -15,6 +15,14 @@ struct SketchCanvasView: View {
     var store: SketchStore = .shared
     /// Called after every save, so a list behind this can catch up without watching the disk.
     var onChange: () -> Void = {}
+    /// An image the canvas opens with, already on the page and waiting to be placed — how a
+    /// message being marked up arrives here. It starts nearly page-sized, since it is the page
+    /// rather than something added to one.
+    var startingImage: CGImage?
+    /// What to call the note, used the first time anything is written. Set later than you'd
+    /// expect on purpose: a note backed out of without a mark on it should leave nothing behind,
+    /// not an empty folder with a name.
+    var startingName: String?
 
     @State private var pages: [URL] = []
     /// May be one past the last saved page: that's a blank page that will only exist on disk once
@@ -42,6 +50,8 @@ struct SketchCanvasView: View {
     @State private var refusedFinger = false
 
     @State private var pendingImage: CGImage?
+    /// The starting image is placed once the page knows how big it is, and never again.
+    @State private var hasPlacedStartingImage = false
     @State private var placement = SketchImagePlacement(offset: .zero, scale: 1)
     @State private var isPickingImage = false
     @State private var isPickingStamp = false
@@ -137,8 +147,11 @@ struct SketchCanvasView: View {
                         .gesture(magnifyImageGesture)
                 }
             }
-            .onAppear { canvasSize = geometry.size }
-            .onChange(of: geometry.size) { _, size in canvasSize = size }
+            .onAppear { canvasSize = geometry.size; placeStartingImageIfNeeded() }
+            .onChange(of: geometry.size) { _, size in
+                canvasSize = size
+                placeStartingImageIfNeeded()
+            }
         }
         .padding(12)
     }
@@ -577,6 +590,7 @@ struct SketchCanvasView: View {
         }
         try? store.write(png, to: target)
         store.stampCreatedIfMissing(noteID)
+        nameNoteIfNeeded()
         // The folder exists now, so a paper chosen on a blank note finally has somewhere to live.
         store.setPaper(paper, of: noteID)
         strokes = []
@@ -584,6 +598,23 @@ struct SketchCanvasView: View {
     }
 
     // MARK: - Images
+
+    /// Waits for the page to have a size — placement is worked out against it, and a zero-sized
+    /// canvas would put the image nowhere.
+    private func placeStartingImageIfNeeded() {
+        guard !hasPlacedStartingImage, let image = startingImage,
+              canvasSize.width > 0, canvasSize.height > 0
+        else { return }
+        hasPlacedStartingImage = true
+        placement = SketchImagePlacement.initial(imageSize: image.size, canvas: canvasSize, fraction: 0.95)
+        pendingImage = image
+    }
+
+    /// The note is named the first time something is written to it, not before.
+    private func nameNoteIfNeeded() {
+        guard let startingName, !startingName.isEmpty, store.name(of: noteID) == nil else { return }
+        store.setName(startingName, of: noteID)
+    }
 
     /// A stamp arrives as a picture rather than a file, and is placed the same way from there.
     private func beginPlacing(_ image: CGImage) {
@@ -616,6 +647,7 @@ struct SketchCanvasView: View {
         if let png {
             try? store.write(png, to: target)
             store.stampCreatedIfMissing(noteID)
+            nameNoteIfNeeded()
             onChange()
         }
         pendingImage = nil

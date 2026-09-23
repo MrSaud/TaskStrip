@@ -14,6 +14,8 @@ struct MailMessageView: View {
     @State private var loaded: MailBody?
     @State private var problem: String?
     @State private var isReading = true
+    @State private var markingUp: SketchOpening?
+    @State private var snapshotProblem: String?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,6 +31,23 @@ struct MailMessageView: View {
         .background(TaskStripTheme.bayBackground)
         .pageSizedSheet()
         .task { await read() }
+        .canvasPresentation(item: $markingUp) { opening in
+            NavigationStack {
+                SketchCanvasView(
+                    noteID: opening.id,
+                    startingImage: opening.image,
+                    startingName: opening.name
+                )
+            }
+        }
+        .alert(
+            "Couldn't take a picture of this message",
+            isPresented: Binding(get: { snapshotProblem != nil }, set: { if !$0 { snapshotProblem = nil } })
+        ) {
+            Button("OK", role: .cancel) { snapshotProblem = nil }
+        } message: {
+            Text(snapshotProblem ?? "")
+        }
     }
 
     private var header: some View {
@@ -74,6 +93,18 @@ struct MailMessageView: View {
                         Label("Copy Text", systemImage: "doc.on.doc")
                     }
                     .buttonStyle(.borderless)
+                }
+                // A picture of the message, opened in the sketch canvas: highlight the line that
+                // matters, ring the number that's wrong, and the marked-up page is a sketch note
+                // like any other — which can go onto a strip.
+                if loaded != nil {
+                    Button {
+                        markUp()
+                    } label: {
+                        Label("Mark Up", systemImage: "highlighter")
+                    }
+                    .buttonStyle(.borderless)
+                    .help("Take a picture of this message and draw on it")
                 }
                 Spacer(minLength: 0)
                 if loaded?.fromHTML == true {
@@ -159,6 +190,20 @@ struct MailMessageView: View {
 
     /// `whole` is the second, deliberate fetch: the reading is worth a couple of hundred
     /// kilobytes, and the files are worth the rest only when someone says so.
+    /// Draws the message, then opens it in the sketch canvas as a new note named after it.
+    @MainActor
+    private func markUp() {
+        guard let image = MailSnapshot.image(of: message, body: loaded) else {
+            snapshotProblem = "The message couldn't be drawn as a picture."
+            return
+        }
+        markingUp = SketchOpening(
+            id: SketchStore.newNoteID(),
+            image: image,
+            name: message.subject.isEmpty ? "Email" : String(message.subject.prefix(60))
+        )
+    }
+
     private func read(force: Bool = false, whole: Bool = false) async {
         if !force, loaded != nil { return }
         isReading = true
@@ -174,6 +219,13 @@ struct MailMessageView: View {
     }
 }
 
+
+/// A sketch about to be opened: the note it will be written to, and the picture it starts with.
+struct SketchOpening: Identifiable {
+    let id: String
+    let image: CGImage
+    let name: String
+}
 
 extension View {
     /// The largest sheet each platform offers. An iPad's default sheet is a form sheet about the

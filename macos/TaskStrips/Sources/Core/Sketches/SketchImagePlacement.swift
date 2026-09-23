@@ -12,13 +12,19 @@ struct SketchImagePlacement: Equatable {
 
     static let fillFraction: CGFloat = 0.7
 
-    static func initial(imageSize: CGSize, canvas: CGSize) -> SketchImagePlacement {
+    /// `fraction` is how much of the page the image should take up to begin with. A picked
+    /// picture wants room around it; a page-sized thing like a message to mark up wants the page.
+    static func initial(
+        imageSize: CGSize,
+        canvas: CGSize,
+        fraction: CGFloat = fillFraction
+    ) -> SketchImagePlacement {
         guard imageSize.width > 0, imageSize.height > 0, canvas.width > 0, canvas.height > 0 else {
             return SketchImagePlacement(offset: .zero, scale: 1)
         }
         let scale = min(
-            canvas.width * fillFraction / imageSize.width,
-            canvas.height * fillFraction / imageSize.height,
+            canvas.width * fraction / imageSize.width,
+            canvas.height * fraction / imageSize.height,
             1
         )
         return SketchImagePlacement(
