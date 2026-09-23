@@ -28,6 +28,12 @@ struct SketchCanvasView: View {
     @State private var background: CGImage?
     @State private var showDeletePageConfirm = false
 
+    /// iPad and iPhone only: whether a finger draws, or only an Apple Pencil. Off means a hand
+    /// resting on the page leaves nothing behind, which is what palm rejection amounts to here.
+    @AppStorage(AppSettingsKey.fingerDrawing) private var fingerDrawing = true
+    /// Shown for a moment when a finger touches the page while only a Pencil may draw.
+    @State private var refusedFinger = false
+
     @State private var pendingImage: CGImage?
     @State private var placement = SketchImagePlacement(offset: .zero, scale: 1)
     @State private var isPickingImage = false
@@ -69,7 +75,20 @@ struct SketchCanvasView: View {
             // maybe-gesture, and drawing and placing are two different modes anyway.
             Group {
                 if pendingImage == nil {
+                    #if os(iOS)
+                    page(size: geometry.size)
+                        .overlay(
+                            StrokeCatcher(
+                                pencilOnly: !fingerDrawing,
+                                onBegan: { beginStroke(at: $0) },
+                                onMoved: { extendStroke(through: $0) },
+                                onEnded: { endStroke() },
+                                onRefused: { flashPencilOnly() }
+                            )
+                        )
+                    #else
                     page(size: geometry.size).gesture(drawGesture)
+                    #endif
                 } else {
                     page(size: geometry.size)
                         .gesture(moveImageGesture)
@@ -108,6 +127,18 @@ struct SketchCanvasView: View {
         .frame(width: size.width, height: size.height)
         .background(TaskStripTheme.paper)
         .contentShape(Rectangle())
+        .overlay(alignment: .top) {
+            if refusedFinger {
+                Label("Pencil only — turn on Draw with Finger to use a finger", systemImage: "applepencil")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(TaskStripTheme.paper)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .background(TaskStripTheme.baySurface.opacity(0.95), in: Capsule())
+                    .padding(.top, 10)
+                    .transition(.opacity)
+            }
+        }
     }
 
     private func draw(_ stroke: SketchStroke, in context: inout GraphicsContext) {
@@ -138,19 +169,40 @@ struct SketchCanvasView: View {
     private var drawGesture: some Gesture {
         DragGesture(minimumDistance: 0)
             .onChanged { value in
-                if var stroke = currentStroke {
-                    stroke.points.append(value.location)
-                    currentStroke = stroke
+                if currentStroke == nil {
+                    beginStroke(at: value.location)
                 } else {
-                    currentStroke = SketchStroke(
-                        points: [value.location], ink: ink, width: penWidth.rawValue
-                    )
+                    extendStroke(through: [value.location])
                 }
             }
-            .onEnded { _ in
-                if let stroke = currentStroke { strokes.append(stroke) }
-                currentStroke = nil
-            }
+            .onEnded { _ in endStroke() }
+    }
+
+    // MARK: - One stroke, whatever drew it
+
+    private func beginStroke(at point: CGPoint) {
+        currentStroke = SketchStroke(points: [point], ink: ink, width: penWidth.rawValue)
+    }
+
+    private func extendStroke(through points: [CGPoint]) {
+        guard var stroke = currentStroke else { return }
+        stroke.points.append(contentsOf: points)
+        currentStroke = stroke
+    }
+
+    private func endStroke() {
+        if let stroke = currentStroke { strokes.append(stroke) }
+        currentStroke = nil
+    }
+
+    /// Says why nothing happened, then gets out of the way.
+    private func flashPencilOnly() {
+        guard !refusedFinger else { return }
+        withAnimation { refusedFinger = true }
+        Task {
+            try? await Task.sleep(for: .seconds(2.5))
+            withAnimation { refusedFinger = false }
+        }
     }
 
     private var moveImageGesture: some Gesture {
@@ -283,6 +335,19 @@ struct SketchCanvasView: View {
                 } label: {
                     Label("Add page", systemImage: "doc.badge.plus")
                 }
+
+                #if os(iOS)
+                // A switch rather than a settings trip: which hand is drawing changes while you
+                // draw — Pencil for the diagram, finger for a quick scrawl.
+                Toggle(isOn: $fingerDrawing) {
+                    Label(
+                        fingerDrawing ? "Draw with finger" : "Pencil only",
+                        systemImage: fingerDrawing ? "hand.draw" : "applepencil"
+                    )
+                }
+                .toggleStyle(.button)
+                .help(fingerDrawing ? "A finger draws. Tap for Pencil only." : "Only an Apple Pencil draws.")
+                #endif
 
                 #if os(macOS)
                 // "Save", not "Done": the list behind this has a Done of its own, and the two

@@ -17,6 +17,8 @@ enum AppSettingsKey {
     static let dateStyle = "boardDateStyle"
     /// Digits, a face, or no clock at all.
     static let clockStyle = "boardClockStyle"
+    /// Whether a finger draws on a sketch page, or only an Apple Pencil.
+    static let fingerDrawing = "sketchFingerDrawing"
     /// When the last automatic backup went up, so the next one knows whether a day has passed.
     static let lastAutoBackup = "lastAutoBackupAt"
 }
