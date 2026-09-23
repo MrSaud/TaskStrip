@@ -74,6 +74,7 @@ struct TaskListView: View {
     @AppStorage(AppSettingsKey.showQuote) private var showQuote = true
     @AppStorage(AppSettingsKey.dateStyle) private var dateStyle = BoardDateStyle.both
     @AppStorage(AppSettingsKey.clockStyle) private var clockStyle = BoardClockStyle.digital
+    @AppStorage(AppSettingsKey.showWeather) private var showWeather = false
     @State private var quote: Quote?
     /// Which lists are pinned on the board, remembered between launches.
     @AppStorage(AppSettingsKey.boardPanes) private var panes: BoardPanes = .everything
@@ -186,6 +187,7 @@ struct TaskListView: View {
                     .font(.callout.monospaced())
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
+                if showWeather { BoardTemperature(size: 16) }
                 BoardClock(date: context.date, style: clockStyle, faceSize: 56, digitSize: 16)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -346,6 +348,7 @@ struct TaskListView: View {
                 Text("Deleting a strip is permanent. Archiving keeps it.")
             }
             .task {
+                if showWeather { BoardWeatherReader.shared.refresh() }
                 ReminderScheduler.shared.sync(allTasks)
                 await loadQuote()
                 await runAutomaticBackupIfDue()

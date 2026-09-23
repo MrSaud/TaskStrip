@@ -54,6 +54,7 @@ targets:
         CFBundleIconName: AppIcon
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSLocationWhenInUseUsageDescription: The board shows the temperature where you are, to the nearest neighbourhood.
         NSCalendarsWriteOnlyAccessUsageDescription: Blocking time for a strip puts an event in your calendar.
         NSCalendarsFullAccessUsageDescription: Showing what today already costs means reading today's events.
         LSApplicationCategoryType: public.app-category.productivity
@@ -131,6 +132,7 @@ targets:
         # An empty dictionary is enough: a plain launch screen in the system background colour.
         UILaunchScreen: {}
         UIApplicationSupportsIndirectInputEvents: true
+        NSLocationWhenInUseUsageDescription: The board shows the temperature where you are, to the nearest neighbourhood.
         NSCalendarsWriteOnlyAccessUsageDescription: Blocking time for a strip puts an event in your calendar.
         NSCalendarsFullAccessUsageDescription: Showing what today already costs means reading today's events.
         # CKSyncEngine is woken by a silent push when another device changed the board.

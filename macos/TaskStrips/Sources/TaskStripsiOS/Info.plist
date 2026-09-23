@@ -28,6 +28,8 @@
 	<string>Blocking time for a strip puts an event in your calendar.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Task Strips asks for Face ID before showing a saved password.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>The board shows the temperature where you are, to the nearest neighbourhood.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Task Strips records voice notes onto a strip. Nothing is recorded until you press Record.</string>
 	<key>UIApplicationSupportsIndirectInputEvents</key>

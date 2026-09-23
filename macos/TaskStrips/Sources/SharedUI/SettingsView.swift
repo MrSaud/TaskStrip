@@ -27,6 +27,8 @@ enum AppSettingsKey {
     static let reportHour = "dailyReportHour"
     /// Whether the board carries its search field.
     static let showSearch = "showBoardSearch"
+    /// Whether the board shows what it's like outside.
+    static let showWeather = "showBoardWeather"
     /// When the last automatic backup went up, so the next one knows whether a day has passed.
     static let lastAutoBackup = "lastAutoBackupAt"
 }
@@ -75,6 +77,7 @@ struct SettingsView: View {
     @AppStorage(AppSettingsKey.showQuote) private var showQuote = true
     @AppStorage(AppSettingsKey.dateStyle) private var dateStyle = BoardDateStyle.both
     @AppStorage(AppSettingsKey.clockStyle) private var clockStyle = BoardClockStyle.digital
+    @AppStorage(AppSettingsKey.showWeather) private var showWeather = false
     @AppStorage(AppSettingsKey.showCalendar) private var showCalendar = false
     @AppStorage(AppSettingsKey.theme) private var theme = BoardTheme.auto
     @AppStorage(AppSettingsKey.showMenuBar) private var showMenuBar = true
@@ -144,9 +147,12 @@ struct SettingsView: View {
                         Text(style.title).tag(style)
                     }
                 }
+                Toggle("Temperature beside the clock", isOn: $showWeather)
             } footer: {
                 Text("Both calendars stack on a phone and sit on one line on a Mac. One calendar "
-                     + "on its own reads larger. The clock keeps to the minute, digits or hands.")
+                     + "on its own reads larger. The clock keeps to the minute, digits or hands. "
+                     + "The temperature asks once where you are, to the nearest neighbourhood, and "
+                     + "reads it from open-meteo.com every half hour.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

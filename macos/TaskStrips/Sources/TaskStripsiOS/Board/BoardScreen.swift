@@ -57,6 +57,7 @@ struct BoardScreen: View {
     @AppStorage(AppSettingsKey.reportHour) private var reportHour = DigestPlan.dailyHour
     @AppStorage(AppSettingsKey.dateStyle) private var dateStyle = BoardDateStyle.both
     @AppStorage(AppSettingsKey.clockStyle) private var clockStyle = BoardClockStyle.digital
+    @AppStorage(AppSettingsKey.showWeather) private var showWeather = false
     @AppStorage(AppSettingsKey.showCalendar) private var showCalendar = false
     @AppStorage(AppSettingsKey.showSearch) private var showSearch = true
     /// iPad only: which lists are pinned side by side. The iPhone has its pager instead.
@@ -116,6 +117,7 @@ struct BoardScreen: View {
                     // As big as the date lines beside it are tall — bigger again on an iPad,
                     // which has the room. It only moves on the minute, on the same timer as the
                     // date beside it.
+                    if showWeather { BoardTemperature() }
                     BoardClock(date: now, style: clockStyle, faceSize: isWide ? 56 : 44, digitSize: 15)
                 }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -274,6 +276,7 @@ struct BoardScreen: View {
                 Text(shareReport ?? "")
             }
             .task {
+                if showWeather { BoardWeatherReader.shared.refresh() }
                 ReminderScheduler.shared.sync(allTasks)
                 // The phone never armed these: the daily report and the Friday review were a Mac
                 // affair, which is the wrong way round for the device that's in a pocket.

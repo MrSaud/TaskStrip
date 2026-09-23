@@ -4,6 +4,21 @@ import SwiftUI
 ///
 /// Both are drawn from a date handed in rather than read from the clock, so the board decides how
 /// often it moves — once a minute, with the date line it sits in.
+/// What it's like outside, in the same breath as the time.
+struct BoardTemperature: View {
+    var size: CGFloat = 15
+    @ObservedObject private var reader = BoardWeatherReader.shared
+
+    var body: some View {
+        if let weather = reader.weather {
+            Label(weather.label(), systemImage: weather.symbol)
+                .font(.system(size: size, weight: .semibold, design: .monospaced))
+                .foregroundStyle(TaskStripTheme.amber)
+                .accessibilityLabel("\(weather.label()) outside")
+        }
+    }
+}
+
 struct BoardClock: View {
     let date: Date
     var style: BoardClockStyle = .digital
