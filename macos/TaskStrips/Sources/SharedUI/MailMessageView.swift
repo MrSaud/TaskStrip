@@ -23,13 +23,8 @@ struct MailMessageView: View {
             Divider()
             content
         }
-        // Big enough to read in: a message is paragraphs, not a form. A sheet on a Mac takes its
-        // width from the minimum rather than the ideal when its content stretches, which is why
-        // the minimum is the size worth opening at. On an iPad it asks for the page-sized sheet
-        // rather than the postcard a sheet gets by default.
-        .frame(minWidth: 820, idealWidth: 960, minHeight: 520, idealHeight: 760)
+        .readerSize()
         .background(TaskStripTheme.bayBackground)
-        .pageSizedSheet()
         .task { await read() }
         .canvasPresentation(item: $markingUp) { opening in
             NavigationStack {
@@ -228,17 +223,16 @@ struct SketchOpening: Identifiable {
 }
 
 extension View {
-    /// The largest sheet each platform offers. An iPad's default sheet is a form sheet about the
-    /// size of a postcard, which is no way to read a message; iOS 18 can ask for a page-sized one
-    /// and earlier versions get the full height instead.
+    /// How big the reader opens.
+    ///
+    /// On a Mac it's a sheet, and a sheet takes its width from the minimum rather than the ideal
+    /// once its content stretches — so the minimum is the size worth opening at. On an iPhone and
+    /// an iPad it's presented full screen and takes the screen, and a minimum width meant for a
+    /// Mac window would push the text off the side of a phone.
     @ViewBuilder
-    func pageSizedSheet() -> some View {
-        #if os(iOS)
-        if #available(iOS 18.0, *) {
-            presentationSizing(.page)
-        } else {
-            presentationDetents([.large])
-        }
+    func readerSize() -> some View {
+        #if os(macOS)
+        frame(minWidth: 820, idealWidth: 960, minHeight: 520, idealHeight: 760)
         #else
         self
         #endif

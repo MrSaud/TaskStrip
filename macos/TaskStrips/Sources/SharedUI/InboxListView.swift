@@ -31,7 +31,10 @@ struct InboxListView: View {
         }
         .background(TaskStripTheme.bayBackground)
         .task { reader.refresh() }
-        .sheet(item: $reading) { message in
+        // Full screen rather than a sheet: on an iPad a sheet is a card in the middle of the
+        // screen, which is a poor way to read a message and a worse one to mark one up. The
+        // reader has its own Done button, so nothing is lost by taking the whole screen.
+        .canvasPresentation(item: $reading) { message in
             MailMessageView(message: message)
         }
         #if DEBUG
