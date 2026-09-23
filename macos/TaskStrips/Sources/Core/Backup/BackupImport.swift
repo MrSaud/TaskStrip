@@ -38,6 +38,7 @@ struct ImportedTask {
     var repeatIntervalDays: Int?
     var deferUntil: Date?
     var checklist: [TaskChecklistItem] = []
+    var waitingOnChasedAt: Date?
     var sessions: [TaskWorkSession] = []
     var tallies: [TaskTally] = []
     var calendarEventID: String?
@@ -252,6 +253,7 @@ enum BackupImport {
                 .filter { !$0.isEmpty }
                 .map { ImportedAttachment(kind: kind, path: $0) }
         }
+        task.waitingOnChasedAt = dateValue(object, "waitingOnChasedAt")
         task.reminderMinutesBefore = intValue(object, "reminderMinutesBefore")
         task.repeatIntervalDays = intValue(object, "repeatIntervalDays")
         task.deferUntil = dateValue(object, "deferUntil")
@@ -566,6 +568,7 @@ enum BackupImport {
             item.repeatIntervalDays = imported.repeatIntervalDays
             item.deferUntil = imported.deferUntil
             item.checklist = imported.checklist
+            item.waitingOnChasedAt = imported.waitingOnChasedAt
             item.sessions = imported.sessions
             item.tallies = imported.tallies
             item.calendarEventID = imported.calendarEventID

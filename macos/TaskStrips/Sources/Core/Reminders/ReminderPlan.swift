@@ -34,7 +34,8 @@ enum ReminderPlan {
               let days = task.waitingOnFollowUpDays
         else { return nil }
 
-        let fireAt = since.addingTimeInterval(Double(days) * 24 * 60 * 60)
+        let fireAt = max(since, task.waitingOnChasedAt ?? since)
+            .addingTimeInterval(Double(days) * 24 * 60 * 60)
         return fireAt > now ? fireAt : nil
     }
 

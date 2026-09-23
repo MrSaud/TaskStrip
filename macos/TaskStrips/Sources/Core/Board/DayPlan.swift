@@ -70,7 +70,9 @@ struct DayPlan: Equatable {
         guard !task.waitingOnName.isEmpty,
               let days = task.waitingOnFollowUpDays,
               let since = task.waitingOnSince,
-              let due = calendar.date(byAdding: .day, value: days, to: since)
+              // From the last chase where there's been one: somebody chased yesterday is not
+              // overdue a chase today.
+              let due = calendar.date(byAdding: .day, value: days, to: max(since, task.waitingOnChasedAt ?? since))
         else { return false }
         return calendar.startOfDay(for: due) <= calendar.startOfDay(for: now)
     }

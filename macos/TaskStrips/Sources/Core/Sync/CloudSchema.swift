@@ -53,6 +53,7 @@ enum CloudSchema {
         /// The stretches of time spent on it (schema v1.3). Times, not words, so not encrypted.
         static let sessions = "sessions"
         static let tallies = "tallies"
+        static let waitingOnChasedAt = "waitingOnChasedAt"
         /// The calendar event blocked out for it (schema v1.3).
         static let calendarEvent = "calendarEvent"
     }

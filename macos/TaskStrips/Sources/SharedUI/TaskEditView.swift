@@ -39,6 +39,7 @@ struct TaskEditView: View {
     @State private var newLogEntry = ""
     @State private var blockedByID: UUID?
     @State private var waitingOnName: String
+    @State private var chasing: MailDraft?
     @State private var hasFollowUp: Bool
     @State private var waitingOnFollowUpDays: Double
     @State private var showDeleteConfirm = false
@@ -347,6 +348,25 @@ struct TaskEditView: View {
                 if hasFollowUp {
                     Stepper("\(Int(waitingOnFollowUpDays)) days", value: $waitingOnFollowUpDays, in: 1...30)
                 }
+                if let task = editingTask, !waitingOnName.trimmingCharacters(in: .whitespaces).isEmpty {
+                    // The nudge is only half of it: what was missing was the chase itself.
+                    Button {
+                        chase(task)
+                    } label: {
+                        Label("Chase by email", systemImage: "paperplane")
+                    }
+                    .disabled(IMAPReader.shared.accounts.isEmpty)
+                    if let chased = task.waitingOnChasedAt {
+                        Text("Last chased \(chased.formatted(date: .abbreviated, time: .shortened))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if IMAPReader.shared.accounts.isEmpty {
+                        Text("Add a mail account in Settings to chase from here.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             if isEditing {
@@ -392,6 +412,14 @@ struct TaskEditView: View {
                 SketchListView(onPick: { linkedSketchID = $0.id })
             }
         }
+        .sheet(item: $chasing, onDismiss: {
+            // Recorded on the way out: the composer may have sent it or may have been closed, and
+            // a chase that was written counts as one either way — it's the strip's own note of
+            // when it last went after somebody.
+            if let editingTask { recordChase(editingTask) }
+        }) { draft in
+            MailComposeView(draft: draft, accounts: IMAPReader.shared.accounts)
+        }
         #if os(iOS)
         .sheet(isPresented: $isEmailing) {
             StripMailComposer(draft: emailDraft) { isEmailing = false }
@@ -426,6 +454,22 @@ struct TaskEditView: View {
     private func cancel() {
         for attachment in addedAttachments { attachmentStore.remove(attachment) }
         dismiss()
+    }
+
+    /// Opens a chase already written, and — because the message may or may not be sent — records
+    /// the chase when the composer closes rather than the moment it opens.
+    private func chase(_ task: TaskItem) {
+        guard let account = IMAPReader.shared.accounts.first else { return }
+        chasing = StripChase.draft(for: task, from: account)
+    }
+
+    private func recordChase(_ task: TaskItem) {
+        task.waitingOnChasedAt = .now
+        task.actionLog.append(
+            TaskActionLogEntry(text: StripChase.logLine(to: waitingOnName), timestamp: .now)
+        )
+        // The next nudge counts from now, so chasing buys another round of days.
+        ReminderScheduler.shared.schedule(for: task)
     }
 
     private func save() {

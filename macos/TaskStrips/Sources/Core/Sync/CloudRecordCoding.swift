@@ -44,6 +44,7 @@ enum CloudRecordCoding {
         record[K.completedAt] = task.completedAt
         record[K.blockedBy] = task.blockedByID?.uuidString
         record[K.waitingSince] = task.waitingOnSince
+        record[K.waitingOnChasedAt] = task.waitingOnChasedAt
         record[K.followUpDays] = task.waitingOnFollowUpDays.map(Int64.init)
         record[K.sketchID] = task.linkedSketchID
         record[K.remindBefore] = task.reminderMinutesBefore.map(Int64.init)
@@ -80,6 +81,7 @@ enum CloudRecordCoding {
         task.completedAt = record[K.completedAt] as? Date
         task.blockedByID = (record[K.blockedBy] as? String).flatMap(UUID.init(uuidString:))
         task.waitingOnSince = record[K.waitingSince] as? Date
+        task.waitingOnChasedAt = record[K.waitingOnChasedAt] as? Date
         task.waitingOnFollowUpDays = (record[K.followUpDays] as? Int64).map(Int.init)
         task.linkedSketchID = record[K.sketchID] as? String
         task.reminderMinutesBefore = (record[K.remindBefore] as? Int64).map(Int.init)

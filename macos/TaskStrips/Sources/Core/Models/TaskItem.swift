@@ -101,6 +101,9 @@ final class TaskItem: Identifiable {
     var waitingOnName: String
     var waitingOnSince: Date?
     var waitingOnFollowUpDays: Int?
+    /// When this was last chased. The follow-up counts from here once there is one, so chasing
+    /// somebody buys another round of days rather than being nagged about daily.
+    var waitingOnChasedAt: Date?
     /// The folder name of the sketch this strip points at — see SketchStore.
     ///
     /// It carried nothing but a round trip at first: the Mac had no canvas, and the field existed
@@ -160,6 +163,7 @@ final class TaskItem: Identifiable {
         self.waitingOnName = ""
         self.waitingOnSince = nil
         self.waitingOnFollowUpDays = nil
+        self.waitingOnChasedAt = nil
         self.linkedSketchID = nil
         self.tags = []
         self.contacts = []

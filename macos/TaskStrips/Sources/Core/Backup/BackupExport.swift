@@ -190,6 +190,7 @@ enum BackupExport {
         if let dueAt = task.dueAt { object["dueAt"] = androidWallClock(from: dueAt, in: timeZone) }
         if let completedAt = task.completedAt { object["completedAt"] = milliseconds(completedAt) }
         if let since = task.waitingOnSince { object["waitingOnSince"] = milliseconds(since) }
+        if let chased = task.waitingOnChasedAt { object["waitingOnChasedAt"] = milliseconds(chased) }
         if let days = task.waitingOnFollowUpDays { object["waitingOnFollowUpDays"] = days }
         if let minutes = task.reminderMinutesBefore { object["reminderMinutesBefore"] = minutes }
         if let interval = task.repeatIntervalDays { object["repeatIntervalDays"] = interval }
