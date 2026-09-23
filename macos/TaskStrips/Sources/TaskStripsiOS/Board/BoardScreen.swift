@@ -85,6 +85,73 @@ struct BoardScreen: View {
     @State private var now = Date.now
 
     @State private var page: Page = Page.atLaunch
+
+    /// The order the panes sit in across the board, which is not the order they're declared in:
+    /// the inbox reads better beside the strips than beyond the notes.
+    private var shownPanes: [BoardPane] {
+        [.today, .strips, .reminders, .inbox, .notes].filter { panes.shows($0) }
+    }
+
+    private func isLast(_ index: Int) -> Bool { index == shownPanes.count - 1 }
+
+    /// A pane never takes more than its share of the screen, however wide it was dragged on a
+    /// bigger one: the same board opens on an iPad mini and on a 13-inch.
+    private func fittedWidth(of pane: BoardPane, in total: Double) -> Double {
+        let stored = width(of: pane)
+        guard total > 0 else { return stored }
+        return min(max(stored, 180), total * 0.45)
+    }
+
+    private func width(of pane: BoardPane) -> Double {
+        switch pane {
+        case .today: return todayWidth
+        case .strips: return stripsWidth
+        case .reminders: return remindersWidth
+        case .inbox: return inboxWidth
+        case .notes: return notesWidth
+        }
+    }
+
+    private func widthBinding(for pane: BoardPane) -> Binding<Double> {
+        switch pane {
+        case .today: return $todayWidth
+        case .strips: return $stripsWidth
+        case .reminders: return $remindersWidth
+        case .inbox: return $inboxWidth
+        case .notes: return $notesWidth
+        }
+    }
+
+    @ViewBuilder
+    private func paneView(_ pane: BoardPane) -> some View {
+        switch pane {
+        case .today:
+            DayView(tasks: allTasks, reminders: allReminders, onEdit: { editing = $0 })
+        case .strips:
+            stripsPage
+        case .reminders:
+            // The navigation bar is the strips'; the reminders carry their buttons in a header of
+            // their own, unless the strips are put away and the bar is theirs to use. (A second
+            // navigation stack here doesn't keep its toolbar to itself — its buttons, title and
+            // search all took over the strips' bar.)
+            RemindersView(
+                isEmbedded: true,
+                isActive: panes.lonePane == .reminders,
+                showsHeader: panes.lonePane != .reminders
+            )
+        case .inbox:
+            InboxListView()
+        case .notes:
+            NotesView(isEmbedded: true, nextOrderIndex: { StripActions.nextOrderIndex(in: allTasks) })
+        }
+    }
+
+    // How wide each pane is, dragged by its own divider and remembered.
+    @AppStorage(PaneWidth.key(.today)) private var todayWidth = PaneWidth.standard(.today)
+    @AppStorage(PaneWidth.key(.strips)) private var stripsWidth = PaneWidth.standard(.strips)
+    @AppStorage(PaneWidth.key(.reminders)) private var remindersWidth = PaneWidth.standard(.reminders)
+    @AppStorage(PaneWidth.key(.inbox)) private var inboxWidth = PaneWidth.standard(.inbox)
+    @AppStorage(PaneWidth.key(.notes)) private var notesWidth = PaneWidth.standard(.notes)
     @State private var filter = BoardFilter()
     @State private var editing: TaskItem?
     @State private var isCreating = false
@@ -149,45 +216,25 @@ struct BoardScreen: View {
                 }
                 if isWide {
                     BoardPanesBar(panes: $panes)
-                    HStack(spacing: 0) {
-                        if panes.shows(.today) {
-                            DayView(
-                                tasks: allTasks,
-                                reminders: allReminders,
-                                    onEdit: { editing = $0 }
-                            )
-                            .frame(maxWidth: panes.lonePane == .today ? .infinity : 320)
-                            Divider()
-                        }
-                        if panes.shows(.strips) {
-                            stripsPage
-                        }
-                        if panes.shows(.reminders) {
-                            Divider()
-                            // The navigation bar is the strips'; the reminders carry their buttons
-                            // in a header of their own, unless the strips are put away and the
-                            // bar is theirs to use. (A second navigation stack here doesn't keep
-                            // its toolbar to itself — its buttons, title and search all took over
-                            // the strips' bar.)
-                            RemindersView(
-                                isEmbedded: true,
-                                isActive: panes.lonePane == .reminders,
-                                showsHeader: panes.lonePane != .reminders
-                            )
-                            .frame(maxWidth: panes.lonePane == .reminders ? .infinity : 380)
-                        }
-                        if panes.shows(.inbox) {
-                            Divider()
-                            InboxListView()
-                                .frame(maxWidth: panes.lonePane == .inbox ? .infinity : 320)
-                        }
-                        if panes.shows(.notes) {
-                            Divider()
-                            NotesView(
-                                isEmbedded: true,
-                                nextOrderIndex: { StripActions.nextOrderIndex(in: allTasks) }
-                            )
-                            .frame(maxWidth: panes.lonePane == .notes ? .infinity : 260)
+                    // Every pane but the last has a width of its own, dragged by the divider on
+                    // its right; the last takes whatever is left. That's what keeps the row
+                    // adding up to the screen however the others are sized — fixed widths all
+                    // the way across overflow, and the panes at both ends lose their edges.
+                    GeometryReader { geometry in
+                        HStack(spacing: 0) {
+                            ForEach(Array(shownPanes.enumerated()), id: \.element) { index, pane in
+                                if index > 0 {
+                                    // The divider stops exactly where the layout stops, so
+                                    // dragging past the limit doesn't feel like a stuck divider.
+                                    PaneDivider(
+                                        width: widthBinding(for: shownPanes[index - 1]),
+                                        range: 180...max(180, geometry.size.width * 0.45)
+                                    )
+                                }
+                                paneView(pane)
+                                    .frame(maxWidth: isLast(index) ? .infinity : nil)
+                                    .frame(width: isLast(index) ? nil : fittedWidth(of: pane, in: geometry.size.width))
+                            }
                         }
                     }
                 } else {
