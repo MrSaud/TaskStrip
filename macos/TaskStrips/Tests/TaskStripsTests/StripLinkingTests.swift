@@ -58,14 +58,21 @@ final class StripLinkingTests: XCTestCase {
         XCTAssertEqual(task.links.count, 1)
     }
 
-    /// Active means on the board and not finished: the picker offers somewhere worth filing to.
+    /// Active means on the board, not finished, and not deleted: the picker offers somewhere
+    /// worth filing to.
+    ///
+    /// The tombstone is the one that bit. A deleted strip stays as a row so the deletion can
+    /// reach the other devices, and the picker listed three of them under names the board no
+    /// longer showed — the same strip twice over, apparently duplicated.
     func testThePickerOffersOnlyStripsStillInPlay() throws {
         _ = strip("On the board", order: 0)
         _ = strip("Finished", done: true, order: 1)
         _ = strip("Archived", archived: true, order: 2)
+        let deleted = strip("Deleted", order: 3)
+        deleted.isTombstoned = true
 
         let descriptor = FetchDescriptor<TaskItem>(
-            predicate: #Predicate { !$0.isArchived && !$0.isDone },
+            predicate: #Predicate { !$0.isTombstoned && !$0.isArchived && !$0.isDone },
             sortBy: [SortDescriptor(\TaskItem.orderIndex)]
         )
         XCTAssertEqual(try context.fetch(descriptor).map(\.title), ["On the board"])

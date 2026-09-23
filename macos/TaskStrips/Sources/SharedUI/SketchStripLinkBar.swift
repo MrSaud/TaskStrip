@@ -15,7 +15,11 @@ struct SketchStripLinkBar: View {
     let onDismiss: () -> Void
 
     @Query(
-        filter: #Predicate<TaskItem> { !$0.isArchived && !$0.isDone },
+        // Tombstoned as well as archived and finished: a deleted strip is kept as a row so the
+        // deletion can reach the other devices, and every list in the app leaves those out. This
+        // one didn't, which is why three deleted strips showed up in the menu under names the
+        // board itself no longer has.
+        filter: #Predicate<TaskItem> { !$0.isTombstoned && !$0.isArchived && !$0.isDone },
         sort: [SortDescriptor(\TaskItem.orderIndex)]
     ) private var strips: [TaskItem]
     @Environment(\.modelContext) private var context
