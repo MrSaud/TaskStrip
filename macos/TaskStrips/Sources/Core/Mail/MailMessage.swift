@@ -17,6 +17,24 @@ struct MailMessage: Identifiable, Equatable, Codable {
     /// needed to go back and ask the server for the message itself.
     var accountID: UUID?
     var uid: Int?
+    /// Who else it went to, and where the sender wants replies. Optional because a list cached
+    /// before the app could reply to everyone doesn't carry them.
+    var to: String?
+    var cc: String?
+    var replyTo: String?
+
+    /// Where a reply goes: Reply-To when the sender named one, the From address otherwise.
+    var replyAddress: String? {
+        if let replyTo, let address = MailAddress.address(in: replyTo) { return address }
+        return senderAddress
+    }
+
+    /// Everyone else on the message, with me and the person being replied to left out — the Cc
+    /// line of a reply to everyone.
+    func others(excluding mine: [String]) -> [String] {
+        let everyone = MailAddress.list(in: to ?? "") + MailAddress.list(in: cc ?? "")
+        return MailAddress.without(mine + [replyAddress].compactMap { $0 }, from: everyone)
+    }
 
     /// The link that opens this message back in Mail.
     var link: String? {

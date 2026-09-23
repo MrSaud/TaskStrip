@@ -12,6 +12,12 @@ enum IMAPHeaders {
         var from = ""
         var messageID = ""
         var date: Date?
+        /// Everyone else the message went to, as written.
+        var to = ""
+        var cc = ""
+        /// Where the sender asked for replies to go, when that isn't the From address — a mailing
+        /// list, or a no-reply address with a real one behind it.
+        var replyTo = ""
     }
 
     static func parse(_ raw: String, now: Date = .now) -> Fields {
@@ -27,6 +33,9 @@ enum IMAPHeaders {
             case "from": fields.from = decodeWords(value)
             case "message-id": fields.messageID = value.trimmingCharacters(in: .init(charactersIn: "<>"))
             case "date": fields.date = date(from: value)
+            case "to": fields.to = decodeWords(value)
+            case "cc": fields.cc = decodeWords(value)
+            case "reply-to": fields.replyTo = decodeWords(value)
             default: continue
             }
         }

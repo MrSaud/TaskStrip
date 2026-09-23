@@ -41,7 +41,10 @@ enum IMAPFetch {
                     sender: fields.from,
                     receivedAt: fields.date ?? now,
                     isRead: seen,
-                    uid: uid
+                    uid: uid,
+                    to: fields.to.isEmpty ? nil : fields.to,
+                    cc: fields.cc.isEmpty ? nil : fields.cc,
+                    replyTo: fields.replyTo.isEmpty ? nil : fields.replyTo
                 )
             )
             rest = afterBrace[headerStart...].dropFirst(min(length, afterBrace[headerStart...].count))

@@ -12,18 +12,37 @@ struct MailDraft: Equatable, Identifiable {
     var from: String
     var fromName: String = ""
     var to: String
+    /// Everyone copied in, comma-separated as a mail header writes them.
+    var cc: String = ""
     var subject: String
     var body: String
     /// Set when this is a reply: the Message-ID being answered, so mail programs thread it under
     /// the message it belongs to rather than starting a new conversation.
     var inReplyTo: String?
 
-    /// Every address this is going to. One for now; the shape is here so a Cc doesn't need the
-    /// sending code rewritten.
-    var recipients: [String] { [to.trimmingCharacters(in: .whitespaces)].filter { !$0.isEmpty } }
+    /// Every address this is going to. The server is told about the copies as well: a Cc header
+    /// is only ink on the page, and a message is delivered to whoever RCPT TO names.
+    var recipients: [String] {
+        MailAddress.without([], from: MailAddress.list(in: to) + MailAddress.list(in: cc))
+    }
+
+    /// The copies alone, for a line that says how many people are about to get this.
+    var copies: [String] { MailAddress.list(in: cc) }
 
     var isSendable: Bool {
-        MailDraft.looksLikeAnAddress(to) && !from.isEmpty
+        guard !from.isEmpty, !MailAddress.list(in: to).isEmpty else { return false }
+        // Every address has to be a real one: a typo in the Cc shouldn't be found out by the
+        // server halfway through sending to everyone else.
+        return (MailAddress.list(in: to) + MailAddress.list(in: cc)).allSatisfy(MailDraft.looksLikeAnAddress)
+            && addressesLookWhole
+    }
+
+    /// Every entry in both fields has to be an address, not only the ones that parse.
+    ///
+    /// Otherwise "two@example.com, notanaddress" sends happily to one person and silently drops
+    /// the other — the sort of thing found out a week later.
+    private var addressesLookWhole: Bool {
+        [to, cc].allSatisfy { MailAddress.entries(in: $0).allSatisfy { MailAddress.address(in: $0) != nil } }
     }
 
     static func looksLikeAnAddress(_ text: String) -> Bool {
@@ -42,6 +61,9 @@ struct MailDraft: Equatable, Identifiable {
         var lines: [String] = []
         lines.append("From: \(addressField(name: fromName, address: from))")
         lines.append("To: \(to.trimmingCharacters(in: .whitespaces))")
+        if !cc.trimmingCharacters(in: .whitespaces).isEmpty {
+            lines.append("Cc: \(cc.trimmingCharacters(in: .whitespaces))")
+        }
         lines.append("Subject: \(MailDraft.encodedWord(subject))")
         lines.append("Date: \(MailDraft.dateFormatter.string(from: now))")
         lines.append("Message-ID: <\(messageID)>")
@@ -119,11 +141,33 @@ struct MailDraft: Equatable, Identifiable {
         MailDraft(
             from: account,
             fromName: fromName,
-            to: message.senderAddress ?? "",
+            to: message.replyAddress ?? "",
             subject: replySubject(message.subject),
             body: quoting(message, body: body),
             inReplyTo: message.id.isEmpty ? nil : message.id
         )
+    }
+
+    /// A reply to everyone: back to whoever wrote, with everyone else on the message copied in.
+    ///
+    /// `mine` is every address of this account's own, because the one person who shouldn't be
+    /// copied on a reply is the person writing it.
+    static func replyAll(
+        to message: MailMessage,
+        from account: String,
+        fromName: String = "",
+        mine: [String] = [],
+        body: MailBody?
+    ) -> MailDraft {
+        var draft = reply(to: message, from: account, fromName: fromName, body: body)
+        draft.cc = message.others(excluding: mine + [account]).joined(separator: ", ")
+        return draft
+    }
+
+    /// Whether there's anybody to reply to beyond the sender — what decides if Reply All is worth
+    /// offering at all.
+    static func hasOthers(_ message: MailMessage, mine: [String]) -> Bool {
+        !message.others(excluding: mine).isEmpty
     }
 
     static func replySubject(_ subject: String) -> String {

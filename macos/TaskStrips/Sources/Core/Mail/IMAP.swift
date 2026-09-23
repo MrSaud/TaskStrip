@@ -108,7 +108,10 @@ enum IMAPCommand {
         let from = max(total - count + 1, 1)
         // The UID as well as the headers: a sequence number is only true until something is
         // deleted, and the UID is what asking for the message itself later has to quote.
-        return "\(tag) FETCH \(from):\(total) (UID FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)])\r\n"
+        // TO, CC and REPLY-TO as well: a reply goes where the sender said replies should go, and
+        // a reply to everyone needs to know who everyone was.
+        return "\(tag) FETCH \(from):\(total) (UID FLAGS BODY.PEEK"
+            + "[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID TO CC REPLY-TO)])\r\n"
     }
 
     /// The whole message, up to a limit. PEEK again: opening a message in this app doesn't mark

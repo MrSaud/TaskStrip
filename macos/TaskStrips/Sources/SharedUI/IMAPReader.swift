@@ -19,6 +19,7 @@ final class IMAPReader: ObservableObject {
 
     private let store = IMAPAccountStore()
     private let cache = MailInboxCache(defaults: .standard, key: "imapInbox.last")
+    private let directory = MailDirectoryStore()
     private var lastRead: Date?
 
     /// Mail arrives all day; asking every few minutes is plenty and costs the server nothing.
@@ -88,7 +89,13 @@ final class IMAPReader: ObservableObject {
             // Merged rather than only sorted: the same message can arrive twice when one address
             // forwards to another, and both accounts are being read.
             let newest = MailInboxMerge.merged([collected])
+            // Everyone on everything just read, so writing to them later is a tap rather than a
+            // typed address. Learnt from what's already been fetched: no extra request, and it
+            // stays on the device.
+            let mine = accounts.map(\.email)
+            let learnt = MailDirectory.learning(from: collected, into: directory.contacts, mine: mine)
             await MainActor.run {
+                directory.contacts = learnt
                 isReading = false
                 if !newest.isEmpty {
                     messages = newest
@@ -164,6 +171,16 @@ final class IMAPReader: ObservableObject {
         } catch {
             return .filingFailed(error.localizedDescription)
         }
+    }
+
+    /// Who to offer while an address is being typed.
+    func suggestions(for typed: String, from account: IMAPAccount?, excluding already: [String]) -> [MailContact] {
+        MailDirectory.suggestions(
+            for: typed,
+            in: directory.contacts,
+            domain: account?.email.split(separator: "@").last.map(String.init),
+            excluding: already
+        )
     }
 
     /// The accounts that can send, which is all of them: every account here signs in with a

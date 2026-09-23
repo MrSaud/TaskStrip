@@ -95,6 +95,26 @@ struct MailMessageView: View {
                     .controlSize(.large)
                     .disabled(sendingAccount == nil)
                     .help(sendingAccount == nil ? "Add a mail account to reply" : "Reply to this message")
+
+                    // Only where there is anyone else: on a message addressed to one person,
+                    // Reply All is Reply with a longer name.
+                    if MailDraft.hasOthers(message, mine: myAddresses) {
+                        Button {
+                            replying = MailDraft.replyAll(
+                                to: message,
+                                from: sendingAccount?.email ?? "",
+                                fromName: sendingAccount?.senderName ?? "",
+                                mine: myAddresses,
+                                body: loaded
+                            )
+                        } label: {
+                            Label("Reply All", systemImage: "arrowshape.turn.up.left.2")
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.large)
+                        .disabled(sendingAccount == nil)
+                        .help("Reply to the sender and everyone copied in")
+                    }
                 }
                 if let text = loaded?.text, !text.isEmpty {
                     Button {
@@ -208,6 +228,10 @@ struct MailMessageView: View {
             }
         }
     }
+
+    /// Every address of this account's own — nobody replies to themselves, and an account set up
+    /// twice under different names shouldn't be copied twice either.
+    private var myAddresses: [String] { IMAPReader.shared.accounts.map(\.email) }
 
     /// Files this message as a link on a strip, under its own subject — the same record the Mac
     /// writes when a message is dragged out of Mail onto a strip, so both routes leave the same
