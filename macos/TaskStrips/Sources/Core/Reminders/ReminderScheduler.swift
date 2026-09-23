@@ -68,13 +68,35 @@ final class ReminderScheduler {
             title: "Follow up with \(task.waitingOnName)",
             body: task.title.uppercased()
         )
+        // The due moment itself, which a strip with no lead time was never told about.
+        post(
+            identifier: Self.dueIdentifier(forTaskID: task.id),
+            at: ReminderPlan.dueDate(for: task),
+            title: "Due now",
+            body: task.title.uppercased()
+        )
+        // And the morning it comes back off deferral, so it isn't a surprise on the board.
+        post(
+            identifier: Self.returnIdentifier(forTaskID: task.id),
+            at: ReminderPlan.returnDate(for: task),
+            title: "Back on the board",
+            body: task.title.uppercased()
+        )
     }
 
     func cancel(taskID: UUID) {
         center.removePendingNotificationRequests(
-            withIdentifiers: [taskID.uuidString, Self.followUpIdentifier(forTaskID: taskID)]
+            withIdentifiers: [
+                taskID.uuidString,
+                Self.followUpIdentifier(forTaskID: taskID),
+                Self.dueIdentifier(forTaskID: taskID),
+                Self.returnIdentifier(forTaskID: taskID),
+            ]
         )
     }
+
+    static func dueIdentifier(forTaskID id: UUID) -> String { "due-\(id.uuidString)" }
+    static func returnIdentifier(forTaskID id: UUID) -> String { "back-\(id.uuidString)" }
 
     /// Namespaced for the same reason a standalone reminder's is: one flat namespace, and a strip
     /// now has two alarms in it.
@@ -147,14 +169,26 @@ final class ReminderScheduler {
     /// The consequence, which is worth knowing: if the Mac hasn't been opened since the last
     /// digest fired, the next one reports the board as it stood when it was last seen. Android
     /// recomputes at fire time inside a broadcast receiver; there's no equivalent hook here.
-    func scheduleDigests(_ tasks: [TaskItem], daily: Bool, weekly: Bool, now: Date = .now) {
-        if daily, let fireAt = DigestPlan.nextDaily(after: now) {
-            let digest = DigestPlan.daily(for: tasks, on: fireAt)
+    func scheduleDigests(
+        _ tasks: [TaskItem],
+        reminders: [Reminder] = [],
+        daily: Bool,
+        weekly: Bool,
+        hour: Int = DigestPlan.dailyHour,
+        now: Date = .now
+    ) {
+        if daily, let fireAt = DigestPlan.nextDaily(after: now, hour: hour) {
+            // The report looks back to the last one, so nothing done in between goes unmentioned
+            // and nothing is mentioned twice.
+            let report = DayReport.make(
+                tasks: tasks, reminders: reminders, on: fireAt,
+                since: Calendar.current.date(byAdding: .day, value: -1, to: fireAt)
+            )
             post(
                 identifier: Self.dailyDigestIdentifier,
-                at: digest.isEmpty ? nil : fireAt,
-                title: digest.title,
-                body: digest.body
+                at: report.isEmpty ? nil : fireAt,
+                title: report.title,
+                body: report.body
             )
         } else {
             center.removePendingNotificationRequests(withIdentifiers: [Self.dailyDigestIdentifier])

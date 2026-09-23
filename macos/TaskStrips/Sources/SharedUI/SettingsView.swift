@@ -23,6 +23,8 @@ enum AppSettingsKey {
     static let showCalendar = "showTodaysCalendar"
     /// Light, dark, or whatever the system is doing.
     static let theme = "boardTheme"
+    /// The hour the daily report goes out.
+    static let reportHour = "dailyReportHour"
     /// When the last automatic backup went up, so the next one knows whether a day has passed.
     static let lastAutoBackup = "lastAutoBackupAt"
 }
@@ -65,6 +67,7 @@ struct SettingsView: View {
     @AppStorage(AppSettingsKey.defaultNotesRtl) private var defaultNotesRtl = false
     @AppStorage(AppSettingsKey.confirmBeforeDelete) private var confirmBeforeDelete = true
     @AppStorage(AppSettingsKey.dailyDigest) private var dailyDigest = false
+    @AppStorage(AppSettingsKey.reportHour) private var reportHour = DigestPlan.dailyHour
     @AppStorage(AppSettingsKey.weeklyReview) private var weeklyReview = false
     @AppStorage(AppSettingsKey.autoBackup) private var autoBackup = false
     @AppStorage(AppSettingsKey.showQuote) private var showQuote = true
@@ -168,15 +171,24 @@ struct SettingsView: View {
             }
 
             Section {
-                Toggle("Morning digest at 8am", isOn: $dailyDigest)
+                Toggle("Daily report", isOn: $dailyDigest)
+                if dailyDigest {
+                    Picker("At", selection: $reportHour) {
+                        ForEach(DigestPlan.reportHours, id: \.self) { hour in
+                            Text(DigestPlan.hourLabel(hour)).tag(hour)
+                        }
+                    }
+                }
                 Toggle("Week in review, Fridays at 5pm", isOn: $weeklyReview)
             } header: {
                 Text("Summaries")
             } footer: {
                 // Both are off by default: an app that starts sending notifications before being
                 // asked is an app whose notifications get turned off wholesale.
-                Text("Each says nothing on a day with nothing to report. They're worked out while "
-                     + "the app is open, so one that fires after days of \(Platform.thisDevice) being shut "
+                Text("The daily report carries what's late, what's due, today's reminders, and "
+                     + "what was finished, logged and worked on since the last one. Each says "
+                     + "nothing on a day with nothing to report. They're worked out while the app "
+                     + "is open, so one that fires after days of \(Platform.thisDevice) being shut "
                      + "describes the board as it was last seen.")
                     .font(.caption)
                     .foregroundStyle(.secondary)

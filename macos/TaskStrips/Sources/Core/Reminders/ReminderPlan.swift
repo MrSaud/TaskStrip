@@ -38,6 +38,30 @@ enum ReminderPlan {
         return fireAt > now ? fireAt : nil
     }
 
+    /// When a strip's own due moment should announce itself, or nil if it shouldn't.
+    ///
+    /// Separate from the reminder before it: "remind me an hour before" and "it's due now" are
+    /// two different things to be told, and a strip with no lead time set was previously told
+    /// neither. Same exclusions as the reminder — done, archived, no due date, already past.
+    static func dueDate(for task: TaskItem, now: Date = .now) -> Date? {
+        guard !task.isDone, !task.isArchived, let dueAt = task.dueAt else { return nil }
+        return dueAt > now ? dueAt : nil
+    }
+
+    /// The morning a deferred strip comes back onto the board, or nil if it isn't deferred.
+    ///
+    /// Eight in the morning rather than the exact moment it was deferred to: a strip that
+    /// reappears at 3am should say so when someone's awake to read it.
+    static func returnDate(for task: TaskItem, now: Date = .now, calendar: Calendar = .current) -> Date? {
+        guard !task.isDone, !task.isArchived, let deferUntil = task.deferUntil else { return nil }
+        let morning = calendar.date(
+            bySettingHour: DigestPlan.dailyHour, minute: 0, second: 0,
+            of: calendar.startOfDay(for: deferUntil)
+        )
+        guard let morning else { return nil }
+        return morning > now ? morning : nil
+    }
+
     /// The strip that completing a repeating one should spawn, or nil if it doesn't repeat.
     ///
     /// A new strip rather than an edit in place, which is Android's choice and the right one: the

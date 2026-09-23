@@ -67,6 +67,7 @@ struct TaskListView: View {
     @AppStorage(AppSettingsKey.defaultNotesRtl) private var defaultNotesRtl = false
     @AppStorage(AppSettingsKey.confirmBeforeDelete) private var confirmBeforeDelete = true
     @AppStorage(AppSettingsKey.dailyDigest) private var dailyDigest = false
+    @AppStorage(AppSettingsKey.reportHour) private var reportHour = DigestPlan.dailyHour
     @AppStorage(AppSettingsKey.weeklyReview) private var weeklyReview = false
     @AppStorage(AppSettingsKey.autoBackup) private var autoBackup = false
     @AppStorage(AppSettingsKey.lastAutoBackup) private var lastAutoBackup: Double = 0
@@ -781,7 +782,9 @@ struct TaskListView: View {
     // MARK: - Scheduled summaries and backups
 
     private func refreshDigests() {
-        ReminderScheduler.shared.scheduleDigests(allTasks, daily: dailyDigest, weekly: weeklyReview)
+        ReminderScheduler.shared.scheduleDigests(
+            allTasks, reminders: allReminders, daily: dailyDigest, weekly: weeklyReview, hour: reportHour
+        )
     }
 
     /// Backs up to Drive if it's switched on and a day has gone by.

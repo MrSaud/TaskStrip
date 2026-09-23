@@ -9,15 +9,28 @@ enum DigestPlan {
     /// Mirrors DigestScheduler.kt and WeeklyDigestScheduler.kt: 8am daily, 5pm Friday, and a
     /// backup at 3am — a quiet hour that competes with nothing.
     static let dailyHour = 8
+    /// The hours the daily report may be set to. Any hour would do; these are the ones anyone
+    /// picks, and a short list is quicker to choose from than a clock face.
+    static let reportHours = [6, 7, 8, 9, 12, 17, 18, 20, 21, 22]
     static let weeklyHour = 17
     /// Calendar's own numbering, where Sunday is 1, so Friday is 6.
     static let weeklyWeekday = 6
     static let backupHour = 3
 
+    /// "8am", "5pm" — how anyone says an hour.
+    static func hourLabel(_ hour: Int) -> String {
+        switch hour {
+        case 0: return "midnight"
+        case 12: return "noon"
+        case 1..<12: return "\(hour)am"
+        default: return "\(hour - 12)pm"
+        }
+    }
+
     // MARK: - When
 
-    static func nextDaily(after now: Date, calendar: Calendar = .current) -> Date? {
-        nextTime(hour: dailyHour, weekday: nil, after: now, calendar: calendar)
+    static func nextDaily(after now: Date, hour: Int = dailyHour, calendar: Calendar = .current) -> Date? {
+        nextTime(hour: hour, weekday: nil, after: now, calendar: calendar)
     }
 
     static func nextWeekly(after now: Date, calendar: Calendar = .current) -> Date? {

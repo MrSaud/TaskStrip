@@ -52,6 +52,9 @@ struct BoardScreen: View {
     @AppStorage(AppSettingsKey.defaultPriority) private var defaultPriority = Priority.normal
     @AppStorage(AppSettingsKey.defaultNotesRtl) private var defaultNotesRtl = false
     @AppStorage(AppSettingsKey.showQuote) private var showQuote = true
+    @AppStorage(AppSettingsKey.dailyDigest) private var dailyDigest = false
+    @AppStorage(AppSettingsKey.weeklyReview) private var weeklyReview = false
+    @AppStorage(AppSettingsKey.reportHour) private var reportHour = DigestPlan.dailyHour
     @AppStorage(AppSettingsKey.dateStyle) private var dateStyle = BoardDateStyle.both
     @AppStorage(AppSettingsKey.clockStyle) private var clockStyle = BoardClockStyle.digital
     @AppStorage(AppSettingsKey.showCalendar) private var showCalendar = false
@@ -268,6 +271,12 @@ struct BoardScreen: View {
             }
             .task {
                 ReminderScheduler.shared.sync(allTasks)
+                // The phone never armed these: the daily report and the Friday review were a Mac
+                // affair, which is the wrong way round for the device that's in a pocket.
+                ReminderScheduler.shared.scheduleDigests(
+                    allTasks, reminders: allReminders,
+                    daily: dailyDigest, weekly: weeklyReview, hour: reportHour
+                )
                 if showQuote { quote = await QuoteOfTheDay.today() }
                 #if DEBUG
                 // `-OpenLink <url>`: opens a link on launch, which is how a message: link can be
