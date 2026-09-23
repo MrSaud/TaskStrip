@@ -24,6 +24,7 @@ struct SketchCanvasView: View {
     @State private var currentStroke: SketchStroke?
     @State private var ink: SketchInk = .ink
     @State private var penWidth: SketchPenWidth = .fine
+    @State private var brush: SketchBrush = .pen
     @State private var canvasSize: CGSize = .zero
     @State private var background: CGImage?
     /// This note's paper, kept beside its pages and shown over them.
@@ -41,6 +42,7 @@ struct SketchCanvasView: View {
     @State private var pendingImage: CGImage?
     @State private var placement = SketchImagePlacement(offset: .zero, scale: 1)
     @State private var isPickingImage = false
+    @State private var isPickingStamp = false
 
     private var currentPageURL: URL? { pages.indices.contains(pageIndex) ? pages[pageIndex] : nil }
 
@@ -89,6 +91,11 @@ struct SketchCanvasView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("This page will be permanently deleted. This can't be undone.")
+        }
+        .sheet(isPresented: $isPickingStamp) {
+            NavigationStack {
+                SketchStampPicker(ink: ink) { image in beginPlacing(image) }
+            }
         }
         .fileImporter(isPresented: $isPickingImage, allowedContentTypes: [.image]) { result in
             if case .success(let url) = result { beginPlacing(url) }
@@ -172,25 +179,44 @@ struct SketchCanvasView: View {
         }
     }
 
+    /// The same brush rules the saved PNG is drawn with — see SketchRenderer.render. The two are
+    /// kept side by side deliberately: what's on screen while drawing and what's on the page
+    /// afterwards have to be the same line.
     private func draw(_ stroke: SketchStroke, in context: inout GraphicsContext) {
         guard let first = stroke.points.first else { return }
-        let color = Self.color(of: stroke.ink)
+        let (red, green, blue) = stroke.colour
+        let colour = Color(red: red, green: green, blue: blue).opacity(stroke.brush.opacity)
+        let width = stroke.drawnWidth
+        let cap: CGLineCap = stroke.brush.isSquareNib ? .square : .round
+
         if stroke.points.count == 1 {
-            let radius = stroke.width / 2
+            let radius = width / 2
             context.fill(
-                Path(ellipseIn: CGRect(
-                    x: first.x - radius, y: first.y - radius, width: stroke.width, height: stroke.width
-                )),
-                with: .color(color)
+                Path(ellipseIn: CGRect(x: first.x - radius, y: first.y - radius, width: width, height: width)),
+                with: .color(colour)
             )
+        } else if stroke.brush.tapers {
+            let widths = SketchBrush.taperedWidths(pointCount: stroke.points.count, width: width)
+            for index in stroke.points.indices.dropFirst() {
+                var segment = Path()
+                segment.move(to: stroke.points[index - 1])
+                segment.addLine(to: stroke.points[index])
+                context.stroke(
+                    segment,
+                    with: .color(colour),
+                    style: StrokeStyle(
+                        lineWidth: (widths[index - 1] + widths[index]) / 2, lineCap: cap, lineJoin: .round
+                    )
+                )
+            }
         } else {
             var path = Path()
             path.move(to: first)
             for point in stroke.points.dropFirst() { path.addLine(to: point) }
             context.stroke(
                 path,
-                with: .color(color),
-                style: StrokeStyle(lineWidth: stroke.width, lineCap: .round, lineJoin: .round)
+                with: .color(colour),
+                style: StrokeStyle(lineWidth: width, lineCap: cap, lineJoin: .round)
             )
         }
     }
@@ -212,7 +238,7 @@ struct SketchCanvasView: View {
     // MARK: - One stroke, whatever drew it
 
     private func beginStroke(at point: CGPoint) {
-        currentStroke = SketchStroke(points: [point], ink: ink, width: penWidth.rawValue)
+        currentStroke = SketchStroke(points: [point], ink: ink, width: penWidth.rawValue, brush: brush)
     }
 
     private func extendStroke(through points: [CGPoint]) {
@@ -269,6 +295,33 @@ struct SketchCanvasView: View {
 
     private var palette: some View {
         HStack(spacing: 10) {
+            Menu {
+                Picker("Brush", selection: $brush) {
+                    ForEach(SketchBrush.allCases) { candidate in
+                        Label(candidate.title, systemImage: candidate.symbol).tag(candidate)
+                    }
+                }
+                .pickerStyle(.inline)
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: brush.symbol)
+                    Text(brush.title)
+                        .lineLimit(1)
+                }
+                .font(.caption)
+                .foregroundStyle(brush == .eraser ? TaskStripTheme.ink : TaskStripTheme.paper)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(brush == .eraser ? TaskStripTheme.amber : TaskStripTheme.bayBackground, in: Capsule())
+            }
+            .menuStyle(.borderlessButton)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("What the nib does with the ink")
+            .accessibilityLabel("Brush: \(brush.title)")
+
+            Divider().frame(height: 24)
+
             ForEach(SketchInk.allCases) { swatch in
                 Button {
                     ink = swatch
@@ -301,6 +354,22 @@ struct SketchCanvasView: View {
             }
 
             Divider().frame(height: 24)
+
+            Button {
+                isPickingStamp = true
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: "face.smiling")
+                    Text("Stamp")
+                }
+                .font(.caption)
+                .foregroundStyle(TaskStripTheme.paper)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .background(TaskStripTheme.bayBackground, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .help("Drop an icon or an emoji on the page")
 
             SketchPaperPicker(paper: $paper)
         }
@@ -474,6 +543,12 @@ struct SketchCanvasView: View {
     }
 
     // MARK: - Images
+
+    /// A stamp arrives as a picture rather than a file, and is placed the same way from there.
+    private func beginPlacing(_ image: CGImage) {
+        placement = SketchImagePlacement.initial(imageSize: image.size, canvas: canvasSize)
+        pendingImage = image
+    }
 
     private func beginPlacing(_ url: URL) {
         let scoped = url.startAccessingSecurityScopedResource()

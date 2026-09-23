@@ -9,10 +9,21 @@ struct SketchStroke: Identifiable, Equatable {
     let id = UUID()
     var points: [CGPoint]
     var ink: SketchInk
+    /// The nib width the person picked, before the brush has its say.
     var width: CGFloat
+    var brush: SketchBrush = .pen
+
+    /// What this stroke is actually drawn at, brush included.
+    var drawnWidth: CGFloat { brush.width(forNib: width) }
+
+    /// The colour to draw it in: its ink, unless the brush puts paper back instead.
+    var colour: (red: CGFloat, green: CGFloat, blue: CGFloat) {
+        brush.drawsInPaperColour ? SketchRenderer.paper : ink.components
+    }
 
     static func == (lhs: SketchStroke, rhs: SketchStroke) -> Bool {
-        lhs.id == rhs.id && lhs.points == rhs.points && lhs.ink == rhs.ink && lhs.width == rhs.width
+        lhs.id == rhs.id && lhs.points == rhs.points && lhs.ink == rhs.ink
+            && lhs.width == rhs.width && lhs.brush == rhs.brush
     }
 }
 
@@ -118,26 +129,40 @@ enum SketchRenderer {
             draw(background, in: CGRect(x: 0, y: 0, width: width, height: height), into: context)
         }
 
-        context.setLineCap(.round)
         context.setLineJoin(.round)
         context.setShouldAntialias(true)
 
         for stroke in strokes {
             guard let first = stroke.points.first else { continue }
-            let (red, green, blue) = stroke.ink.components
+            let (red, green, blue) = stroke.colour
+            let alpha = stroke.brush.opacity
+            let width = stroke.drawnWidth
+            context.setLineCap(stroke.brush.isSquareNib ? .square : .round)
+
             if stroke.points.count == 1 {
                 // A tap is a dot, not nothing: a zero-length path with a round cap draws nothing
                 // at all, so fill a circle the width of the nib instead.
-                context.setFillColor(red: red, green: green, blue: blue, alpha: 1)
+                context.setFillColor(red: red, green: green, blue: blue, alpha: alpha)
                 context.fillEllipse(in: CGRect(
-                    x: first.x - stroke.width / 2,
-                    y: first.y - stroke.width / 2,
-                    width: stroke.width,
-                    height: stroke.width
+                    x: first.x - width / 2,
+                    y: first.y - width / 2,
+                    width: width,
+                    height: width
                 ))
+            } else if stroke.brush.tapers {
+                // Segment by segment, because one path can only have one width.
+                let widths = SketchBrush.taperedWidths(pointCount: stroke.points.count, width: width)
+                context.setStrokeColor(red: red, green: green, blue: blue, alpha: alpha)
+                for index in stroke.points.indices.dropFirst() {
+                    context.setLineWidth((widths[index - 1] + widths[index]) / 2)
+                    context.beginPath()
+                    context.move(to: stroke.points[index - 1])
+                    context.addLine(to: stroke.points[index])
+                    context.strokePath()
+                }
             } else {
-                context.setStrokeColor(red: red, green: green, blue: blue, alpha: 1)
-                context.setLineWidth(stroke.width)
+                context.setStrokeColor(red: red, green: green, blue: blue, alpha: alpha)
+                context.setLineWidth(width)
                 context.beginPath()
                 context.move(to: first)
                 for point in stroke.points.dropFirst() { context.addLine(to: point) }
