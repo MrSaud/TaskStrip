@@ -30,8 +30,8 @@ struct TalliesSection: View {
                     .foregroundStyle(.secondary)
             }
 
-            ForEach($tallies) { $tally in
-                tallyView($tally)
+            ForEach(tallies) { tally in
+                tallyView(tally)
             }
 
             if adding {
@@ -49,31 +49,31 @@ struct TalliesSection: View {
 
     // MARK: - One tally
 
-    private func tallyView(_ tally: Binding<TaskTally>) -> some View {
+    private func tallyView(_ tally: TaskTally) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(tally.wrappedValue.name.isEmpty ? "Untitled" : tally.wrappedValue.name)
+                Text(tally.name.isEmpty ? "Untitled" : tally.name)
                     .font(.callout.weight(.medium))
                 Spacer(minLength: 0)
-                Text(StripTally.formatted(tally.wrappedValue.total, unit: tally.wrappedValue.unit))
+                Text(StripTally.formatted(tally.total, unit: tally.unit))
                     .font(.callout.monospacedDigit().weight(.semibold))
-                    .foregroundStyle(tally.wrappedValue.isOverTarget ? TaskStripTheme.urgent : TaskStripTheme.amber)
+                    .foregroundStyle(tally.isOverTarget ? TaskStripTheme.urgent : TaskStripTheme.amber)
                 Button {
-                    toggle(tally.wrappedValue.id)
+                    toggle(tally.id)
                 } label: {
-                    Image(systemName: expanded.contains(tally.wrappedValue.id) ? "chevron.down" : "chevron.right")
+                    Image(systemName: expanded.contains(tally.id) ? "chevron.down" : "chevron.right")
                         .font(.caption)
                 }
                 .buttonStyle(.plain)
             }
 
-            if let target = tally.wrappedValue.target, target > 0 {
+            if let target = tally.target, target > 0 {
                 VStack(alignment: .leading, spacing: 2) {
-                    ProgressView(value: min(tally.wrappedValue.progress ?? 0, 1))
-                        .tint(tally.wrappedValue.isOverTarget ? TaskStripTheme.urgent : TaskStripTheme.amber)
-                    Text(targetLine(for: tally.wrappedValue))
+                    ProgressView(value: min(tally.progress ?? 0, 1))
+                        .tint(tally.isOverTarget ? TaskStripTheme.urgent : TaskStripTheme.amber)
+                    Text(targetLine(for: tally))
                         .font(.caption)
-                        .foregroundStyle(tally.wrappedValue.isOverTarget ? TaskStripTheme.urgent : .secondary)
+                        .foregroundStyle(tally.isOverTarget ? TaskStripTheme.urgent : .secondary)
                 }
             }
 
@@ -81,19 +81,19 @@ struct TalliesSection: View {
             // isn't: hours are written up the morning after as often as on the day.
             VStack(spacing: 6) {
                 HStack(spacing: 8) {
-                    TextField("Add \(tally.wrappedValue.unit.label.lowercased())", text: amountBinding(tally.wrappedValue.id))
+                    TextField("Add \(tally.unit.label.lowercased())", text: amountBinding(tally.id))
                         #if os(iOS)
                         .keyboardType(.decimalPad)
                         #endif
                         .frame(maxWidth: 110)
                         .onSubmit { add(to: tally) }
-                    TextField("What for (optional)", text: noteBinding(tally.wrappedValue.id))
+                    TextField("What for (optional)", text: noteBinding(tally.id))
                         .onSubmit { add(to: tally) }
                 }
                 HStack(spacing: 8) {
                     DatePicker(
                         "On",
-                        selection: dateBinding(tally.wrappedValue.id),
+                        selection: dateBinding(tally.id),
                         displayedComponents: .date
                     )
                     .labelsHidden()
@@ -101,11 +101,11 @@ struct TalliesSection: View {
                     Spacer(minLength: 0)
                     Button("Add") { add(to: tally) }
                         .buttonStyle(.bordered)
-                        .disabled(Double(amounts[tally.wrappedValue.id] ?? "") == nil)
+                        .disabled(Double(amounts[tally.id] ?? "") == nil)
                 }
             }
 
-            if expanded.contains(tally.wrappedValue.id) {
+            if expanded.contains(tally.id) {
                 entries(of: tally)
             }
         }
@@ -123,17 +123,17 @@ struct TalliesSection: View {
     }
 
     /// Where the total came from. A total nobody can take apart is a number to be distrusted.
-    private func entries(of tally: Binding<TaskTally>) -> some View {
+    private func entries(of tally: TaskTally) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Divider()
-            if tally.wrappedValue.entries.isEmpty {
+            if tally.entries.isEmpty {
                 Text("Nothing added yet.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            ForEach(tally.wrappedValue.entries) { entry in
+            ForEach(tally.entries, id: \.id) { entry in
                 HStack(spacing: 8) {
-                    Text(StripTally.formatted(entry.amount, unit: tally.wrappedValue.unit))
+                    Text(StripTally.formatted(entry.amount, unit: tally.unit))
                         .font(.caption.monospacedDigit())
                     Text(entry.at.formatted(date: .abbreviated, time: .shortened))
                         .font(.caption2)
@@ -151,7 +151,7 @@ struct TalliesSection: View {
                     }
                     Spacer(minLength: 0)
                     Button {
-                        tally.wrappedValue.entries.removeAll { $0.id == entry.id }
+                        remove(entry: entry.id, from: tally.id)
                     } label: {
                         Image(systemName: "minus.circle")
                             .font(.caption)
@@ -164,7 +164,7 @@ struct TalliesSection: View {
             HStack {
                 Spacer(minLength: 0)
                 Button(role: .destructive) {
-                    tallies.removeAll { $0.id == tally.wrappedValue.id }
+                    remove(tally: tally.id)
                 } label: {
                     Label("Remove this total", systemImage: "trash")
                         .font(.caption)
@@ -233,12 +233,14 @@ struct TalliesSection: View {
         newTarget = ""
     }
 
-    private func add(to tally: Binding<TaskTally>) {
-        let id = tally.wrappedValue.id
-        guard let amount = Double(amounts[id] ?? ""), amount != 0 else { return }
-        tally.wrappedValue = StripTally.adding(
+    private func add(to tally: TaskTally) {
+        let id = tally.id
+        guard let index = tallies.firstIndex(where: { $0.id == id }),
+              let amount = Double(amounts[id] ?? ""), amount != 0
+        else { return }
+        tallies[index] = StripTally.adding(
             amount,
-            to: tally.wrappedValue,
+            to: tallies[index],
             note: (notes[id] ?? "").trimmingCharacters(in: .whitespaces),
             at: dates[id] ?? .now
         )
@@ -246,6 +248,22 @@ struct TalliesSection: View {
         notes[id] = ""
         // The date stays where it was put: several entries from the same day usually arrive
         // together.
+    }
+
+    /// Everything is found by id rather than by an index or a binding held from an earlier
+    /// layout: the row that asked may already be gone, and a binding into an array element
+    /// outlives the element it pointed at.
+    private func remove(entry: UUID, from tallyID: UUID) {
+        guard let index = tallies.firstIndex(where: { $0.id == tallyID }) else { return }
+        tallies[index].entries.removeAll { $0.id == entry }
+    }
+
+    private func remove(tally id: UUID) {
+        tallies.removeAll { $0.id == id }
+        amounts[id] = nil
+        notes[id] = nil
+        dates[id] = nil
+        expanded.remove(id)
     }
 
     private func amountBinding(_ id: UUID) -> Binding<String> {

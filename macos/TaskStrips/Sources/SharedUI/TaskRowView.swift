@@ -17,6 +17,32 @@ struct TaskRowView: View {
         return due <= .now
     }
 
+    /// One tally's target as a line: its name, how far along, and the total against the target.
+    /// Amber while there's room, urgent once there isn't.
+    private func targetLine(for tally: TaskTally) -> some View {
+        let progress = min(tally.progress ?? 0, 1)
+        let colour = tally.isOverTarget ? TaskStripTheme.urgent : TaskStripTheme.amber
+        return VStack(alignment: .leading, spacing: 2) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Rectangle().fill(TaskStripTheme.paper.opacity(0.1))
+                    Rectangle()
+                        .fill(colour)
+                        .frame(width: geo.size.width * CGFloat(progress))
+                }
+            }
+            .frame(height: 3)
+            HStack(spacing: 4) {
+                Text(tally.name.isEmpty ? "Target" : tally.name)
+                Text("\(StripTally.formatted(tally.total, unit: tally.unit)) / \(StripTally.formatted(tally.target ?? 0, unit: tally.unit))")
+                    .foregroundStyle(colour)
+            }
+            .font(.system(.caption2, design: .monospaced))
+            .foregroundStyle(TaskStripTheme.paper.opacity(0.55))
+            .lineLimit(1)
+        }
+    }
+
     private var dueColor: Color {
         guard let due = task.dueAt else { return TaskStripTheme.paper }
         return due.timeIntervalSinceNow <= 2 * 24 * 3600 ? TaskStripTheme.urgent : TaskStripTheme.amber
@@ -156,6 +182,13 @@ struct TaskRowView: View {
                             .foregroundStyle(task.priority.tabColor)
                             .offset(y: -10)
                     }
+                }
+
+                // A budget's own line, under the strip's. Two different questions — how far
+                // through the work, and how far through what it was allowed to cost — so two
+                // lines rather than one bar trying to mean both.
+                ForEach(task.tallies.filter { $0.target != nil && $0.target ?? 0 > 0 }) { tally in
+                    targetLine(for: tally)
                 }
             }
             .padding(10)
