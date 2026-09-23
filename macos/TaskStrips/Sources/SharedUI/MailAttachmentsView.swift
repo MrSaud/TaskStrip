@@ -13,10 +13,6 @@ struct MailAttachmentsView: View {
     var isTruncated = false
     var onFetchWholeMessage: (() -> Void)?
 
-    @Query(
-        filter: #Predicate<TaskItem> { !$0.isArchived },
-        sort: [SortDescriptor(\TaskItem.orderIndex)]
-    ) private var strips: [TaskItem]
     @Environment(\.modelContext) private var context
 
     @State private var saving: MailAttachment?
@@ -102,17 +98,8 @@ struct MailAttachmentsView: View {
             .buttonStyle(.borderless)
             .help("Save this file")
 
-            Menu {
-                if strips.isEmpty {
-                    Text("No strips on the board")
-                } else {
-                    Section("Add to a strip") {
-                        // The board's own order, and only as far as a menu is worth reading.
-                        ForEach(strips.prefix(30)) { strip in
-                            Button(strip.title) { add(attachment, to: strip) }
-                        }
-                    }
-                }
+            StripPickerMenu(title: "Add this file to a strip") { strip in
+                add(attachment, to: strip)
             } label: {
                 Image(systemName: "tray.and.arrow.down")
                     .font(.title3)

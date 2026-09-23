@@ -16,6 +16,8 @@ struct MailMessageView: View {
     @State private var isReading = true
     @State private var markingUp: SketchOpening?
     @State private var replying: MailDraft?
+    @State private var linkNote: String?
+    @Environment(\.modelContext) private var context
     @State private var snapshotProblem: String?
 
     var body: some View {
@@ -116,7 +118,27 @@ struct MailMessageView: View {
                     .controlSize(.large)
                     .help("Take a picture of this message and draw on it")
                 }
+                // The message itself onto a strip, the way one dragged out of Mail lands there:
+                // the strip keeps a link back to it, under its subject.
+                if message.link != nil {
+                    StripPickerMenu(title: "Link this email to a strip") { strip in
+                        link(to: strip)
+                    } label: {
+                        Label("Link to Strip", systemImage: "link")
+                            .font(.callout)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                    .help("Keep a link to this message on a strip")
+                }
                 Spacer(minLength: 0)
+                if let linkNote {
+                    Text(linkNote)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
                 if loaded?.fromHTML == true {
                     Label("from the HTML version", systemImage: "chevron.left.forwardslash.chevron.right")
                         .font(.caption)
@@ -185,6 +207,22 @@ struct MailMessageView: View {
                 }
             }
         }
+    }
+
+    /// Files this message as a link on a strip, under its own subject — the same record the Mac
+    /// writes when a message is dragged out of Mail onto a strip, so both routes leave the same
+    /// thing behind.
+    private func link(to strip: TaskItem) {
+        guard let url = message.link else { return }
+        guard !strip.links.contains(where: { $0.url == url }) else {
+            linkNote = "Already on \(strip.title)."
+            return
+        }
+        let label = message.subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        strip.links.append(TaskLink(url: url, label: label))
+        strip.actionLog.append(TaskActionLogEntry(text: "Linked an email", timestamp: .now))
+        try? context.save()
+        linkNote = "Linked to \(strip.title)."
     }
 
     /// The account a reply goes from: the one this message arrived on, so a reply to work mail

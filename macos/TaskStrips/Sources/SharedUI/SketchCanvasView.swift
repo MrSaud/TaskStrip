@@ -49,6 +49,11 @@ struct SketchCanvasView: View {
     /// Shown for a moment when a finger touches the page while only a Pencil may draw.
     @State private var refusedFinger = false
 
+    /// Whether the offer to put this sketch on a strip is showing. Raised by the first save,
+    /// and only once: an offer that comes back every time you save is an interruption.
+    @State private var offeringStripLink = false
+    @State private var hasOfferedStripLink = false
+
     @State private var pendingImage: CGImage?
     /// The starting image is placed once the page knows how big it is, and never again.
     @State private var hasPlacedStartingImage = false
@@ -65,6 +70,13 @@ struct SketchCanvasView: View {
     var body: some View {
         VStack(spacing: 0) {
             canvas
+            // Between the page and the pens, where a save just happened and the hand already is.
+            if offeringStripLink {
+                SketchStripLinkBar(noteID: noteID) {
+                    withAnimation(.easeOut(duration: 0.2)) { offeringStripLink = false }
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
             palette
         }
         .macFrame(minWidth: 560, minHeight: 560)
@@ -591,6 +603,7 @@ struct SketchCanvasView: View {
         try? store.write(png, to: target)
         store.stampCreatedIfMissing(noteID)
         nameNoteIfNeeded()
+        offerStripLinkOnce()
         // The folder exists now, so a paper chosen on a blank note finally has somewhere to live.
         store.setPaper(paper, of: noteID)
         strokes = []
@@ -608,6 +621,13 @@ struct SketchCanvasView: View {
         hasPlacedStartingImage = true
         placement = SketchImagePlacement.initial(imageSize: image.size, canvas: canvasSize, fraction: 0.95)
         pendingImage = image
+    }
+
+    /// Asked once, after something has actually been saved: an empty note has nothing to file.
+    private func offerStripLinkOnce() {
+        guard !hasOfferedStripLink else { return }
+        hasOfferedStripLink = true
+        offeringStripLink = true
     }
 
     /// The note is named the first time something is written to it, not before.
@@ -648,6 +668,7 @@ struct SketchCanvasView: View {
             try? store.write(png, to: target)
             store.stampCreatedIfMissing(noteID)
             nameNoteIfNeeded()
+            offerStripLinkOnce()
             onChange()
         }
         pendingImage = nil
