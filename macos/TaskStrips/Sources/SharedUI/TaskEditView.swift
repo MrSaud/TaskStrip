@@ -302,7 +302,14 @@ struct TaskEditView: View {
                     attachments: $attachments,
                     store: attachmentStore,
                     onAdded: { addedAttachments.append($0) },
-                    onRemoved: { removedAttachments.append($0) }
+                    onRemoved: { removedAttachments.append($0) },
+                    onDateFound: { found, use in
+                        // Read off a document and put straight on the strip, rather than read by
+                        // a person and typed in.
+                        hasDueDate = true
+                        dueAt = found.date
+                        if use == .reminder { hasReminder = true }
+                    }
                 )
             }
 

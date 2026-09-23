@@ -18,15 +18,31 @@ struct AttachmentsSection: View {
     let onAdded: (TaskAttachment) -> Void
     /// Called with each file dropped from the strip, so the sheet can delete it on save.
     let onRemoved: (TaskAttachment) -> Void
+    /// Called with a date read out of a document, to put on the strip being edited. The sheet
+    /// owns the due date and the reminder, so it does the putting.
+    var onDateFound: (FoundDate, DocumentDatesView.Use) -> Void = { _, _ in }
 
     @State private var failure: String?
     @State private var isPickingFromLibrary = false
     /// iOS opens a file in Quick Look over the sheet; the Mac hands it to its default app.
     @State private var previewURL: URL?
     @State private var isPickingFiles = false
+    /// The document whose dates are being read, if any.
+    @State private var readingDates: TaskAttachment?
     @StateObject private var recorder = VoiceRecorder()
 
     var body: some View {
+        content
+            .canvasPresentation(item: $readingDates) { attachment in
+                DocumentDatesView(
+                    title: attachment.name,
+                    url: store.url(for: attachment),
+                    onUse: onDateFound
+                )
+            }
+    }
+
+    private var content: some View {
         VStack(alignment: .leading, spacing: 8) {
             if attachments.isEmpty {
                 Text("No files on this strip")
@@ -141,6 +157,17 @@ struct AttachmentsSection: View {
             .buttonStyle(.borderless)
             .help("Open")
             .disabled(!store.exists(attachment))
+
+            // Only where there could be words to read: a voice note has no dates in it.
+            if DocumentTextReader.canRead(store.url(for: attachment)), store.exists(attachment) {
+                Button {
+                    readingDates = attachment
+                } label: {
+                    Image(systemName: "calendar.badge.clock")
+                }
+                .buttonStyle(.borderless)
+                .help("Find the dates in this document")
+            }
 
             #if os(macOS)
             Button {
