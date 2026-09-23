@@ -52,6 +52,10 @@ struct BoardScreen: View {
     @AppStorage(AppSettingsKey.defaultPriority) private var defaultPriority = Priority.normal
     @AppStorage(AppSettingsKey.defaultNotesRtl) private var defaultNotesRtl = false
     @AppStorage(AppSettingsKey.showQuote) private var showQuote = true
+    @AppStorage(AppSettingsKey.dateStyle) private var dateStyle = BoardDateStyle.both
+    @AppStorage(AppSettingsKey.clockStyle) private var clockStyle = BoardClockStyle.digital
+    /// iPad only: which lists are pinned side by side. The iPhone has its pager instead.
+    @AppStorage(AppSettingsKey.boardPanes) private var panes: BoardPanes = .everything
     @State private var quote: Quote?
     @State private var now = Date.now
 
@@ -71,8 +75,9 @@ struct BoardScreen: View {
     /// and nothing to swipe between.
     private var isWide: Bool { sizeClass == .regular }
 
-    /// Whether the strips' own controls — search, voice, + — belong on the bar right now.
-    private var showsStripControls: Bool { isWide || page == .strips }
+    /// Whether the strips' own controls — search, voice, + — belong on the bar right now. On a
+    /// wide screen that's whenever the strips are one of the pinned panes.
+    private var showsStripControls: Bool { isWide ? panes.shows(.strips) : page == .strips }
 
     private var stripsPage: some View {
         StripsPage(strips: boardTasks, allTasks: allTasks, filter: $filter, onEdit: { editing = $0 })
@@ -86,10 +91,24 @@ struct BoardScreen: View {
                 // minute timer rather than a TimelineView: in this layout (above the pager, under
                 // a navigation bar with search) a TimelineView sent SwiftUI into an endless
                 // layout pass — 100% CPU and a blank screen.
-                Text(BoardCalendars.headerText(now))
-                    .font(.caption2.monospaced())
+                HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 1) {
+                    // One line per calendar: at a size worth reading, both on one line runs off
+                    // a phone. Each line shrinks a little before it truncates, for the longest
+                    // Hijri month names on the narrowest phone.
+                    ForEach(BoardCalendars.headerLines(now, style: dateStyle), id: \.self) { line in
+                        Text(line)
+                            .font(.footnote.monospaced())
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
+                }
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    Spacer(minLength: 0)
+                    // Small enough for the narrowest phone, and it only moves on the minute, on
+                    // the same timer as the date beside it.
+                    BoardClock(date: now, style: clockStyle, size: 28)
+                }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 5)
@@ -99,15 +118,33 @@ struct BoardScreen: View {
                     QuoteOfDayCard(quote: quote)
                 }
                 if isWide {
+                    BoardPanesBar(panes: $panes)
                     HStack(spacing: 0) {
-                        stripsPage
-                        Divider()
-                        // The navigation bar is the strips'; the reminders carry their buttons
-                        // in a header of their own. (A second navigation stack here doesn't keep
-                        // its toolbar to itself — its buttons, title and search all took over the
-                        // strips' bar.)
-                        RemindersView(isEmbedded: true, isActive: false, showsHeader: true)
-                            .frame(maxWidth: 440)
+                        if panes.shows(.strips) {
+                            stripsPage
+                        }
+                        if panes.shows(.reminders) {
+                            Divider()
+                            // The navigation bar is the strips'; the reminders carry their buttons
+                            // in a header of their own, unless the strips are put away and the
+                            // bar is theirs to use. (A second navigation stack here doesn't keep
+                            // its toolbar to itself — its buttons, title and search all took over
+                            // the strips' bar.)
+                            RemindersView(
+                                isEmbedded: true,
+                                isActive: panes.lonePane == .reminders,
+                                showsHeader: panes.lonePane != .reminders
+                            )
+                            .frame(maxWidth: panes.lonePane == .reminders ? .infinity : 380)
+                        }
+                        if panes.shows(.notes) {
+                            Divider()
+                            NotesView(
+                                isEmbedded: true,
+                                nextOrderIndex: { StripActions.nextOrderIndex(in: allTasks) }
+                            )
+                            .frame(maxWidth: panes.lonePane == .notes ? .infinity : 260)
+                        }
                     }
                 } else {
                     BoardPageTabs(page: $page)

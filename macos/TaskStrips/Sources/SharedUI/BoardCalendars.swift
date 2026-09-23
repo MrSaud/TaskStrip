@@ -5,6 +5,24 @@ import Foundation
 /// "Is this month 29, 30 or 31 days?" is two different questions at once: a Gregorian month runs
 /// 28 to 31, an Umm al-Qura one 29 or 30, and neither answers the other. The board shows both
 /// rather than making you convert.
+/// Which calendar the board's date line speaks in. Both, for someone who lives in the two at
+/// once; one, for someone who doesn't — and one calendar leaves room for a bigger line.
+enum BoardDateStyle: String, CaseIterable, Identifiable, Equatable {
+    case gregorian
+    case hijri
+    case both
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .gregorian: return "Gregorian"
+        case .hijri: return "Hijri"
+        case .both: return "Both"
+        }
+    }
+}
+
 enum BoardCalendars {
     struct Reading: Equatable {
         /// The date as it reads in that calendar, e.g. "30 Aug 2026".
@@ -35,18 +53,35 @@ enum BoardCalendars {
         reading(now, identifier: .islamicUmmAlQura, format: "d MMMM yyyy", locale: locale, timeZone: timeZone)
     }
 
-    /// The whole line, as the board shows it.
+    /// The date line broken into the lines it wants: one per calendar.
+    ///
+    /// A phone can't hold both calendars on one readable line — at a size worth reading it runs
+    /// off the screen — so the two are stacked there and joined on a Mac, and the weekday leads
+    /// the first line either way.
+    static func headerLines(
+        _ now: Date = .now,
+        style: BoardDateStyle = .both,
+        locale: Locale = .current,
+        timeZone: TimeZone = .current
+    ) -> [String] {
+        let weekday = weekday(now, locale: locale, timeZone: timeZone)
+        let gregorian = gregorian(now, locale: locale, timeZone: timeZone).text
+        let hijri = hijri(now, locale: locale, timeZone: timeZone).text
+        switch style {
+        case .gregorian: return ["\(weekday), \(gregorian)"]
+        case .hijri: return ["\(weekday), \(hijri)"]
+        case .both: return ["\(weekday), \(gregorian)", hijri]
+        }
+    }
+
+    /// The whole line, as a Mac shows it — one line, however many calendars are in it.
     static func headerText(
         _ now: Date = .now,
+        style: BoardDateStyle = .both,
         locale: Locale = .current,
         timeZone: TimeZone = .current
     ) -> String {
-        let weekday = weekday(now, locale: locale, timeZone: timeZone)
-        let both = [
-            gregorian(now, locale: locale, timeZone: timeZone).text,
-            hijri(now, locale: locale, timeZone: timeZone).text,
-        ].joined(separator: " · ")
-        return "\(weekday), \(both)"
+        headerLines(now, style: style, locale: locale, timeZone: timeZone).joined(separator: " · ")
     }
 
     private static func reading(

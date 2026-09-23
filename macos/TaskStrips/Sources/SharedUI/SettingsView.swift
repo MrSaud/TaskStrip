@@ -8,7 +8,15 @@ enum AppSettingsKey {
     static let weeklyReview = "weeklyReview"
     static let autoBackup = "autoBackup"
     static let showQuote = "showQuoteOfTheDay"
+    /// Whether the quote card on the board is rolled up to its title line.
+    static let quoteCollapsed = "quoteOfDay.collapsed"
     static let showMenuBar = "showMenuBarGlance"
+    /// Which lists the board keeps on screen at once, where there's room for more than one.
+    static let boardPanes = "boardPanes"
+    /// Which calendar the board's date line speaks in.
+    static let dateStyle = "boardDateStyle"
+    /// Digits, a face, or no clock at all.
+    static let clockStyle = "boardClockStyle"
     /// When the last automatic backup went up, so the next one knows whether a day has passed.
     static let lastAutoBackup = "lastAutoBackupAt"
 }
@@ -54,6 +62,8 @@ struct SettingsView: View {
     @AppStorage(AppSettingsKey.weeklyReview) private var weeklyReview = false
     @AppStorage(AppSettingsKey.autoBackup) private var autoBackup = false
     @AppStorage(AppSettingsKey.showQuote) private var showQuote = true
+    @AppStorage(AppSettingsKey.dateStyle) private var dateStyle = BoardDateStyle.both
+    @AppStorage(AppSettingsKey.clockStyle) private var clockStyle = BoardClockStyle.digital
     @AppStorage(AppSettingsKey.showMenuBar) private var showMenuBar = true
     @ObservedObject private var drive = DriveSession.shared
     @State private var clientID = GoogleOAuth.clientID() ?? ""
@@ -99,12 +109,31 @@ struct SettingsView: View {
             #endif
 
             Section {
+                Picker("Dates on the board", selection: $dateStyle) {
+                    ForEach(BoardDateStyle.allCases) { style in
+                        Text(style.title).tag(style)
+                    }
+                }
+                Picker("Clock on the board", selection: $clockStyle) {
+                    ForEach(BoardClockStyle.allCases) { style in
+                        Text(style.title).tag(style)
+                    }
+                }
+            } footer: {
+                Text("Both calendars stack on a phone and sit on one line on a Mac. One calendar "
+                     + "on its own reads larger. The clock keeps to the minute, digits or hands.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
                 Toggle("Quote of the day on the board", isOn: $showQuote)
             } footer: {
                 // Worth being able to switch off: it's the one thing the app fetches from a
                 // service the user never set up.
                 Text("Fetched once a day from zenquotes.io. Everything else the app talks to is "
-                     + "your own Drive.")
+                     + "your own Drive. The card on the board rolls up to its title line, and its "
+                     + "Share menu hides it altogether \u{2014} this switch is how it comes back.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

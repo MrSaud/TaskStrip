@@ -95,4 +95,32 @@ final class BoardCalendarsTests: XCTestCase {
         XCTAssertTrue(first.contains("31 DAYS"))
         XCTAssertTrue(second.contains("30 DAYS"))
     }
+
+    // MARK: - One calendar or two
+
+    func testOneCalendarIsOneLineAndTwoAreTwo() {
+        let day = date(2026, 8, 30)
+        XCTAssertEqual(BoardCalendars.headerLines(day, style: .gregorian, locale: english, timeZone: utc).count, 1)
+        XCTAssertEqual(BoardCalendars.headerLines(day, style: .hijri, locale: english, timeZone: utc).count, 1)
+        XCTAssertEqual(BoardCalendars.headerLines(day, style: .both, locale: english, timeZone: utc).count, 2)
+    }
+
+    func testEachStyleCarriesItsOwnCalendarAndOnlyThat() {
+        let day = date(2026, 8, 30)
+        let gregorian = BoardCalendars.headerLines(day, style: .gregorian, locale: english, timeZone: utc).joined()
+        let hijri = BoardCalendars.headerLines(day, style: .hijri, locale: english, timeZone: utc).joined()
+
+        XCTAssertTrue(gregorian.contains("30 AUG 2026"), "got \(gregorian)")
+        XCTAssertFalse(gregorian.contains(BoardCalendars.hijri(day, locale: english, timeZone: utc).date.uppercased()))
+        XCTAssertTrue(hijri.contains(BoardCalendars.hijri(day, locale: english, timeZone: utc).date.uppercased()), "got \(hijri)")
+        XCTAssertFalse(hijri.contains("30 AUG 2026"), "got \(hijri)")
+    }
+
+    /// Every style keeps the weekday in front, since that's the part that's read at a glance.
+    func testTheWeekdayLeadsWhicheverCalendarIsShowing() {
+        for style in BoardDateStyle.allCases {
+            let first = BoardCalendars.headerLines(date(2026, 8, 30), style: style, locale: english, timeZone: utc)[0]
+            XCTAssertTrue(first.hasPrefix("SUN,"), "\(style) got \(first)")
+        }
+    }
 }

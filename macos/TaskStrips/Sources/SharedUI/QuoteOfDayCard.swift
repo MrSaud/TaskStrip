@@ -10,14 +10,54 @@ import SwiftUI
 struct QuoteOfDayCard: View {
     let quote: Quote
 
+    /// Rolled up to its title line, remembered across launches: on a phone the card takes a good
+    /// share of the board, and someone who wants it back should only have to tap the line it left.
+    @AppStorage(AppSettingsKey.quoteCollapsed) private var collapsed = false
+    /// Gone from the board altogether, from the card's own menu. Settings brings it back.
+    @AppStorage(AppSettingsKey.showQuote) private var showQuote = true
+
     @State private var copied = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("QUOTE OF THE DAY")
-                    .font(.caption.weight(.semibold))
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { collapsed.toggle() }
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("QUOTE OF THE DAY")
+                            .font(.caption.weight(.semibold))
+                        Image(systemName: collapsed ? "chevron.right" : "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(TaskStripTheme.amber.opacity(0.7))
+                    }
                     .foregroundStyle(TaskStripTheme.amber)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(collapsed ? "Show the quote of the day" : "Roll up the quote of the day")
+
+                Spacer(minLength: 0)
+
+                // Only while the words are showing: there is nothing to share from a title line.
+                if !collapsed {
+                    Menu {
+                        Button("Copy Text") { copyText() }
+                        Button("Copy as Image") { copyImage() }
+                        #if os(macOS)
+                        Button("Save Image…") { saveImage() }
+                        #endif
+                        Divider()
+                        Button("Hide From the Board") { showQuote = false }
+                    } label: {
+                        Label(copied ? "Copied" : "Share", systemImage: copied ? "checkmark" : "square.and.arrow.up")
+                    }
+                    .menuStyle(.borderlessButton)
+                    .fixedSize()
+                }
+            }
+
+            if !collapsed {
                 Text("\u{201C}\(quote.text)\u{201D}")
                     .font(.callout.monospaced())
                     .textSelection(.enabled)
@@ -25,19 +65,6 @@ struct QuoteOfDayCard: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            Spacer(minLength: 0)
-
-            Menu {
-                Button("Copy Text") { copyText() }
-                Button("Copy as Image") { copyImage() }
-                #if os(macOS)
-                Button("Save Image…") { saveImage() }
-                #endif
-            } label: {
-                Label(copied ? "Copied" : "Share", systemImage: copied ? "checkmark" : "square.and.arrow.up")
-            }
-            .menuStyle(.borderlessButton)
-            .fixedSize()
         }
         .padding(14)
         .background(TaskStripTheme.baySurface, in: RoundedRectangle(cornerRadius: 4))

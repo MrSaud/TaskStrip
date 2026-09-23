@@ -6,6 +6,12 @@ import SwiftUI
 /// line. Both consume the note, exactly as Android does; a thought that became work shouldn't
 /// linger here as a second copy of it.
 struct NotesView: View {
+    /// Set when the notes are pinned on the board as a column of their own rather than opened as
+    /// a sheet over it. A pinned pad has nothing to dismiss and doesn't own the window's bar, so
+    /// it drops the Done button and the title, carries a header of its own, and shows each note
+    /// as a sticky card — the point of having it always there is that it reads at a glance.
+    var isEmbedded = false
+
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     /// Newest first, matching NoteDao's `ORDER BY createdAt DESC` — the note you just wrote is
@@ -22,19 +28,46 @@ struct NotesView: View {
     @State private var lastAction: String?
 
     var body: some View {
+        if isEmbedded {
+            pad
+        } else {
+            pad
+                .macFrame(minWidth: 480, minHeight: 460)
+                .navigationTitle("QUICK NOTES")
+                .toolbar {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Done") { dismiss() }
+                    }
+                }
+        }
+    }
+
+    private var pad: some View {
         VStack(spacing: 0) {
+            if isEmbedded { header }
             composer
             Divider()
             list
         }
-        .macFrame(minWidth: 480, minHeight: 460)
         .background(TaskStripTheme.bayBackground)
-        .navigationTitle("QUICK NOTES")
-        .toolbar {
-            ToolbarItem(placement: .confirmationAction) {
-                Button("Done") { dismiss() }
+    }
+
+    /// The pinned pad says what it is, since the window's title belongs to the strips.
+    private var header: some View {
+        HStack(spacing: 6) {
+            Label("QUICK NOTES", systemImage: "note.text")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(TaskStripTheme.amber)
+            Spacer(minLength: 0)
+            if !notes.isEmpty {
+                Text("\(notes.count)")
+                    .font(.caption.monospaced())
+                    .foregroundStyle(.secondary)
             }
         }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(TaskStripTheme.baySurfaceFaded)
     }
 
     private var composer: some View {
@@ -47,7 +80,7 @@ struct NotesView: View {
                 .font(.body.monospaced())
                 .scrollContentBackground(.hidden)
                 .background(TaskStripTheme.baySurface, in: RoundedRectangle(cornerRadius: 6))
-                .frame(minHeight: 72, maxHeight: 120)
+                .frame(minHeight: isEmbedded ? 52 : 72, maxHeight: isEmbedded ? 96 : 120)
                 .overlay(alignment: .topLeading) {
                     if draft.isEmpty {
                         Text("Jot a thought… (one point per line for meeting notes)")
@@ -88,7 +121,21 @@ struct NotesView: View {
         } else {
             List {
                 ForEach(notes) { note in
-                    row(for: note)
+                    if isEmbedded {
+                        row(for: note)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 4)
+                            .background(TaskStripTheme.baySurface, in: RoundedRectangle(cornerRadius: 6))
+                            .overlay(alignment: .leading) {
+                                // The torn amber edge of a note stuck to the board.
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(TaskStripTheme.amber)
+                                    .frame(width: 3)
+                                    .padding(.vertical, 6)
+                            }
+                    } else {
+                        row(for: note)
+                    }
                 }
             }
             .listStyle(.plain)

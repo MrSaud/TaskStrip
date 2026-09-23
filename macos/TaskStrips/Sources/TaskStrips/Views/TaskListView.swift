@@ -47,11 +47,9 @@ struct TaskListView: View {
     @State private var isPresentingNewTask = false
     @State private var isCapturingVoice = false
     @State private var showArchive = false
-    @State private var showNotes = false
     @State private var showStorage = false
     @State private var showCredentials = false
     @State private var showSketches = false
-    @State private var showSyncNotes = false
     @State private var rollUp: RollUp?
     @State private var blockedAlertTask: TaskItem?
     @State private var importSummary: BackupImportSummary?
@@ -71,8 +69,11 @@ struct TaskListView: View {
     @AppStorage(AppSettingsKey.autoBackup) private var autoBackup = false
     @AppStorage(AppSettingsKey.lastAutoBackup) private var lastAutoBackup: Double = 0
     @AppStorage(AppSettingsKey.showQuote) private var showQuote = true
+    @AppStorage(AppSettingsKey.dateStyle) private var dateStyle = BoardDateStyle.both
+    @AppStorage(AppSettingsKey.clockStyle) private var clockStyle = BoardClockStyle.digital
     @State private var quote: Quote?
-    @State private var page: BoardPage = .strips
+    /// Which lists are pinned on the board, remembered between launches.
+    @AppStorage(AppSettingsKey.boardPanes) private var panes: BoardPanes = .everything
 
     private var activeTasks: [TaskItem] { allTasks.filter { !$0.isArchived } }
 
@@ -111,16 +112,33 @@ struct TaskListView: View {
                 if showQuote, let quote {
                     QuoteOfDayCard(quote: quote)
                 }
-                pagePicker
-                // Only the list below changes. Each page brings its own toolbar and its own
-                // search field with it, because the two ask different things of their contents —
-                // the same split the phone makes.
-                switch page {
-                case .strips:
-                    reorderNotice
-                    board
-                case .reminders:
-                    RemindersView(isEmbedded: true)
+                BoardPanesBar(panes: $panes)
+                // Side by side, in board order, with whatever is in the way switched off. Only
+                // the pane that holds the window's search field and buttons is "active": the
+                // others carry their own header, because one bar can't belong to two lists.
+                // HSplitView rather than an HStack: it's the Mac's own side-by-side, so each
+                // pane is handed a real width (an HStack let the strip rows keep their ideal
+                // width and clipped them at the divider) and the dividers can be dragged.
+                HSplitView {
+                    if panes.shows(.strips) {
+                        VStack(spacing: 0) {
+                            reorderNotice
+                            board
+                        }
+                        .frame(minWidth: 420, maxWidth: .infinity)
+                    }
+                    if panes.shows(.reminders) {
+                        RemindersView(
+                            isEmbedded: true,
+                            isActive: panes.lonePane == .reminders,
+                            showsHeader: panes.lonePane != .reminders
+                        )
+                        .frame(minWidth: 320, idealWidth: 440, maxWidth: .infinity)
+                    }
+                    if panes.shows(.notes) {
+                        NotesView(isEmbedded: true, nextOrderIndex: nextOrderIndex)
+                            .frame(minWidth: 240, idealWidth: 300, maxWidth: .infinity)
+                    }
                 }
             }
             // The widget is handed a rendering rather than the data, so something has to hand it
@@ -131,32 +149,18 @@ struct TaskListView: View {
             .onChange(of: WidgetPublisher.snapshot(tasks: allTasks, reminders: allReminders)) { _, _ in
                 WidgetPublisher.publish(tasks: allTasks, reminders: allReminders)
             }
+            // A swipe still steps between the lists, but only while one of them is on its own:
+            // with two side by side there's no page to turn, and moving one out from under the
+            // hand would be a surprise rather than a gesture.
             .modifier(HorizontalSwipe { forward in
-                guard let target = forward ? page.next : page.previous else { return }
+                guard let lone = panes.lonePane,
+                      let target = forward ? panes.single(after: lone) : panes.single(before: lone)
+                else { return }
                 withAnimation(.easeInOut(duration: 0.18)) {
-                    page = target
+                    panes = target
                 }
             })
         }
-    }
-
-    /// The board's two faces.
-    ///
-    /// Reminders used to open as a sheet — a thing on top of the board, dismissed to get back to
-    /// it. It asks the same question a strip does, about things that happen at a time rather than
-    /// things that sit in a queue, so it reads better as the board's other page.
-    private var pagePicker: some View {
-        Picker("Page", selection: $page) {
-            ForEach(BoardPage.allCases) { candidate in
-                Text(candidate.title).tag(candidate)
-            }
-        }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(TaskStripTheme.baySurfaceFaded)
     }
 
     /// Today in both calendars, with how long each month runs.
@@ -165,13 +169,17 @@ struct TaskListView: View {
     /// be showing yesterday, which is worse than showing nothing.
     private var dateHeader: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
-            Text(BoardCalendars.headerText(context.date))
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
-                .background(TaskStripTheme.baySurfaceFaded)
+            HStack(spacing: 10) {
+                Text(BoardCalendars.headerText(context.date, style: dateStyle))
+                    .font(.callout.monospaced())
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 0)
+                BoardClock(date: context.date, style: clockStyle, size: 34)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .background(TaskStripTheme.baySurfaceFaded)
         }
     }
 
@@ -253,17 +261,9 @@ struct TaskListView: View {
                     SketchListView()
                 }
             }
-            .sheet(isPresented: $showSyncNotes) {
-                SyncNotesView()
-            }
             .sheet(isPresented: $showStorage) {
                 NavigationStack {
                     StorageLibraryView()
-                }
-            }
-            .sheet(isPresented: $showNotes) {
-                NavigationStack {
-                    NotesView(nextOrderIndex: nextOrderIndex)
                 }
             }
             .popover(isPresented: $showDateFilter) {
@@ -379,12 +379,11 @@ struct TaskListView: View {
         actions.exportBackup = { isExporting = true }
         actions.showDrive = { showDrive = true }
         actions.showArchived = { showArchive = true }
-        actions.showNotes = { showNotes = true }
+        actions.showNotes = { panes = panes.showing(.notes) }
         actions.showStorage = { showStorage = true }
-        actions.showReminders = { page = .reminders }
+        actions.showReminders = { panes = panes.showing(.reminders) }
         actions.showCredentials = { showCredentials = true }
         actions.showSketches = { showSketches = true }
-        actions.showSyncNotes = { showSyncNotes = true }
         actions.showRollUp = { rollUp = $0 }
         actions.clearFilters = { clearFilters() }
         actions.setSortMode = { sortMode = $0 }
@@ -593,11 +592,11 @@ struct TaskListView: View {
             }
             ToolbarItem(placement: .navigation) {
                 Button {
-                    showNotes = true
+                    panes = panes.showing(.notes)
                 } label: {
                     Label("Quick Notes", systemImage: "note.text")
                 }
-                .help("Quick Notes — a scratchpad that isn't a strip yet (⇧⌘N)")
+                .help("Quick Notes — the pad pinned beside the strips (⇧⌘N)")
             }
             ToolbarItem(placement: .navigation) {
                 Button {
@@ -611,11 +610,11 @@ struct TaskListView: View {
             }
             ToolbarItem(placement: .navigation) {
                 Button {
-                    page = .reminders
+                    panes = panes.showing(.reminders)
                 } label: {
                     Label("Reminders", systemImage: "bell")
                 }
-                .help("Reminders — the board's other page (⇧⌘Y)")
+                .help("Reminders — pinned beside the strips (⇧⌘Y)")
             }
             ToolbarItem(placement: .navigation) {
                 Button {
@@ -632,14 +631,6 @@ struct TaskListView: View {
                     Label("Sketch Notes", systemImage: "scribble")
                 }
                 .help("Sketch Notes — draw or write freely (⇧⌘J)")
-            }
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    showSyncNotes = true
-                } label: {
-                    Label("Sync Notes", systemImage: "arrow.triangle.2.circlepath")
-                }
-                .help("Sync Notes — text shared with the phone through Drive (⇧⌘T)")
             }
             ToolbarItem(placement: .navigation) {
                 Menu {

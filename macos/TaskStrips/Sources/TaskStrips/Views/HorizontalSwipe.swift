@@ -1,35 +1,6 @@
 import AppKit
 import SwiftUI
 
-/// Which face of the board is showing.
-///
-/// Two, deliberately: strips and reminders are the two forms a thing you have to deal with takes —
-/// one that sits in a queue and one that happens at a time. Everything else the app holds is a
-/// place you visit and leave, which is what a sheet is for.
-enum BoardPage: String, CaseIterable, Identifiable {
-    case strips
-    case reminders
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .strips: return "STRIPS"
-        case .reminders: return "REMINDERS"
-        }
-    }
-
-    /// Nil at the ends rather than wrapping around: a swipe that runs off the edge should stop,
-    /// the way a pager does, instead of looping back and losing the reader's place.
-    var next: BoardPage? {
-        self == .strips ? .reminders : nil
-    }
-
-    var previous: BoardPage? {
-        self == .reminders ? .strips : nil
-    }
-}
-
 /// A two-finger horizontal swipe, which SwiftUI has no gesture for on macOS.
 ///
 /// A trackpad swipe arrives as a scroll event, not a drag, so `DragGesture` never sees it and the
