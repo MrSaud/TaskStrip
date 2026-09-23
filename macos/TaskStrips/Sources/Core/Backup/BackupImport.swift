@@ -36,6 +36,8 @@ struct ImportedTask {
     var waitingOnFollowUpDays: Int?
     var reminderMinutesBefore: Int?
     var repeatIntervalDays: Int?
+    var deferUntil: Date?
+    var checklist: [TaskChecklistItem] = []
     var tags: [String] = []
     var contacts: [TaskContact] = []
     var links: [TaskLink] = []
@@ -249,6 +251,15 @@ enum BackupImport {
         }
         task.reminderMinutesBefore = intValue(object, "reminderMinutesBefore")
         task.repeatIntervalDays = intValue(object, "repeatIntervalDays")
+        task.deferUntil = dateValue(object, "deferUntil")
+        task.checklist = ((object["checklist"] as? [[String: Any]]) ?? []).map { step in
+            TaskChecklistItem(
+                id: UUID(uuidString: step["id"] as? String ?? "") ?? UUID(),
+                text: step["text"] as? String ?? "",
+                isDone: step["isDone"] as? Bool ?? false,
+                doneAt: dateValue(step, "doneAt")
+            )
+        }
         task.hasReminder = task.reminderMinutesBefore != nil
 
         return task
@@ -524,6 +535,8 @@ enum BackupImport {
             item.linkedSketchID = imported.linkedSketchID
             item.reminderMinutesBefore = imported.reminderMinutesBefore
             item.repeatIntervalDays = imported.repeatIntervalDays
+            item.deferUntil = imported.deferUntil
+            item.checklist = imported.checklist
             context.insert(item)
             created.append(item)
         }

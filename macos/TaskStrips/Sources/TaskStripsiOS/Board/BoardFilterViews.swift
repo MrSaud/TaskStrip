@@ -47,6 +47,10 @@ struct BoardFilterMenu: View {
                 Label("Today & overdue", systemImage: "alarm")
             }
 
+            Toggle(isOn: $filter.showsDeferred) {
+                Label("Deferred strips", systemImage: "moon.zzz")
+            }
+
             Section("Priority") {
                 ForEach(Priority.allCases) { priority in
                     Toggle(isOn: binding(for: priority)) {
@@ -64,7 +68,7 @@ struct BoardFilterMenu: View {
                 .pickerStyle(.inline)
             }
 
-            if filter.isNarrowing {
+            if filter.isChanged {
                 Section {
                     Button(role: .destructive) {
                         filter.clear()
@@ -76,10 +80,10 @@ struct BoardFilterMenu: View {
         } label: {
             Label(
                 "Filter strips",
-                systemImage: filter.isNarrowing ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
+                systemImage: filter.isChanged ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle"
             )
         }
-        .accessibilityValue(filter.isNarrowing ? "\(filter.narrowingCount) filters on" : "no filters")
+        .accessibilityValue(filter.isChanged ? "\(filter.narrowingCount) filters on" : "no filters")
     }
 
     private func binding(for priority: Priority) -> Binding<Bool> {

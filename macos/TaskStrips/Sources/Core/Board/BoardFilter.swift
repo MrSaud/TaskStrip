@@ -25,6 +25,9 @@ struct BoardFilter: Equatable {
     var dueFrom: Date?
     var dueTo: Date?
     var sort: Sort = .manual
+    /// Strips waiting for their day are off the board until it comes. This puts them back on it,
+    /// for the moment someone wants to see everything.
+    var showsDeferred = false
 
     var trimmedSearch: String { search.trimmingCharacters(in: .whitespaces) }
 
@@ -33,6 +36,10 @@ struct BoardFilter: Equatable {
     var isNarrowing: Bool {
         !trimmedSearch.isEmpty || tag != nil || !priorities.isEmpty || todayOnly || dueFrom != nil || dueTo != nil
     }
+
+    /// Showing deferred strips isn't narrowing — it's the opposite — but it does mean the board
+    /// isn't in the state it opens in, which is worth saying on the filter button.
+    var isChanged: Bool { isNarrowing || showsDeferred }
 
     /// Dragging a strip only means something when every strip is showing, in board order.
     var allowsReordering: Bool { sort == .manual && !isNarrowing }
@@ -58,6 +65,13 @@ struct BoardFilter: Equatable {
     }
 
     private func matches(_ task: TaskItem, now: Date, calendar: Calendar) -> Bool {
+        // A strip waiting for its day is off the board, unless someone asked to see them —
+        // except once it's searched for by name, when hiding it would look like losing it.
+        if !showsDeferred, trimmedSearch.isEmpty,
+           StripDeferral.isDeferred(task.deferUntil, now: now, calendar: calendar) {
+            return false
+        }
+
         let query = trimmedSearch
         if !query.isEmpty {
             let inTitle = task.title.localizedCaseInsensitiveContains(query)

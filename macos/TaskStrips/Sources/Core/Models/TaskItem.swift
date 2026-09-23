@@ -28,6 +28,14 @@ struct TaskLink: Codable, Hashable, Identifiable {
     var label: String = ""
 }
 
+/// One step of a strip. Android has no equivalent: there, a list of steps was five strips.
+struct TaskChecklistItem: Codable, Hashable, Identifiable {
+    var id: UUID = UUID()
+    var text: String = ""
+    var isDone: Bool = false
+    var doneAt: Date?
+}
+
 // Mirrors TaskActionLogEntry.kt.
 struct TaskActionLogEntry: Codable, Hashable, Identifiable {
     var id: UUID = UUID()
@@ -100,6 +108,11 @@ final class TaskItem: Identifiable {
     /// lightweight migration to fill in on an existing store.
     var attachments: [TaskAttachment] = []
     /// Fire a reminder this many minutes before `dueAt`. Nil means no reminder.
+    /// The steps this strip breaks into. When there are any, they decide its progress.
+    var checklist: [TaskChecklistItem] = []
+    /// Not before this: the strip is off the board until the day comes, then it's back on it.
+    /// A due date says when something has to be finished; this says when it's worth looking at.
+    var deferUntil: Date?
     var reminderMinutesBefore: Int? = nil
     /// Completing this strip spawns the next one this many days later — see ReminderPlan.
     var repeatIntervalDays: Int? = nil

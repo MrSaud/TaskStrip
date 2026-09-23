@@ -38,13 +38,18 @@ enum CloudSchema {
     enum Strip {
         static let title = "title", notes = "notes", tags = "tags", contacts = "contacts"
         static let links = "links", log = "log", waitingOn = "waitingOn"
-        static let encrypted: Set = [title, notes, tags, contacts, links, log, waitingOn]
+        /// The steps a strip breaks into (schema v1.2), in the person's own words, so encrypted
+        /// with the rest of what they wrote.
+        static let checklist = "checklist"
+        static let encrypted: Set = [title, notes, tags, contacts, links, log, waitingOn, checklist]
 
         static let notesRTL = "notesRTL", priority = "priority", dueAt = "dueAt", sortKey = "sortKey"
         static let done = "done", archived = "archived", progress = "progress"
         static let completedAt = "completedAt", blockedBy = "blockedBy", waitingSince = "waitingSince"
         static let followUpDays = "followUpDays", sketchID = "sketchID", remindBefore = "remindBefore"
         static let repeatDays = "repeatDays", createdAt = "createdAt"
+        /// When the strip comes back onto the board (schema v1.2).
+        static let deferUntil = "deferUntil"
     }
 
     enum Attachment {

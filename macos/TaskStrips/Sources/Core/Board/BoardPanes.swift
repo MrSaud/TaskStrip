@@ -6,6 +6,8 @@ import Foundation
 /// keeps its pager. Quick Notes is here because a scratchpad you have to open is a scratchpad you
 /// forget — pinned beside the strips it works the way a pad of sticky notes on a desk does.
 enum BoardPane: String, CaseIterable, Identifiable, Equatable {
+    /// What today asks for, read off the board rather than kept anywhere.
+    case today
     case strips
     case reminders
     case notes
@@ -14,6 +16,7 @@ enum BoardPane: String, CaseIterable, Identifiable, Equatable {
 
     var title: String {
         switch self {
+        case .today: return "TODAY"
         case .strips: return "STRIPS"
         case .reminders: return "REMINDERS"
         case .notes: return "NOTES"
@@ -22,6 +25,7 @@ enum BoardPane: String, CaseIterable, Identifiable, Equatable {
 
     var symbol: String {
         switch self {
+        case .today: return "sun.max"
         case .strips: return "list.bullet.rectangle"
         case .reminders: return "bell"
         case .notes: return "note.text"
@@ -46,12 +50,14 @@ struct BoardPanes: OptionSet, Equatable {
         case .strips: self = BoardPanes(rawValue: 1 << 0)
         case .reminders: self = BoardPanes(rawValue: 1 << 1)
         case .notes: self = BoardPanes(rawValue: 1 << 2)
+        case .today: self = BoardPanes(rawValue: 1 << 3)
         }
     }
 
     static let strips = BoardPanes(pane: .strips)
     static let reminders = BoardPanes(pane: .reminders)
     static let notes = BoardPanes(pane: .notes)
+    static let today = BoardPanes(pane: .today)
 
     /// What a Mac or an iPad opens with: everything, since the reason to have the room is to use
     /// it. Whatever gets in the way is one tap from gone, and it stays gone.

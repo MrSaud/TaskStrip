@@ -21,6 +21,10 @@ struct TaskEditView: View {
     @State private var hasDueDate: Bool
     @State private var dueAt: Date
     @State private var progress: Double
+    @State private var checklist: [TaskChecklistItem]
+    @State private var newStep = ""
+    @State private var hasDeferUntil: Bool
+    @State private var deferUntil: Date
     @State private var tags: [String]
     @State private var newTag = ""
     @State private var links: [TaskLink]
@@ -77,6 +81,9 @@ struct TaskEditView: View {
         _hasDueDate = State(initialValue: editingTask?.dueAt != nil)
         _dueAt = State(initialValue: editingTask?.dueAt ?? .now)
         _progress = State(initialValue: Double(editingTask?.progress ?? 0))
+        _checklist = State(initialValue: editingTask?.checklist ?? [])
+        _hasDeferUntil = State(initialValue: editingTask?.deferUntil != nil)
+        _deferUntil = State(initialValue: editingTask?.deferUntil ?? Date.now.addingTimeInterval(24 * 3600))
         _tags = State(initialValue: editingTask?.tags ?? [])
         _links = State(initialValue: editingTask?.links ?? [])
         _contacts = State(initialValue: editingTask?.contacts ?? [])
@@ -127,8 +134,63 @@ struct TaskEditView: View {
                 }
             }
 
-            Section("PROGRESS: \(Int(progress))%") {
-                Slider(value: $progress, in: 0...100, step: 1)
+            Section(progressTitle) {
+                // With steps on the strip they decide the bar; dragging it as well would be two
+                // answers to one question.
+                if let fromSteps = StripChecklist.progress(of: checklist) {
+                    ProgressView(value: Double(fromSteps), total: 100)
+                        .tint(TaskStripTheme.amber)
+                } else {
+                    Slider(value: $progress, in: 0...100, step: 1)
+                }
+            }
+
+            Section("STEPS") {
+                ForEach(checklist) { step in
+                    Button {
+                        checklist = StripChecklist.toggling(step.id, in: checklist)
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: step.isDone ? "checkmark.circle.fill" : "circle")
+                                .foregroundStyle(step.isDone ? TaskStripTheme.normal : .secondary)
+                            Text(step.text)
+                                .strikethrough(step.isDone)
+                                .foregroundStyle(step.isDone ? .secondary : .primary)
+                            Spacer(minLength: 0)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .swipeActions {
+                        Button(role: .destructive) {
+                            checklist.removeAll { $0.id == step.id }
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
+                    #if os(macOS)
+                    .contextMenu {
+                        Button("Delete Step", role: .destructive) {
+                            checklist.removeAll { $0.id == step.id }
+                        }
+                    }
+                    #endif
+                }
+                HStack {
+                    // A list pasted in whole arrives as one step per line rather than one long
+                    // step, which is how a list usually turns up.
+                    TextField("Add a step…", text: $newStep)
+                        .onSubmit(addSteps)
+                    Button("Add", action: addSteps)
+                        .disabled(newStep.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }
+            }
+
+            Section("NOT BEFORE") {
+                Toggle("Keep it off the board until a day", isOn: $hasDeferUntil)
+                if hasDeferUntil {
+                    DatePicker("Back on the board", selection: $deferUntil, displayedComponents: .date)
+                }
             }
 
             Section("NOTES") {
@@ -298,7 +360,9 @@ struct TaskEditView: View {
         task.notesRtl = notesRtl
         task.priority = priority
         task.dueAt = hasDueDate ? dueAt : nil
-        task.progress = Int(progress)
+        task.checklist = checklist
+        task.deferUntil = hasDeferUntil ? deferUntil : nil
+        task.progress = StripChecklist.progress(of: checklist) ?? Int(progress)
         task.tags = tags
         task.links = links
         task.contacts = contacts
@@ -452,7 +516,9 @@ struct TaskEditView: View {
         )
         task.notes = notes
         task.dueAt = hasDueDate ? dueAt : nil
-        task.progress = Int(progress)
+        task.checklist = checklist
+        task.deferUntil = hasDeferUntil ? deferUntil : nil
+        task.progress = StripChecklist.progress(of: checklist) ?? Int(progress)
         task.isDone = editingTask?.isDone ?? false
         task.tags = tags
         task.links = links
@@ -483,6 +549,21 @@ struct TaskEditView: View {
     private func open(_ link: TaskLink) {
         guard let url = URL(string: link.url.trimmingCharacters(in: .whitespaces)) else { return }
         Platform.open(url)
+    }
+
+    private var progressTitle: String {
+        if let summary = StripChecklist.summary(of: checklist),
+           let fromSteps = StripChecklist.progress(of: checklist) {
+            return "PROGRESS: \(fromSteps)% · \(summary) STEPS"
+        }
+        return "PROGRESS: \(Int(progress))%"
+    }
+
+    private func addSteps() {
+        let steps = StripChecklist.items(fromTyped: newStep)
+        guard !steps.isEmpty else { return }
+        checklist.append(contentsOf: steps)
+        newStep = ""
     }
 
     private func addLink() {

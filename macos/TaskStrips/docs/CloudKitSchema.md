@@ -74,6 +74,8 @@ change to the board in one ordered stream.
 | `remindBefore` | Int64 | — | reminderMinutesBefore |
 | `repeatDays` | Int64 | — | repeatIntervalDays |
 | `createdAt` | Date | — | createdAt |
+| `checklist` | Bytes (JSON) | E | added 2026-09-23: the strip's steps. When there are any they decide `progress`. |
+| `deferUntil` | Date | — | added 2026-09-23: the day the strip comes back onto the board. |
 
 ### `Attachment` — a file on a strip
 
@@ -102,6 +104,8 @@ and isn't synced.
 | `tagEmoji` | String | E | tagEmoji |
 | `done` | Int64 | — | isDone |
 | `createdAt` | Date | — | createdAt |
+| `checklist` | Bytes (JSON) | E | added 2026-09-23: the strip's steps. When there are any they decide `progress`. |
+| `deferUntil` | Date | — | added 2026-09-23: the day the strip comes back onto the board. |
 
 ### `Note` — a quick note
 
@@ -109,6 +113,8 @@ and isn't synced.
 |---|---|---|---|
 | `text` | String | E | text |
 | `createdAt` | Date | — | createdAt |
+| `checklist` | Bytes (JSON) | E | added 2026-09-23: the strip's steps. When there are any they decide `progress`. |
+| `deferUntil` | Date | — | added 2026-09-23: the day the strip comes back onto the board. |
 
 Sync Notes aren't a type of their own: they're folded into Notes (decided 2026-09-22), and
 Android's Sync Note text arrives as an ordinary note in Phase 6.
@@ -124,6 +130,8 @@ Android's Sync Note text arrives as an ordinary note in Phase 6.
 | `tag` | String | E | tag |
 | `tagEmoji` | String | E | tagEmoji |
 | `createdAt` | Date | — | createdAt |
+| `checklist` | Bytes (JSON) | E | added 2026-09-23: the strip's steps. When there are any they decide `progress`. |
+| `deferUntil` | Date | — | added 2026-09-23: the day the strip comes back onto the board. |
 | `file` | Asset | | the file |
 
 ### `Credential`
@@ -135,6 +143,8 @@ Android's Sync Note text arrives as an ordinary note in Phase 6.
 | `url` | String | E | url |
 | `notes` | String | E | notes |
 | `createdAt` | Date | — | createdAt |
+| `checklist` | Bytes (JSON) | E | added 2026-09-23: the strip's steps. When there are any they decide `progress`. |
+| `deferUntil` | Date | — | added 2026-09-23: the day the strip comes back onto the board. |
 
 ### `Sketch` and `SketchPage`
 

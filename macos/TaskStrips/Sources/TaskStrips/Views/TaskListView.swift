@@ -43,6 +43,8 @@ struct TaskListView: View {
     @State private var dueFrom: Date?
     @State private var dueTo: Date?
     @State private var showDateFilter = false
+    /// Deferred strips are off the board until their day; this puts them back on it.
+    @State private var showsDeferred = false
     @State private var editingTask: TaskItem?
     @State private var isPresentingNewTask = false
     @State private var isCapturingVoice = false
@@ -89,7 +91,8 @@ struct TaskListView: View {
             tag: tagFilter,
             dueFrom: dueFrom,
             dueTo: dueTo,
-            sort: sortMode.asFilterSort
+            sort: sortMode.asFilterSort,
+            showsDeferred: showsDeferred
         )
     }
 
@@ -120,6 +123,15 @@ struct TaskListView: View {
                 // pane is handed a real width (an HStack let the strip rows keep their ideal
                 // width and clipped them at the divider) and the dividers can be dragged.
                 HSplitView {
+                    if panes.shows(.today) {
+                        DayView(
+                            tasks: allTasks,
+                            reminders: allReminders,
+                            showsHeader: true,
+                            onEdit: { editingTask = $0 }
+                        )
+                        .frame(minWidth: 260, idealWidth: 320, maxWidth: .infinity)
+                    }
                     if panes.shows(.strips) {
                         VStack(spacing: 0) {
                             reorderNotice
@@ -462,6 +474,7 @@ struct TaskListView: View {
         dueFrom = nil
         dueTo = nil
         sortMode = .manual
+        showsDeferred = false
     }
 
     @ViewBuilder
@@ -675,6 +688,14 @@ struct TaskListView: View {
                 // Says which state it's in, since a filled tag and an outlined one are a small
                 // difference to notice on a strip of icons.
                 .help(tagFilter == nil ? "Filter by tag" : "Filtered to \(tagFilter ?? "") — ⇧⌘K shows all")
+            }
+            ToolbarItem {
+                Button {
+                    showsDeferred.toggle()
+                } label: {
+                    Label("Deferred strips", systemImage: showsDeferred ? "moon.zzz.fill" : "moon.zzz")
+                }
+                .help(showsDeferred ? "Showing strips deferred to a later day" : "Show strips deferred to a later day")
             }
             ToolbarItem {
                 Button {

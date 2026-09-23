@@ -32,6 +32,7 @@ enum CloudRecordCoding {
         secret[K.contacts] = json(task.contacts)
         secret[K.links] = json(task.links)
         secret[K.log] = json(task.actionLog)
+        secret[K.checklist] = json(task.checklist)
 
         record[K.notesRTL] = flag(task.notesRtl)
         record[K.priority] = task.priorityRaw
@@ -47,6 +48,7 @@ enum CloudRecordCoding {
         record[K.sketchID] = task.linkedSketchID
         record[K.remindBefore] = task.reminderMinutesBefore.map(Int64.init)
         record[K.repeatDays] = task.repeatIntervalDays.map(Int64.init)
+        record[K.deferUntil] = task.deferUntil
         record[K.createdAt] = task.createdAt
     }
 
@@ -62,6 +64,7 @@ enum CloudRecordCoding {
         if let v: [TaskContact] = value(secret[K.contacts]) { task.contacts = v }
         if let v: [TaskLink] = value(secret[K.links]) { task.links = v }
         if let v: [TaskActionLogEntry] = value(secret[K.log]) { task.actionLog = v }
+        if let v: [TaskChecklistItem] = value(secret[K.checklist]) { task.checklist = v }
 
         if let v = record[K.notesRTL] as? Int64 { task.notesRtl = v != 0 }
         if let v = record[K.priority] as? String, Priority(rawValue: v) != nil { task.priorityRaw = v }
@@ -76,6 +79,7 @@ enum CloudRecordCoding {
         task.linkedSketchID = record[K.sketchID] as? String
         task.reminderMinutesBefore = (record[K.remindBefore] as? Int64).map(Int.init)
         task.repeatIntervalDays = (record[K.repeatDays] as? Int64).map(Int.init)
+        task.deferUntil = record[K.deferUntil] as? Date
         if let v = record[K.createdAt] as? Date { task.createdAt = v }
     }
 

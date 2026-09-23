@@ -108,6 +108,8 @@ enum SchemaSeeder {
         task.linkedSketchID = "sketch"; task.tags = ["t"]; task.contacts = [TaskContact(name: "c")]
         task.links = [TaskLink(url: "https://example.com")]; task.actionLog = [TaskActionLogEntry(text: "l")]
         task.reminderMinutesBefore = 5; task.repeatIntervalDays = 7
+        task.checklist = [TaskChecklistItem(text: "step", isDone: true, doneAt: date)]
+        task.deferUntil = date
         let strip = record(CloudSchema.RecordType.strip, task.id.uuidString)
         CloudRecordCoding.encode(task, sortKey: "V", into: strip)
 

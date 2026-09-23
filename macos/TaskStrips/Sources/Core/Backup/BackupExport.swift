@@ -193,6 +193,14 @@ enum BackupExport {
         if let days = task.waitingOnFollowUpDays { object["waitingOnFollowUpDays"] = days }
         if let minutes = task.reminderMinutesBefore { object["reminderMinutesBefore"] = minutes }
         if let interval = task.repeatIntervalDays { object["repeatIntervalDays"] = interval }
+        if let deferUntil = task.deferUntil { object["deferUntil"] = milliseconds(deferUntil) }
+        if !task.checklist.isEmpty {
+            object["checklist"] = task.checklist.map { item -> [String: Any] in
+                var step: [String: Any] = ["id": item.id.uuidString, "text": item.text, "isDone": item.isDone]
+                if let doneAt = item.doneAt { step["doneAt"] = milliseconds(doneAt) }
+                return step
+            }
+        }
         // A position in this array, not an id — restored rows get fresh ids, so an id would point
         // at nothing. A blocker that isn't in the export is dropped rather than left dangling.
         if let blockedByID = task.blockedByID, let index = indexOfTask[blockedByID] {

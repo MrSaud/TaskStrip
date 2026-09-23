@@ -29,11 +29,13 @@ final class BoardPanesTests: XCTestCase {
     }
 
     func testSingleStepsThroughThePanesAndStopsAtTheEnds() {
+        XCTAssertEqual(BoardPanes.today.single(after: .today), .strips)
         XCTAssertEqual(BoardPanes.strips.single(after: .strips), .reminders)
         XCTAssertEqual(BoardPanes.reminders.single(after: .reminders), .notes)
-        XCTAssertNil(BoardPanes.notes.single(after: .notes))
+        XCTAssertNil(BoardPanes.notes.single(after: .notes), "the last pane is the last")
         XCTAssertEqual(BoardPanes.notes.single(before: .notes), .reminders)
-        XCTAssertNil(BoardPanes.strips.single(before: .strips))
+        XCTAssertEqual(BoardPanes.strips.single(before: .strips), .today)
+        XCTAssertNil(BoardPanes.today.single(before: .today), "the first pane is the first")
     }
 
     /// It's stored as a number in UserDefaults, so the numbers have to stay put: a build that
@@ -42,6 +44,14 @@ final class BoardPanesTests: XCTestCase {
         XCTAssertEqual(BoardPanes.strips.rawValue, 1)
         XCTAssertEqual(BoardPanes.reminders.rawValue, 2)
         XCTAssertEqual(BoardPanes.notes.rawValue, 4)
+        XCTAssertEqual(BoardPanes.today.rawValue, 8, "the day pane arrived after the other three")
         XCTAssertEqual(BoardPanes.everything.rawValue, 7)
+    }
+
+    /// The day pane is opt-in: a board someone already arranged shouldn't rearrange itself.
+    func testTheDayPaneIsNotOnUntilItIsAskedFor() {
+        XCTAssertFalse(BoardPanes.everything.shows(.today))
+        XCTAssertTrue(BoardPanes.everything.toggling(.today).shows(.today))
+        XCTAssertEqual(BoardPanes.everything.toggling(.today).showing.first, .today, "it leads the board")
     }
 }

@@ -67,6 +67,11 @@ struct TaskRowView: View {
                     }
                     // A linked email and a linked page are both worth seeing from the board:
                     // a link nobody can tell is there is a link nobody opens.
+                    if let steps = StripChecklist.summary(of: task.checklist) {
+                        Label(steps, systemImage: "checklist")
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(TaskStripTheme.paper.opacity(0.6))
+                    }
                     if emailCount > 0 {
                         Label("\(emailCount)", systemImage: "envelope")
                             .font(.system(.caption2, design: .monospaced))
@@ -78,6 +83,13 @@ struct TaskRowView: View {
                             .foregroundStyle(TaskStripTheme.paper.opacity(0.6))
                     }
                     Spacer()
+                }
+
+                if let deferred = StripDeferral.label(task.deferUntil) {
+                    Label(deferred, systemImage: "moon.zzz")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(TaskStripTheme.low)
+                        .lineLimit(1)
                 }
 
                 if isBlocked || (!task.waitingOnName.isEmpty && !task.isDone) {

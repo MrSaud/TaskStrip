@@ -8,7 +8,7 @@ import SwiftUI
 /// are no trailing swipe actions on the board, and delete lives in the editor and in a completed
 /// strip's menu, behind a confirm.
 struct BoardScreen: View {
-    enum Page: Hashable { case strips, reminders }
+    enum Page: Hashable { case today, strips, reminders }
 
     /// Everything else in the app, one sheet at a time, from the board's menu.
     enum Destination: String, Identifiable, CaseIterable {
@@ -121,6 +121,16 @@ struct BoardScreen: View {
                 if isWide {
                     BoardPanesBar(panes: $panes)
                     HStack(spacing: 0) {
+                        if panes.shows(.today) {
+                            DayView(
+                                tasks: allTasks,
+                                reminders: allReminders,
+                                showsHeader: true,
+                                onEdit: { editing = $0 }
+                            )
+                            .frame(maxWidth: panes.lonePane == .today ? .infinity : 320)
+                            Divider()
+                        }
                         if panes.shows(.strips) {
                             stripsPage
                         }
@@ -149,8 +159,10 @@ struct BoardScreen: View {
                     }
                 } else {
                     BoardPageTabs(page: $page)
-                    BoardPager(pages: [Page.strips, .reminders], selection: $page) { page in
+                    BoardPager(pages: [Page.today, .strips, .reminders], selection: $page) { page in
                         switch page {
+                        case .today:
+                            DayView(tasks: allTasks, reminders: allReminders, onEdit: { editing = $0 })
                         case .strips: stripsPage
                         case .reminders: RemindersView(isEmbedded: true, isActive: self.page == .reminders)
                         }
@@ -340,6 +352,7 @@ private struct BoardPageTabs: View {
 
     var body: some View {
         HStack(spacing: 0) {
+            tab("TODAY", .today)
             tab("STRIPS", .strips)
             tab("REMINDERS", .reminders)
         }
