@@ -165,5 +165,8 @@ struct TaskStripsApp: App {
             SettingsView()
                 .boardTheme(theme)
         }
+        // A window the person can widen further if they want; the view asks for a readable size
+        // rather than the narrow column a Settings scene defaults to.
+        .windowResizability(.contentSize)
     }
 }

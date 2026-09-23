@@ -262,8 +262,10 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         #if os(macOS)
-        .frame(width: 460)
-        .fixedSize(horizontal: false, vertical: true)
+        // Wide enough that a setting and its explanation sit on one line each rather than
+        // wrapping into paragraphs, and tall enough to read a section without scrolling. It was
+        // 460 points wide and as tall as its contents, which made a column of wrapped footnotes.
+        .frame(minWidth: 680, idealWidth: 760, maxWidth: 900, minHeight: 520, idealHeight: 660)
         #endif
     }
 
