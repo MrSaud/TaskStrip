@@ -11,7 +11,7 @@ enum BoardPane: String, CaseIterable, Identifiable, Equatable {
     case strips
     case reminders
     case notes
-    /// The Mac's only: what's arrived in Mail lately.
+    /// What's arrived lately: from Mail on a Mac, from the server itself on a phone.
     case inbox
 
     var id: String { rawValue }
@@ -38,15 +38,9 @@ enum BoardPane: String, CaseIterable, Identifiable, Equatable {
 
     var flag: BoardPanes { BoardPanes(pane: self) }
 
-    /// The panes this device can actually show. The inbox is read out of Mail, and only a Mac
-    /// lets an app do that — iOS gives no access to Mail's messages at all.
-    static var onThisPlatform: [BoardPane] {
-        #if os(macOS)
-        allCases
-        #else
-        allCases.filter { $0 != .inbox }
-        #endif
-    }
+    /// The panes this device can show. All of them, now that the inbox has a source on a phone
+    /// as well: a Mac reads it out of Mail, a phone reads it from the server.
+    static var onThisPlatform: [BoardPane] { allCases }
 }
 
 /// Which panes are showing, remembered per device.

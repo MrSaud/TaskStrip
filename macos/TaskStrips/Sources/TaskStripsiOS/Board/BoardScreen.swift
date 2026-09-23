@@ -8,7 +8,7 @@ import SwiftUI
 /// are no trailing swipe actions on the board, and delete lives in the editor and in a completed
 /// strip's menu, behind a confirm.
 struct BoardScreen: View {
-    enum Page: Hashable { case today, strips, reminders }
+    enum Page: Hashable { case today, strips, reminders, inbox }
 
     /// Everything else in the app, one sheet at a time, from the board's menu.
     enum Destination: String, Identifiable, CaseIterable {
@@ -157,6 +157,11 @@ struct BoardScreen: View {
                             )
                             .frame(maxWidth: panes.lonePane == .reminders ? .infinity : 380)
                         }
+                        if panes.shows(.inbox) {
+                            Divider()
+                            InboxListView()
+                                .frame(maxWidth: panes.lonePane == .inbox ? .infinity : 320)
+                        }
                         if panes.shows(.notes) {
                             Divider()
                             NotesView(
@@ -168,12 +173,13 @@ struct BoardScreen: View {
                     }
                 } else {
                     BoardPageTabs(page: $page)
-                    BoardPager(pages: [Page.today, .strips, .reminders], selection: $page) { page in
+                    BoardPager(pages: [Page.today, .strips, .reminders, .inbox], selection: $page) { page in
                         switch page {
                         case .today:
                             DayView(tasks: allTasks, reminders: allReminders, onEdit: { editing = $0 })
                         case .strips: stripsPage
                         case .reminders: RemindersView(isEmbedded: true, isActive: self.page == .reminders)
+                        case .inbox: InboxListView()
                         }
                     }
                 }
@@ -455,6 +461,7 @@ private struct BoardPageTabs: View {
             tab("TODAY", .today)
             tab("STRIPS", .strips)
             tab("REMINDERS", .reminders)
+            tab("INBOX", .inbox)
         }
         .background(TaskStripTheme.bayBackground)
     }

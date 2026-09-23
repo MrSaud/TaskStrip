@@ -90,6 +90,8 @@ struct SettingsView: View {
             if BoardSync.isAllowed {
                 SyncSettingsSection()
             }
+            IMAPAccountsView()
+
             Section("Passwords") {
                 Text(PasswordMoveStatus.summary)
                     .font(.callout)

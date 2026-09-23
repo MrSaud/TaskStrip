@@ -5,18 +5,28 @@ import SwiftUI
 /// which is where it lives — this is a list beside the board, not a mail client.
 struct InboxView: View {
     @ObservedObject private var reader = MailReader.shared
+    @ObservedObject private var server = IMAPReader.shared
+
+    /// Mail's list, or the server's when Mail has nothing — a Mac can have either set up, and on
+    /// this one Mail's scripting is the less reliable of the two.
+    private var messages: [MailMessage] {
+        reader.messages.isEmpty ? server.messages : reader.messages
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             header
-            if let problem = reader.problem, reader.messages.isEmpty {
-                empty(problem)
+            if messages.isEmpty {
+                empty(reader.problem ?? server.problem ?? "Nothing in the inbox.")
             } else {
                 list
             }
         }
         .background(TaskStripTheme.bayBackground)
-        .task { reader.refresh() }
+        .task {
+            reader.refresh()
+            server.refresh()
+        }
     }
 
     private var header: some View {
@@ -26,7 +36,7 @@ struct InboxView: View {
                 .foregroundStyle(TaskStripTheme.amber)
             Spacer(minLength: 0)
             // A refresh that failed while a list is up is worth a mark, not a page of apology.
-            if reader.problem != nil, !reader.messages.isEmpty {
+            if reader.problem != nil, !messages.isEmpty {
                 Image(systemName: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(TaskStripTheme.high)
@@ -38,6 +48,7 @@ struct InboxView: View {
             } else {
                 Button {
                     reader.refresh(force: true)
+                    server.refresh(force: true)
                 } label: {
                     Image(systemName: "arrow.clockwise")
                         .font(.caption)
@@ -53,7 +64,7 @@ struct InboxView: View {
 
     private var list: some View {
         List {
-            ForEach(reader.messages) { message in
+            ForEach(messages) { message in
                 Button {
                     open(message)
                 } label: {
@@ -104,7 +115,10 @@ struct InboxView: View {
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 16)
-            Button("Try again") { reader.refresh(force: true) }
+            Button("Try again") {
+                reader.refresh(force: true)
+                server.refresh(force: true)
+            }
                 .buttonStyle(.link)
             Spacer()
         }

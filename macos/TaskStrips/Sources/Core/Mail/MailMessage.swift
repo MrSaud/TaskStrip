@@ -74,23 +74,24 @@ enum MailInbox {
 /// last saw and quietly refreshes behind that, rather than making someone wait to see anything.
 struct MailInboxCache {
     private let defaults: UserDefaults
-    private static let key = "mailInbox.last"
+    private let key: String
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, key: String = "mailInbox.last") {
         self.defaults = defaults
+        self.key = key
     }
 
     var messages: [MailMessage] {
         get {
-            guard let data = defaults.data(forKey: Self.key) else { return [] }
+            guard let data = defaults.data(forKey: key) else { return [] }
             return (try? JSONDecoder().decode([MailMessage].self, from: data)) ?? []
         }
         nonmutating set {
             guard !newValue.isEmpty, let data = try? JSONEncoder().encode(newValue) else {
-                defaults.removeObject(forKey: Self.key)
+                defaults.removeObject(forKey: key)
                 return
             }
-            defaults.set(data, forKey: Self.key)
+            defaults.set(data, forKey: key)
         }
     }
 }
