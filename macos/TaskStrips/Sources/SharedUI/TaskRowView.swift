@@ -67,6 +67,17 @@ struct TaskRowView: View {
                     }
                     // A linked email and a linked page are both worth seeing from the board:
                     // a link nobody can tell is there is a link nobody opens.
+                    // A running clock is the one thing on a strip that's happening right now, so
+                    // it's amber and it's first.
+                    if StripTime.isRunning(task.sessions) {
+                        Label(StripTime.label(StripTime.total(of: task.sessions)), systemImage: "record.circle")
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(TaskStripTheme.amber)
+                    } else if StripTime.total(of: task.sessions) > 0 {
+                        Label(StripTime.label(StripTime.total(of: task.sessions)), systemImage: "clock")
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(TaskStripTheme.paper.opacity(0.6))
+                    }
                     if let steps = StripChecklist.summary(of: task.checklist) {
                         Label(steps, systemImage: "checklist")
                             .font(.system(.caption2, design: .monospaced))

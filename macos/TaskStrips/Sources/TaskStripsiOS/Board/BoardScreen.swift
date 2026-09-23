@@ -425,6 +425,14 @@ private struct StripsPage: View {
                             // is the start of a drag to reorder.
                             .contextMenu {
                                 Button {
+                                    StripActions.toggleTimer(on: strip, in: allTasks)
+                                } label: {
+                                    Label(
+                                        StripTime.isRunning(strip.sessions) ? "Stop the clock" : "Start the clock",
+                                        systemImage: StripTime.isRunning(strip.sessions) ? "stop.circle" : "play.circle"
+                                    )
+                                }
+                                Button {
                                     pendingArchive = strip
                                 } label: {
                                     Label("Archive", systemImage: "archivebox")

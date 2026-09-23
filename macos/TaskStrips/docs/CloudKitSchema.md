@@ -76,6 +76,7 @@ change to the board in one ordered stream.
 | `createdAt` | Date | — | createdAt |
 | `checklist` | Bytes (JSON) | E | added 2026-09-23: the strip's steps. When there are any they decide `progress`. |
 | `deferUntil` | Date | — | added 2026-09-23: the day the strip comes back onto the board. |
+| `sessions` | Bytes (JSON) | — | added 2026-09-23: stretches of time spent on the strip. Times rather than words, so not encrypted. |
 
 ### `Attachment` — a file on a strip
 
@@ -106,6 +107,7 @@ and isn't synced.
 | `createdAt` | Date | — | createdAt |
 | `checklist` | Bytes (JSON) | E | added 2026-09-23: the strip's steps. When there are any they decide `progress`. |
 | `deferUntil` | Date | — | added 2026-09-23: the day the strip comes back onto the board. |
+| `sessions` | Bytes (JSON) | — | added 2026-09-23: stretches of time spent on the strip. Times rather than words, so not encrypted. |
 
 ### `Note` — a quick note
 
@@ -115,6 +117,7 @@ and isn't synced.
 | `createdAt` | Date | — | createdAt |
 | `checklist` | Bytes (JSON) | E | added 2026-09-23: the strip's steps. When there are any they decide `progress`. |
 | `deferUntil` | Date | — | added 2026-09-23: the day the strip comes back onto the board. |
+| `sessions` | Bytes (JSON) | — | added 2026-09-23: stretches of time spent on the strip. Times rather than words, so not encrypted. |
 
 Sync Notes aren't a type of their own: they're folded into Notes (decided 2026-09-22), and
 Android's Sync Note text arrives as an ordinary note in Phase 6.
@@ -132,6 +135,7 @@ Android's Sync Note text arrives as an ordinary note in Phase 6.
 | `createdAt` | Date | — | createdAt |
 | `checklist` | Bytes (JSON) | E | added 2026-09-23: the strip's steps. When there are any they decide `progress`. |
 | `deferUntil` | Date | — | added 2026-09-23: the day the strip comes back onto the board. |
+| `sessions` | Bytes (JSON) | — | added 2026-09-23: stretches of time spent on the strip. Times rather than words, so not encrypted. |
 | `file` | Asset | | the file |
 
 ### `Credential`
@@ -145,6 +149,7 @@ Android's Sync Note text arrives as an ordinary note in Phase 6.
 | `createdAt` | Date | — | createdAt |
 | `checklist` | Bytes (JSON) | E | added 2026-09-23: the strip's steps. When there are any they decide `progress`. |
 | `deferUntil` | Date | — | added 2026-09-23: the day the strip comes back onto the board. |
+| `sessions` | Bytes (JSON) | — | added 2026-09-23: stretches of time spent on the strip. Times rather than words, so not encrypted. |
 
 ### `Sketch` and `SketchPage`
 

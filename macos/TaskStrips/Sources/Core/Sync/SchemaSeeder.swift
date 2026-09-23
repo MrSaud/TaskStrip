@@ -110,6 +110,7 @@ enum SchemaSeeder {
         task.reminderMinutesBefore = 5; task.repeatIntervalDays = 7
         task.checklist = [TaskChecklistItem(text: "step", isDone: true, doneAt: date)]
         task.deferUntil = date
+        task.sessions = [TaskWorkSession(startedAt: date, endedAt: date.addingTimeInterval(1800))]
         let strip = record(CloudSchema.RecordType.strip, task.id.uuidString)
         CloudRecordCoding.encode(task, sortKey: "V", into: strip)
 

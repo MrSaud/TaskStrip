@@ -59,6 +59,7 @@ final class BoardActions {
     var archiveSelection: () -> Void = {}
     var deleteSelection: () -> Void = {}
     var emailSelection: () -> Void = {}
+    var toggleSelectionTimer: () -> Void = {}
     var moveSelection: (BoardMove) -> Void = { _ in }
 
     /// Called when the board goes away or loses its selection, so a stale menu item can't act on
@@ -70,6 +71,7 @@ final class BoardActions {
         archiveSelection = {}
         deleteSelection = {}
         emailSelection = {}
+        toggleSelectionTimer = {}
         moveSelection = { _ in }
     }
 }
@@ -155,6 +157,10 @@ struct BoardCommandMenus: Commands {
             // "Use Selection for Find" already owns it, and the Edit menu comes first in the bar.
             Button("Edit…") { actions.editSelection() }
                 .keyboardShortcut("e", modifiers: [.command, .shift])
+                .disabled(state?.hasSelection != true)
+
+            Button("Start or Stop the Clock") { actions.toggleSelectionTimer() }
+                .keyboardShortcut("t", modifiers: [.command, .shift])
                 .disabled(state?.hasSelection != true)
 
             Button("Send by Email…") { actions.emailSelection() }

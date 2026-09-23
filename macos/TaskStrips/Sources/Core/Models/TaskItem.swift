@@ -28,6 +28,13 @@ struct TaskLink: Codable, Hashable, Identifiable {
     var label: String = ""
 }
 
+/// A stretch of time spent on a strip. Open-ended while it's running.
+struct TaskWorkSession: Codable, Hashable, Identifiable {
+    var id: UUID = UUID()
+    var startedAt: Date = .now
+    var endedAt: Date?
+}
+
 /// One step of a strip. Android has no equivalent: there, a list of steps was five strips.
 struct TaskChecklistItem: Codable, Hashable, Identifiable {
     var id: UUID = UUID()
@@ -108,6 +115,8 @@ final class TaskItem: Identifiable {
     /// lightweight migration to fill in on an existing store.
     var attachments: [TaskAttachment] = []
     /// Fire a reminder this many minutes before `dueAt`. Nil means no reminder.
+    /// The time spent on this strip, one stretch at a time.
+    var sessions: [TaskWorkSession] = []
     /// The steps this strip breaks into. When there are any, they decide its progress.
     var checklist: [TaskChecklistItem] = []
     /// Not before this: the strip is off the board until the day comes, then it's back on it.

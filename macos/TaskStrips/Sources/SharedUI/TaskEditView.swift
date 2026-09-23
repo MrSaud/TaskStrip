@@ -23,6 +23,7 @@ struct TaskEditView: View {
     @State private var progress: Double
     @State private var checklist: [TaskChecklistItem]
     @State private var newStep = ""
+    @State private var running = false
     @State private var hasDeferUntil: Bool
     @State private var deferUntil: Date
     @State private var tags: [String]
@@ -142,6 +143,28 @@ struct TaskEditView: View {
                         .tint(TaskStripTheme.amber)
                 } else {
                     Slider(value: $progress, in: 0...100, step: 1)
+                }
+            }
+
+            Section(timeTitle) {
+                Button {
+                    guard let task = editingTask else { return }
+                    StripActions.toggleTimer(on: task, in: allTasks)
+                    running = StripTime.isRunning(task.sessions)
+                } label: {
+                    Label(
+                        running ? "Stop" : "Start working",
+                        systemImage: running ? "stop.circle" : "play.circle"
+                    )
+                    .foregroundStyle(running ? TaskStripTheme.urgent : TaskStripTheme.normal)
+                }
+                // The clock belongs to a strip that exists: there's nothing to spend time on
+                // until it's been filed.
+                .disabled(editingTask == nil)
+                if editingTask == nil {
+                    Text("File the strip first, then the clock has something to run on.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
@@ -300,6 +323,7 @@ struct TaskEditView: View {
             }
         }
         .navigationTitle(isEditing ? "EDIT STRIP" : "NEW STRIP")
+        .onAppear { running = StripTime.isRunning(editingTask?.sessions ?? []) }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { cancel() }
@@ -549,6 +573,14 @@ struct TaskEditView: View {
     private func open(_ link: TaskLink) {
         guard let url = URL(string: link.url.trimmingCharacters(in: .whitespaces)) else { return }
         Platform.open(url)
+    }
+
+    /// What the clock has to say: what's been spent on this strip, and this week's share of it.
+    private var timeTitle: String {
+        guard let task = editingTask, !task.sessions.isEmpty else { return "TIME" }
+        let total = StripTime.label(StripTime.total(of: task.sessions))
+        let week = StripTime.thisWeek(task.sessions)
+        return week > 0 ? "TIME: \(total) · \(StripTime.label(week)) THIS WEEK" : "TIME: \(total)"
     }
 
     private var progressTitle: String {

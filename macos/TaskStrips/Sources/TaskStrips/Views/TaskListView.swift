@@ -411,6 +411,7 @@ struct TaskListView: View {
         actions.archiveSelection = { archive(task) }
         actions.deleteSelection = { requestDelete(task) }
         actions.emailSelection = { sendByEmail(task) }
+        actions.toggleSelectionTimer = { StripActions.toggleTimer(on: task, in: allTasks) }
         actions.moveSelection = { move in
             guard reorderable else { return }
             _ = BoardOrdering.move(task, move, in: visible)
@@ -512,6 +513,14 @@ struct TaskListView: View {
                 editingTask = task
             } label: {
                 Label("Edit…", systemImage: "square.and.pencil")
+            }
+            Button {
+                StripActions.toggleTimer(on: task, in: allTasks)
+            } label: {
+                Label(
+                    StripTime.isRunning(task.sessions) ? "Stop the Clock" : "Start the Clock",
+                    systemImage: StripTime.isRunning(task.sessions) ? "stop.circle" : "play.circle"
+                )
             }
             Button {
                 sendByEmail(task)

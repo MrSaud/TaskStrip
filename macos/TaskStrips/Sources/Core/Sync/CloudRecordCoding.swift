@@ -49,6 +49,7 @@ enum CloudRecordCoding {
         record[K.remindBefore] = task.reminderMinutesBefore.map(Int64.init)
         record[K.repeatDays] = task.repeatIntervalDays.map(Int64.init)
         record[K.deferUntil] = task.deferUntil
+        record[K.sessions] = json(task.sessions)
         record[K.createdAt] = task.createdAt
     }
 
@@ -80,6 +81,7 @@ enum CloudRecordCoding {
         task.reminderMinutesBefore = (record[K.remindBefore] as? Int64).map(Int.init)
         task.repeatIntervalDays = (record[K.repeatDays] as? Int64).map(Int.init)
         task.deferUntil = record[K.deferUntil] as? Date
+        if let v: [TaskWorkSession] = value(record[K.sessions]) { task.sessions = v }
         if let v = record[K.createdAt] as? Date { task.createdAt = v }
     }
 

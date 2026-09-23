@@ -50,6 +50,8 @@ enum CloudSchema {
         static let repeatDays = "repeatDays", createdAt = "createdAt"
         /// When the strip comes back onto the board (schema v1.2).
         static let deferUntil = "deferUntil"
+        /// The stretches of time spent on it (schema v1.3). Times, not words, so not encrypted.
+        static let sessions = "sessions"
     }
 
     enum Attachment {
