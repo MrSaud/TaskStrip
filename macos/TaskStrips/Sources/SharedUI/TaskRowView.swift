@@ -149,7 +149,14 @@ struct TaskRowView: View {
             .padding(10)
         }
         .background(task.isDone ? TaskStripTheme.baySurfaceFaded : TaskStripTheme.baySurface)
-        .clipShape(RoundedRectangle(cornerRadius: 4))
+        .clipShape(RoundedRectangle(cornerRadius: 6))
+        // A hairline and a soft shadow: in the dark the strip separates from the bay by being
+        // lighter, in daylight it has to separate by having an edge.
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(TaskStripTheme.paper.opacity(0.08), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.10), radius: 3, y: 1)
         .opacity(task.isDone ? 0.7 : 1)
     }
 

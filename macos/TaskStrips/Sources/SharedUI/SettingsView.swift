@@ -21,6 +21,8 @@ enum AppSettingsKey {
     static let fingerDrawing = "sketchFingerDrawing"
     /// Whether Today shows what the calendar already has in it.
     static let showCalendar = "showTodaysCalendar"
+    /// Light, dark, or whatever the system is doing.
+    static let theme = "boardTheme"
     /// When the last automatic backup went up, so the next one knows whether a day has passed.
     static let lastAutoBackup = "lastAutoBackupAt"
 }
@@ -69,6 +71,7 @@ struct SettingsView: View {
     @AppStorage(AppSettingsKey.dateStyle) private var dateStyle = BoardDateStyle.both
     @AppStorage(AppSettingsKey.clockStyle) private var clockStyle = BoardClockStyle.digital
     @AppStorage(AppSettingsKey.showCalendar) private var showCalendar = false
+    @AppStorage(AppSettingsKey.theme) private var theme = BoardTheme.auto
     @AppStorage(AppSettingsKey.showMenuBar) private var showMenuBar = true
     @ObservedObject private var drive = DriveSession.shared
     @State private var clientID = GoogleOAuth.clientID() ?? ""
@@ -112,6 +115,18 @@ struct SettingsView: View {
                     .foregroundStyle(.secondary)
             }
             #endif
+
+            Section {
+                Picker("Theme", selection: $theme) {
+                    ForEach(BoardTheme.allCases) { candidate in
+                        Text(candidate.title).tag(candidate)
+                    }
+                }
+            } footer: {
+                Text("Automatic follows the device, light or dark, whenever it changes.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
 
             Section {
                 Picker("Dates on the board", selection: $dateStyle) {

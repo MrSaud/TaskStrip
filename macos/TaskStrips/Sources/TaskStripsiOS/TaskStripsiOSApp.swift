@@ -39,10 +39,13 @@ struct TaskStripsiOSApp: App {
         Task { @MainActor in BoardSync.shared.start(container: container) }
     }
 
+    /// Dark as it always was, unless someone has said otherwise — and Auto follows the device.
+    @AppStorage(AppSettingsKey.theme) private var theme = BoardTheme.auto
+
     var body: some Scene {
         WindowGroup {
             BoardScreen()
-                .preferredColorScheme(.dark)
+                .boardTheme(theme)
         }
         .modelContainer(Self.sharedModelContainer)
     }

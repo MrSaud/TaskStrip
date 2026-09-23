@@ -139,10 +139,13 @@ struct TaskStripsApp: App {
         }
     }
 
+    /// Dark as it always was, unless someone has said otherwise — and Auto follows the device.
+    @AppStorage(AppSettingsKey.theme) private var theme = BoardTheme.auto
+
     var body: some Scene {
         WindowGroup(id: Self.boardWindowID) {
             TaskListView()
-                .preferredColorScheme(.dark)
+                .boardTheme(theme)
         }
         .modelContainer(Self.sharedModelContainer)
         .defaultSize(width: 860, height: 660)
@@ -153,14 +156,14 @@ struct TaskStripsApp: App {
         // needs no app group, so it reads the same store the board does rather than a copy.
         MenuBarExtra("Task Strips", systemImage: "list.bullet.rectangle", isInserted: $showMenuBar) {
             GlanceView()
-                .preferredColorScheme(.dark)
+                .boardTheme(theme)
                 .modelContainer(Self.sharedModelContainer)
         }
         .menuBarExtraStyle(.window)
 
         Settings {
             SettingsView()
-                .preferredColorScheme(.dark)
+                .boardTheme(theme)
         }
     }
 }

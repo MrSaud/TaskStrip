@@ -10,7 +10,6 @@ import SwiftUI
 struct DayView: View {
     let tasks: [TaskItem]
     let reminders: [Reminder]
-    var showsHeader = false
     let onEdit: (TaskItem) -> Void
 
     @Environment(\.modelContext) private var modelContext
@@ -22,7 +21,9 @@ struct DayView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if showsHeader { header }
+            // The phone's page has no header of its own, but the calendar still has to be put
+            // away somewhere.
+            header
             if plan.isEmpty && events.isEmpty {
                 empty
             } else {
@@ -53,6 +54,7 @@ struct DayView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(TaskStripTheme.amber)
             Spacer(minLength: 0)
+            calendarToggle
             if !plan.isEmpty {
                 Text("\(plan.count)")
                     .font(.caption.monospaced())
@@ -62,6 +64,21 @@ struct DayView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .background(TaskStripTheme.baySurfaceFaded)
+    }
+
+    /// Shows or hides what the day already costs. It sits here, where the events are, rather
+    /// than only in Settings: a calendar you can't put away is a calendar in the way.
+    private var calendarToggle: some View {
+        Button {
+            showCalendar.toggle()
+        } label: {
+            Image(systemName: showCalendar ? "calendar.badge.checkmark" : "calendar")
+                .font(.caption)
+                .foregroundStyle(showCalendar ? TaskStripTheme.amber : TaskStripTheme.paper.opacity(0.5))
+        }
+        .buttonStyle(.plain)
+        .help(showCalendar ? "Hide today's calendar" : "Show today's calendar")
+        .accessibilityLabel(showCalendar ? "Hide today's calendar" : "Show today's calendar")
     }
 
     private var list: some View {

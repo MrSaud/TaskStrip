@@ -127,7 +127,6 @@ struct TaskListView: View {
                         DayView(
                             tasks: allTasks,
                             reminders: allReminders,
-                            showsHeader: true,
                             onEdit: { editingTask = $0 }
                         )
                         .frame(minWidth: 260, idealWidth: 320, maxWidth: .infinity)

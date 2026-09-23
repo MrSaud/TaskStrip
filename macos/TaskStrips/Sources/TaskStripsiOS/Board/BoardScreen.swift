@@ -54,6 +54,7 @@ struct BoardScreen: View {
     @AppStorage(AppSettingsKey.showQuote) private var showQuote = true
     @AppStorage(AppSettingsKey.dateStyle) private var dateStyle = BoardDateStyle.both
     @AppStorage(AppSettingsKey.clockStyle) private var clockStyle = BoardClockStyle.digital
+    @AppStorage(AppSettingsKey.showCalendar) private var showCalendar = false
     /// iPad only: which lists are pinned side by side. The iPhone has its pager instead.
     @AppStorage(AppSettingsKey.boardPanes) private var panes: BoardPanes = .everything
     @State private var quote: Quote?
@@ -129,8 +130,7 @@ struct BoardScreen: View {
                             DayView(
                                 tasks: allTasks,
                                 reminders: allReminders,
-                                showsHeader: true,
-                                onEdit: { editing = $0 }
+                                    onEdit: { editing = $0 }
                             )
                             .frame(maxWidth: panes.lonePane == .today ? .infinity : 320)
                             Divider()
@@ -305,6 +305,16 @@ struct BoardScreen: View {
             quickAction("SKETCH", systemImage: "scribble") {
                 quickSketch = QuickSketch(id: SketchStore.newNoteID())
             }
+            quickAction(
+                "CALENDAR",
+                systemImage: showCalendar ? "calendar.badge.checkmark" : "calendar",
+                lit: showCalendar
+            ) {
+                showCalendar.toggle()
+                // Turning the calendar on with nowhere to show it would do nothing visible.
+                if showCalendar, isWide, !panes.shows(.today) { panes = panes.showing(.today) }
+                if showCalendar, !isWide { page = .today }
+            }
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 12)
@@ -312,15 +322,20 @@ struct BoardScreen: View {
         .background(TaskStripTheme.baySurfaceFaded)
     }
 
-    private func quickAction(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+    private func quickAction(
+        _ title: String,
+        systemImage: String,
+        lit: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Label(title, systemImage: systemImage)
                 .font(.system(.caption, design: .monospaced))
                 .fontWeight(.semibold)
-                .foregroundStyle(TaskStripTheme.ink)
+                .foregroundStyle(lit ? TaskStripTheme.ink : TaskStripTheme.paper.opacity(0.8))
                 .padding(.horizontal, 12)
                 .padding(.vertical, 6)
-                .background(TaskStripTheme.amber, in: Capsule())
+                .background(lit ? TaskStripTheme.amber : TaskStripTheme.baySurface, in: Capsule())
         }
         .buttonStyle(.plain)
     }
