@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 /// A message, opened.
@@ -17,6 +18,7 @@ struct MailMessageView: View {
     @State private var markingUp: SketchOpening?
     @State private var replying: MailDraft?
     @State private var linkNote: String?
+    @State private var madeStrip: TaskItem?
     @Environment(\.modelContext) private var context
     @State private var snapshotProblem: String?
 
@@ -138,6 +140,17 @@ struct MailMessageView: View {
                     .controlSize(.large)
                     .help("Take a picture of this message and draw on it")
                 }
+                // A message that is a piece of work, made into one. Everything the strip needs
+                // is already in the message.
+                Button {
+                    makeStrip()
+                } label: {
+                    Label("New Strip", systemImage: "tray.and.arrow.down.fill")
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                .help("Make a strip out of this message")
+
                 // The message itself onto a strip, the way one dragged out of Mail lands there:
                 // the strip keeps a link back to it, under its subject.
                 if message.link != nil {
@@ -232,6 +245,52 @@ struct MailMessageView: View {
     /// Every address of this account's own — nobody replies to themselves, and an account set up
     /// twice under different names shouldn't be copied twice either.
     private var myAddresses: [String] { IMAPReader.shared.accounts.map(\.email) }
+
+    /// Makes a strip out of this message: its subject, its words, its sender, the link back to
+    /// it, its files, and the date it is asking for.
+    private func makeStrip() {
+        let plan = StripFromMail.plan(for: message, body: loaded)
+        let existing = (try? context.fetch(FetchDescriptor<TaskItem>())) ?? []
+        let strip = TaskItem(title: plan.title, orderIndex: StripActions.nextOrderIndex(in: existing))
+        strip.notes = plan.notes
+        strip.dueAt = plan.dueAt
+        if let link = plan.link {
+            strip.links.append(TaskLink(url: link, label: plan.linkLabel))
+        }
+        if !plan.contactEmail.isEmpty {
+            strip.contacts.append(TaskContact(name: plan.contactName, email: plan.contactEmail))
+        }
+        // The files come too: an invoice belongs on the strip about the invoice, not in a mailbox
+        // somebody has to go back to.
+        var filed = 0
+        for attachment in loaded?.attachments ?? [] where !attachment.isInline {
+            guard let saved = try? AttachmentStore.shared.add(attachment.bytes, named: attachment.name) else {
+                continue
+            }
+            strip.attachments.append(saved)
+            filed += 1
+        }
+        strip.actionLog.append(TaskActionLogEntry(text: StripFromMail.logLine(for: plan), timestamp: .now))
+        context.insert(strip)
+        try? context.save()
+        ReminderScheduler.shared.schedule(for: strip)
+
+        madeStrip = strip
+        linkNote = madeNote(plan, filed: filed)
+    }
+
+    /// Says exactly what was made, because a strip created out of sight is a strip nobody trusts
+    /// was created.
+    private func madeNote(_ plan: StripFromMail.Plan, filed: Int) -> String {
+        var said = "Made the strip \u{201C}\(plan.title)\u{201D}"
+        if let due = plan.dueAt {
+            said += ", due \(due.formatted(date: .abbreviated, time: .omitted))"
+        }
+        if filed > 0 {
+            said += ", with \(filed) file\(filed == 1 ? "" : "s")"
+        }
+        return said + "."
+    }
 
     /// Files this message as a link on a strip, under its own subject — the same record the Mac
     /// writes when a message is dragged out of Mail onto a strip, so both routes leave the same

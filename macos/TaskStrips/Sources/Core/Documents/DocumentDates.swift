@@ -54,8 +54,13 @@ enum DocumentDates {
         var words: [String] {
             switch self {
             case .deadline:
+                // Phrases rather than single words where a single word would misfire: "submitted
+                // on" is a thing that happened, "submitted by" is a thing that must happen.
                 return ["due", "payable", "deadline", "last day", "pay by", "payment date",
-                        "الاستحقاق", "آخر موعد", "تاريخ الدفع", "موعد السداد"]
+                        "submit by", "submitted by", "submission", "no later than", "closing date",
+                        "respond by", "reply by", "deliver by", "delivery date",
+                        "الاستحقاق", "آخر موعد", "تاريخ الدفع", "موعد السداد", "الموعد النهائي",
+                        "تسليم", "آخر أجل"]
             case .expiry:
                 return ["expiry", "expires", "expiration", "valid until", "valid through",
                         "renewal", "renew by", "الانتهاء", "انتهاء", "صالح حتى", "تجديد"]
