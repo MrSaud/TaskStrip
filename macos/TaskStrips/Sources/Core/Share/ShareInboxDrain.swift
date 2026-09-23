@@ -39,6 +39,22 @@ enum ShareInboxDrain {
                 nextIndex += 1
                 task.notes = entry.notes
                 task.contacts = entry.contacts.map { TaskContact(name: $0.name, email: $0.email, phone: $0.phone) }
+                // A shared email is a link back to the message, named with its subject.
+                task.links = entry.links.map { url in
+                    TaskLink(url: url, label: EmailLink.isMessage(url) ? entry.title : "")
+                }
+                // A strip can arrive with files too — a shared email brings the message itself
+                // along with the link back to it.
+                for name in entry.fileNames {
+                    let url = folder.appending(path: name)
+                    guard let copy = try? store.add(
+                        contentsOf: url, kind: AttachmentKind.inferred(fromExtension: url.pathExtension)
+                    ) else {
+                        filed.failures += 1
+                        continue
+                    }
+                    task.attachments.append(copy)
+                }
                 context.insert(task)
                 filed.strips += 1
             case .files:

@@ -473,6 +473,14 @@ private struct StripsPage: View {
     private func row(_ strip: TaskItem) -> some View {
         TaskRowView(task: strip, blocker: StripActions.blocker(for: strip, in: allTasks))
             .contentShape(Rectangle())
+            // Behind the row, as on the Mac: a message dragged from Mail on an iPad is linked to
+            // the strip, a file is attached to it.
+            .background(
+                MailDropCatcher(
+                    onEmail: { url, name in link(url, named: name, to: strip) },
+                    onFiles: { files in attach(files, to: strip) }
+                )
+            )
             .onTapGesture { onEdit(strip) }
             .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
             .listRowSeparator(.hidden)
@@ -487,6 +495,30 @@ private struct StripsPage: View {
                 }
                 .tint(TaskStripTheme.normal)
             }
+    }
+
+    /// Files an email dragged from Mail as a link on the strip, under its own subject.
+    private func link(_ url: URL, named subject: String, to strip: TaskItem) {
+        let address = url.absoluteString
+        guard !strip.links.contains(where: { $0.url == address }) else { return }
+        strip.links.append(TaskLink(url: address, label: subject.trimmingCharacters(in: .whitespacesAndNewlines)))
+        strip.actionLog.append(TaskActionLogEntry(text: "Linked an email"))
+    }
+
+    private func attach(_ urls: [URL], to strip: TaskItem) {
+        for url in urls {
+            guard let attachment = try? AttachmentStore.shared.add(
+                contentsOf: url, kind: AttachmentKind.inferred(fromExtension: url.pathExtension)
+            ) else { continue }
+            strip.attachments.append(attachment)
+            // An email dropped as a file still points back at the message it is.
+            if EmailLink.isEmailFile(url),
+               let text = try? String(contentsOf: url, encoding: .utf8),
+               let address = EmailLink.fromEmail(text),
+               let link = URL(string: address) {
+                self.link(link, named: url.deletingPathExtension().lastPathComponent, to: strip)
+            }
+        }
     }
 
     private func toggleDone(_ strip: TaskItem) {

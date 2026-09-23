@@ -24,6 +24,9 @@ struct SharedEntry: Codable, Identifiable, Equatable {
     var title = ""
     var notes = ""
     var contacts: [Contact] = []
+    /// Links to put on the strip — an email shared from Mail arrives as one of these, so the
+    /// strip points back at the message rather than quoting it.
+    var links: [String] = []
     /// Names of the files beside this entry in its folder.
     var fileNames: [String] = []
     /// Put on every file of a `.files` entry, so a batch of receipts arrives already tagged.

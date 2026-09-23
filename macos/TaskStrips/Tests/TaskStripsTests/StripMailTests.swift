@@ -29,25 +29,25 @@ final class StripMailTests: XCTestCase {
     /// colon, no slashes, and the angle brackets already escaped.
     func testTheLinkMailActuallyHandsOverIsRecognised() {
         let dragged = "message:%3C1372329598.91023@mail.example.com%3E"
-        XCTAssertTrue(StripMail.isMessageLink(dragged))
-        XCTAssertEqual(StripMail.label(for: dragged), "Email message")
+        XCTAssertTrue(EmailLink.isMessage(dragged))
+        XCTAssertEqual(EmailLink.label(for: dragged), "Email message")
         XCTAssertNotNil(URL(string: dragged), "it has to survive being made into a URL")
     }
 
     func testAMessageLinkIsToldApartFromAWebPage() {
-        XCTAssertTrue(StripMail.isMessageLink("message://%3C123@mail.example%3E"))
-        XCTAssertTrue(StripMail.isMessageLink("mailto:someone@example.com"))
-        XCTAssertTrue(StripMail.isMessageLink("MESSAGE://%3C9%3E"), "the scheme's case doesn't matter")
-        XCTAssertFalse(StripMail.isMessageLink("https://example.com"))
-        XCTAssertFalse(StripMail.isMessageLink("not a url at all"))
-        XCTAssertFalse(StripMail.isMessageLink(""))
+        XCTAssertTrue(EmailLink.isMessage("message://%3C123@mail.example%3E"))
+        XCTAssertTrue(EmailLink.isMessage("mailto:someone@example.com"))
+        XCTAssertTrue(EmailLink.isMessage("MESSAGE://%3C9%3E"), "the scheme's case doesn't matter")
+        XCTAssertFalse(EmailLink.isMessage("https://example.com"))
+        XCTAssertFalse(EmailLink.isMessage("not a url at all"))
+        XCTAssertFalse(EmailLink.isMessage(""))
     }
 
     func testALinkedMessageIsCalledSomethingReadable() {
-        XCTAssertEqual(StripMail.label(for: "message://%3C123@mail.example%3E"), "Email message")
-        XCTAssertEqual(StripMail.label(for: "mailto:boss@example.com"), "Email boss@example.com")
+        XCTAssertEqual(EmailLink.label(for: "message://%3C123@mail.example%3E"), "Email message")
+        XCTAssertEqual(EmailLink.label(for: "mailto:boss@example.com"), "Email boss@example.com")
         // A web link is its own label.
-        XCTAssertEqual(StripMail.label(for: "https://example.com"), "https://example.com")
+        XCTAssertEqual(EmailLink.label(for: "https://example.com"), "https://example.com")
     }
 
     // MARK: - A strip sent as an email
@@ -144,31 +144,68 @@ final class StripMailTests: XCTestCase {
     """
 
     func testTheLinkBackToAMessageIsReadOutOfTheFile() throws {
-        let link = try XCTUnwrap(StripMail.messageLink(fromEmail: sample))
+        let link = try XCTUnwrap(EmailLink.fromEmail(sample))
         XCTAssertTrue(link.hasPrefix("message://"), link)
         XCTAssertTrue(link.contains("CAF123abc"), link)
         // The angle brackets have to be escaped or the URL ends at the first one.
         XCTAssertFalse(link.contains("<"), link)
-        XCTAssertTrue(StripMail.isMessageLink(link))
+        XCTAssertTrue(EmailLink.isMessage(link))
     }
 
     /// Only the headers count. A message quoting another message's id in its body would otherwise
     /// link to the wrong email entirely.
     func testOnlyTheHeaderIsRead() throws {
-        let link = try XCTUnwrap(StripMail.messageLink(fromEmail: sample))
+        let link = try XCTUnwrap(EmailLink.fromEmail(sample))
         XCTAssertFalse(link.contains("not-this-one"), link)
     }
 
     func testAFileWithNoMessageIdLinksToNothing() {
-        XCTAssertNil(StripMail.messageLink(fromEmail: "Subject: no id here\n\nbody"))
-        XCTAssertNil(StripMail.messageLink(fromEmail: ""))
+        XCTAssertNil(EmailLink.fromEmail("Subject: no id here\n\nbody"))
+        XCTAssertNil(EmailLink.fromEmail(""))
         // A malformed one is no id at all.
-        XCTAssertNil(StripMail.messageLink(fromEmail: "Message-ID: 123\n\nbody"))
+        XCTAssertNil(EmailLink.fromEmail("Message-ID: 123\n\nbody"))
     }
 
     func testAnEmailFileIsToldApartFromAnyOtherFile() {
-        XCTAssertTrue(StripMail.isEmailFile(URL(fileURLWithPath: "/tmp/The quote.eml")))
-        XCTAssertTrue(StripMail.isEmailFile(URL(fileURLWithPath: "/tmp/x.EML")))
-        XCTAssertFalse(StripMail.isEmailFile(URL(fileURLWithPath: "/tmp/report.pdf")))
+        XCTAssertTrue(EmailLink.isEmailFile(URL(fileURLWithPath: "/tmp/The quote.eml")))
+        XCTAssertTrue(EmailLink.isEmailFile(URL(fileURLWithPath: "/tmp/x.EML")))
+        XCTAssertFalse(EmailLink.isEmailFile(URL(fileURLWithPath: "/tmp/report.pdf")))
+    }
+
+    // MARK: - A shared email becomes a strip that points back at it
+
+    @MainActor
+    func testAnEmailSharedInBecomesAStripWithALinkOnIt() throws {
+        let container = try ModelContainer(
+            for: Schema(BoardSchema.models),
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let context = ModelContext(container)
+
+        let root = FileManager.default.temporaryDirectory.appending(path: "share-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try ShareInbox.add(
+            SharedEntry(
+                kind: .strip,
+                title: "The quote",
+                notes: "",
+                links: ["message:%3Cshared-1@mail.example.com%3E"]
+            ),
+            files: [],
+            root: root
+        )
+
+        let filed = ShareInboxDrain.run(
+            context: context, tasks: [], defaultPriority: .normal, root: root
+        )
+        XCTAssertEqual(filed.strips, 1)
+
+        let strip = try XCTUnwrap(try context.fetch(FetchDescriptor<TaskItem>()).first)
+        XCTAssertEqual(strip.links.count, 1)
+        XCTAssertEqual(strip.links.first?.url, "message:%3Cshared-1@mail.example.com%3E")
+        // The subject is what a link to a message should be called.
+        XCTAssertEqual(strip.links.first?.label, "The quote")
     }
 }

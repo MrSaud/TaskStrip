@@ -82,7 +82,7 @@ struct MailDropCatcher: NSViewRepresentable {
                 if let text = item.string(forType: .URL) { candidates.append(text) }
             }
             return candidates.lazy
-                .filter { StripMail.isMessageLink($0) }
+                .filter { EmailLink.isMessage($0) }
                 .compactMap { URL(string: $0) }
                 .first
         }

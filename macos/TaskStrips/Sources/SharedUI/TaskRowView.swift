@@ -9,7 +9,7 @@ struct TaskRowView: View {
 
     private var isBlocked: Bool { blocker != nil && blocker?.isDone == false }
 
-    private var emailCount: Int { task.links.filter { StripMail.isMessageLink($0.url) }.count }
+    private var emailCount: Int { task.links.filter { EmailLink.isMessage($0.url) }.count }
     private var linkCount: Int { task.links.count - emailCount }
 
     private var isOverdue: Bool {

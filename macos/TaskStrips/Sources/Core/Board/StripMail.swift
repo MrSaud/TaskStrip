@@ -6,57 +6,6 @@ import Foundation
 /// The text is built here rather than where it's sent, so the Mac and the phone send the same
 /// message and the wording can be checked without a mail client in the room.
 enum StripMail {
-    // MARK: - The email a strip came from
-
-    /// Schemes that mean "a message in a mail app" rather than a page on the web. `message:` is
-    /// what Mail hands over when a message is dragged out of it; the others are what other mail
-    /// apps use for the same thing.
-    static let messageSchemes: Set<String> = ["message", "x-msg", "emailmessage", "mailto"]
-
-    static func isMessageLink(_ url: String) -> Bool {
-        guard let scheme = URL(string: url.trimmingCharacters(in: .whitespaces))?.scheme?.lowercased() else {
-            return false
-        }
-        return messageSchemes.contains(scheme)
-    }
-
-    /// What a linked message is called on the strip when it carries no label of its own: a
-    /// `message:` URL is a long opaque id, and showing that helps nobody.
-    static func label(for url: String) -> String {
-        guard isMessageLink(url) else { return url }
-        if let address = URL(string: url)?.scheme?.lowercased(), address == "mailto" {
-            let to = url.dropFirst("mailto:".count).prefix { $0 != "?" }
-            return to.isEmpty ? "Email" : "Email \(to)"
-        }
-        return "Email message"
-    }
-
-    /// The link back to a message, read out of an email file.
-    ///
-    /// Mail drags a message out in more than one shape: sometimes as a `message:` URL, sometimes
-    /// as the message itself, a .eml file. Every email carries a Message-ID, which is exactly what
-    /// a `message:` URL points at — so a dropped file can still become a link to the message in
-    /// Mail rather than only a copy of it on disk.
-    static func messageLink(fromEmail text: String) -> String? {
-        for line in text.split(separator: "\n", omittingEmptySubsequences: false).prefix(400) {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            // Headers stop at the first blank line; nothing after it is a Message-ID.
-            if trimmed.isEmpty { break }
-            guard trimmed.lowercased().hasPrefix("message-id:") else { continue }
-            let value = trimmed.dropFirst("message-id:".count).trimmingCharacters(in: .whitespaces)
-            guard value.hasPrefix("<"), value.hasSuffix(">"), value.count > 2 else { continue }
-            let escaped = value
-                .addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(.init(charactersIn: "-._~@")))
-            guard let escaped else { return nil }
-            return "message://\(escaped)"
-        }
-        return nil
-    }
-
-    static func isEmailFile(_ url: URL) -> Bool {
-        ["eml", "emlx", "mbox"].contains(url.pathExtension.lowercased())
-    }
-
     // MARK: - The email a strip is sent as
 
     static func subject(for task: TaskItem) -> String {
@@ -88,7 +37,7 @@ enum StripMail {
             lines.append("")
             lines.append("Links:")
             // A message: link means nothing to anyone else's mail app, so it stays behind.
-            for link in links where !isMessageLink(link.url) {
+            for link in links where !EmailLink.isMessage(link.url) {
                 lines.append(link.label.isEmpty ? link.url : "\(link.label) — \(link.url)")
             }
         }

@@ -35,6 +35,7 @@ final class ShareModel: ObservableObject {
     @Published var title = ""
     @Published var notes = ""
     @Published var contacts: [SharedEntry.Contact] = []
+    @Published var links: [String] = []
     @Published var files: [URL] = []
     @Published var tag = ""
     @Published var problem: String?
@@ -46,7 +47,9 @@ final class ShareModel: ObservableObject {
     }
 
     /// Files win: a photo shared with a caption is a photo for the library, not a strip.
-    var kind: SharedEntry.Kind { files.isEmpty ? .strip : .files }
+    /// A shared email is a strip with a link on it, even though a file came with it — the point
+    /// of sharing it here is the message, not a copy of it in the library.
+    var kind: SharedEntry.Kind { files.isEmpty || !links.isEmpty ? .strip : .files }
 
     var canFile: Bool {
         switch kind {
@@ -67,12 +70,25 @@ final class ShareModel: ObservableObject {
                     if let data = try? await provider.loadData(for: .vCard) { contacts += Self.contacts(in: data) }
                 } else if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier),
                           let url = await provider.load(URL.self), !url.isFileURL {
-                    texts.append(url.absoluteString)
+                    // A message shared out of Mail: linked to the strip rather than pasted into
+                    // it, so it opens the email it came from.
+                    if EmailLink.isMessage(url.absoluteString) {
+                        links.append(url.absoluteString)
+                    } else {
+                        texts.append(url.absoluteString)
+                    }
                 } else if provider.hasItemConformingToTypeIdentifier(UTType.plainText.identifier),
                           let text = await provider.load(String.self) {
                     texts.append(text)
                 } else if let file = await Self.copyFile(from: provider) {
                     files.append(file)
+                    // Mail shares the message itself as a file; its Message-ID is the link back
+                    // to it, so the strip gets both the copy and the way home.
+                    if EmailLink.isEmailFile(file),
+                       let text = try? String(contentsOf: file, encoding: .utf8),
+                       let link = EmailLink.fromEmail(text) {
+                        links.append(link)
+                    }
                 }
             }
         }
@@ -83,7 +99,7 @@ final class ShareModel: ObservableObject {
         let firstLine = body.split(separator: "\n", omittingEmptySubsequences: true).first.map(String.init)
         title = String((subject ?? firstLine ?? contacts.first?.name ?? "").prefix(80))
         notes = body
-        if title.isEmpty && files.isEmpty && contacts.isEmpty {
+        if title.isEmpty && files.isEmpty && contacts.isEmpty && links.isEmpty {
             problem = "There's nothing here Task Strips can file."
         }
     }

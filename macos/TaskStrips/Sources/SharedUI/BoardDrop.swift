@@ -25,7 +25,7 @@ enum BoardDrop {
     /// The mail messages among the dropped things. Mail hands over a `message:` URL rather than
     /// a file: it isn't something to copy, it's a pointer back to the message where it lives.
     static func messageLinks(among urls: [URL]) -> [URL] {
-        urls.filter { !$0.isFileURL && StripMail.isMessageLink($0.absoluteString) }
+        urls.filter { !$0.isFileURL && EmailLink.isMessage($0.absoluteString) }
     }
 
     /// What a dropped file lands as in the library, using the same rules a picked one does.

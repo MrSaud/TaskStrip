@@ -388,8 +388,8 @@ struct TaskEditView: View {
                         open(link)
                     } label: {
                         Label(
-                            link.label.isEmpty ? StripMail.label(for: link.url) : link.label,
-                            systemImage: StripMail.isMessageLink(link.url) ? "envelope" : "link"
+                            link.label.isEmpty ? EmailLink.label(for: link.url) : link.label,
+                            systemImage: EmailLink.isMessage(link.url) ? "envelope" : "link"
                         )
                         .lineLimit(1)
                     }

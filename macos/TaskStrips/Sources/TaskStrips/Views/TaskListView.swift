@@ -831,9 +831,9 @@ struct TaskListView: View {
             attached += 1
             // Mail sometimes drops the message itself rather than a link to it. The file is kept,
             // and the message it came from is linked as well, so the strip can still open it.
-            if StripMail.isEmailFile(url),
+            if EmailLink.isEmailFile(url),
                let text = try? String(contentsOf: url, encoding: .utf8),
-               let link = StripMail.messageLink(fromEmail: text) {
+               let link = EmailLink.fromEmail(text) {
                 _ = self.link([URL(string: link)].compactMap { $0 }, to: task)
             }
         }
