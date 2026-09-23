@@ -144,6 +144,7 @@ Sketches stay PNG pages (decided 2026-09-22).
 |---|---|---|---|
 | `name` | String | E | the optional name |
 | `createdAt` | Date | — | |
+| `paper` | String | — | added 2026-09-23: which paper the note is drawn on (`clean`, `lined`, `grid`, `dots`, `legal`, `mint`, `sky`, `graph`). Never baked into the pages, so it can change at any time. A device that doesn't know the value shows plain paper. |
 
 | `SketchPage` field | Type | | |
 |---|---|---|---|

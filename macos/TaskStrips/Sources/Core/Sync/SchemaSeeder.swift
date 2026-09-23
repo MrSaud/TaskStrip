@@ -135,7 +135,7 @@ enum SchemaSeeder {
         let credentialRecord = record(CloudSchema.RecordType.credential, credential.id.uuidString)
         CloudRecordCoding.encode(credential, into: credentialRecord)
 
-        let sketch = SketchNote(id: "sketch", name: "s", pageCount: 1, lastModified: date, createdAt: date)
+        let sketch = SketchNote(id: "sketch", name: "s", pageCount: 1, lastModified: date, createdAt: date, paper: .lined)
         let sketchRecord = record(CloudSchema.RecordType.sketch, sketch.id)
         CloudRecordCoding.encode(sketch, into: sketchRecord)
         let pageRecord = record(CloudSchema.RecordType.sketchPage, CloudSchema.SketchPage.recordName(sketch: sketch.id, number: 1))

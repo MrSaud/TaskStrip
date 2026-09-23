@@ -26,6 +26,8 @@ struct SketchCanvasView: View {
     @State private var penWidth: SketchPenWidth = .fine
     @State private var canvasSize: CGSize = .zero
     @State private var background: CGImage?
+    /// This note's paper, kept beside its pages and shown over them.
+    @State private var paper: SketchPaper = .clean
     @State private var showDeletePageConfirm = false
 
     /// iPad and iPhone only: whether a finger draws, or only an Apple Pencil. Off means a hand
@@ -53,7 +55,16 @@ struct SketchCanvasView: View {
         .background(TaskStripTheme.bayBackground)
         .navigationTitle(pendingImage == nil ? "PAGE \(pageIndex + 1)/\(pageCount)" : "DRAG TO MOVE · PINCH TO RESIZE")
         .toolbar { toolbarContent }
-        .onAppear { reload(to: nil) }
+        .onAppear {
+            paper = store.paper(of: noteID)
+            reload(to: nil)
+        }
+        .onChange(of: paper) { _, chosen in
+            // A note with no pages yet has no folder to write into; the choice is written again
+            // when the first page is saved.
+            store.setPaper(chosen, of: noteID)
+            onChange()
+        }
         .confirmationDialog(
             "Delete this page?", isPresented: $showDeletePageConfirm, titleVisibility: .visible
         ) {
@@ -108,6 +119,9 @@ struct SketchCanvasView: View {
                     .resizable()
                     .frame(width: size.width, height: size.height)
             }
+
+            // Over the page that's already drawn, under the strokes still being drawn.
+            SketchPaperLayer(paper: paper, size: size)
 
             Canvas { context, _ in
                 for stroke in strokes + [currentStroke].compactMap({ $0 }) {
@@ -336,6 +350,8 @@ struct SketchCanvasView: View {
                     Label("Add page", systemImage: "doc.badge.plus")
                 }
 
+                SketchPaperPicker(paper: $paper)
+
                 #if os(iOS)
                 // A switch rather than a settings trip: which hand is drawing changes while you
                 // draw — Pencil for the diagram, finger for a quick scrawl.
@@ -415,6 +431,8 @@ struct SketchCanvasView: View {
         }
         try? store.write(png, to: target)
         store.stampCreatedIfMissing(noteID)
+        // The folder exists now, so a paper chosen on a blank note finally has somewhere to live.
+        store.setPaper(paper, of: noteID)
         strokes = []
         onChange()
     }

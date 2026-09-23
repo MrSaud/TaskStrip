@@ -88,6 +88,9 @@ enum CloudSchema {
         static let encrypted: Set = [name]
 
         static let createdAt = "createdAt"
+        /// Which paper it's drawn on (schema v1.1, added). An older device that doesn't know the
+        /// field leaves it alone and shows the note on plain paper.
+        static let paper = "paper"
     }
 
     enum SketchPage {

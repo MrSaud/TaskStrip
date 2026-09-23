@@ -609,6 +609,10 @@ final class BoardSync: ObservableObject {
             if let sketchName = record.encryptedValues[CloudSchema.Sketch.name] as? String {
                 sketches.setName(sketchName, of: name)
             }
+            if let paperName = record[CloudSchema.Sketch.paper] as? String,
+               let paper = SketchPaper(rawValue: paperName) {
+                sketches.setPaper(paper, of: name)
+            }
             if let created = record[CloudSchema.Sketch.createdAt] as? Date {
                 sketches.setCreated(created, of: name)
             }

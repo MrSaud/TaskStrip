@@ -8,6 +8,8 @@ struct SketchNote: Identifiable, Equatable {
     var pageCount: Int
     var lastModified: Date
     var createdAt: Date
+    /// The paper it's drawn on. Laid over the pages as they're shown, never baked into them.
+    var paper: SketchPaper = .clean
 
     /// What to call it in a list: its name if it has one, otherwise when it was last touched.
     /// Mirrors SketchStorage.displayLabel.
@@ -31,6 +33,7 @@ struct SketchStore {
 
     private static let nameFile = ".name"
     private static let createdFile = ".created"
+    private static let paperFile = ".paper"
 
     /// Android formats these with "dd MMM yyyy, HH:mm", and the two apps show the same sketch.
     private static let labelFormat: Date.FormatStyle = .dateTime
@@ -60,7 +63,8 @@ struct SketchStore {
             name: name(of: id),
             pageCount: pages.count,
             lastModified: lastModified(of: id),
-            createdAt: createdAt(of: id)
+            createdAt: createdAt(of: id),
+            paper: paper(of: id)
         )
     }
 
@@ -161,6 +165,31 @@ struct SketchStore {
         } else {
             try? FileManager.default.createDirectory(at: folder(of: id), withIntermediateDirectories: true)
             try? trimmed.write(to: url, atomically: true, encoding: .utf8)
+        }
+    }
+
+    // MARK: - Paper
+
+    /// Beside the name and the created stamp, and hidden for the same reason: it isn't a page.
+    /// An unknown or missing value is plain paper, which is what every note drawn before this
+    /// was on.
+    func paper(of id: String) -> SketchPaper {
+        let url = folder(of: id).appending(path: Self.paperFile)
+        guard let text = try? String(contentsOf: url, encoding: .utf8) else { return .clean }
+        return SketchPaper(rawValue: text.trimmingCharacters(in: .whitespacesAndNewlines)) ?? .clean
+    }
+
+    /// Only writes into a folder that already exists: a note is made by its first page, and
+    /// picking paper for one and then backing out shouldn't leave a folder behind. The canvas
+    /// writes the choice again as soon as it saves that first page.
+    func setPaper(_ paper: SketchPaper, of id: String) {
+        let folder = folder(of: id)
+        guard FileManager.default.fileExists(atPath: folder.path) else { return }
+        let url = folder.appending(path: Self.paperFile)
+        if paper == .clean {
+            try? FileManager.default.removeItem(at: url)
+        } else {
+            try? paper.rawValue.write(to: url, atomically: true, encoding: .utf8)
         }
     }
 

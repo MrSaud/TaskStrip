@@ -221,6 +221,7 @@ enum CloudRecordCoding {
         stamp(record)
         record.encryptedValues[CloudSchema.Sketch.name] = sketch.name
         record[CloudSchema.Sketch.createdAt] = sketch.createdAt
+        record[CloudSchema.Sketch.paper] = sketch.paper.rawValue
     }
 
     static func encodePage(sketch: String, number: Int, image: URL?, into record: CKRecord) {

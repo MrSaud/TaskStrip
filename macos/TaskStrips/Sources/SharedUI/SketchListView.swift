@@ -157,6 +157,14 @@ struct SketchListView: View {
                         .aspectRatio(contentMode: .fill)
                 }
             }
+            // The same paper the note opens on, so the list shows the note rather than a
+            // stranger's copy of it. Rules at this size would be a smudge, so only the tint.
+            .overlay {
+                if let tint = note.paper.tint {
+                    Color(red: tint.red, green: tint.green, blue: tint.blue)
+                        .blendMode(.multiply)
+                }
+            }
             .clipShape(RoundedRectangle(cornerRadius: 6))
     }
 
