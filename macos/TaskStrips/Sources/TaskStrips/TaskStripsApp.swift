@@ -90,6 +90,16 @@ struct TaskStripsApp: App {
         if ProcessInfo.processInfo.arguments.contains("-EraseBoardTestZone") {
             Task { await SchemaSeeder.eraseZone("BoardTest") { print($0); fflush(stdout) } }
         }
+        if let index = ProcessInfo.processInfo.arguments.firstIndex(of: "-RemoveListedRecords"),
+           index + 1 < ProcessInfo.processInfo.arguments.count {
+            let path = ProcessInfo.processInfo.arguments[index + 1]
+            let container = Self.sharedModelContainer
+            Task { @MainActor in
+                let removed = BoardSync.shared.removeItems(listedIn: URL(fileURLWithPath: path), container: container)
+                print("REPAIR removed \(removed) listed items")
+                fflush(stdout)
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("-RemoveLeakedTestItems") {
             let container = Self.sharedModelContainer
             Task { @MainActor in

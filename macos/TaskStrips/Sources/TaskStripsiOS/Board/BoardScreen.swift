@@ -463,7 +463,9 @@ private struct StripsPage: View {
 /// only into an empty store, so it can never mix with real strips.
 enum SampleBoard {
     static func seedIfAsked(into container: ModelContainer) {
-        guard ProcessInfo.processInfo.arguments.contains("-SeedSampleBoard") else { return }
+        // Only ever onto a sync test board. Sample strips seeded onto a real board in Phase 3 are
+        // how test data came to sit next to real strips, and from there into iCloud.
+        guard AppLaunch.isSyncTesting, ProcessInfo.processInfo.arguments.contains("-SeedSampleBoard") else { return }
         let context = ModelContext(container)
         guard ((try? context.fetchCount(FetchDescriptor<TaskItem>())) ?? 0) == 0 else { return }
         let samples: [(String, Priority, Int, [String])] = [

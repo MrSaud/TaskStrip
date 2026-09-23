@@ -747,6 +747,24 @@ final class BoardSync: ObservableObject {
     }
 
     #if DEBUG
+    /// Phase 6 repair: removes the items listed in a file of "type<TAB>recordName" lines, and lets
+    /// the sync carry the deletions to the other devices. Used to clear the sample strips and test
+    /// files that reached every device's real board through the zone leak.
+    func removeItems(listedIn file: URL, container: ModelContainer) -> Int {
+        guard let text = try? String(contentsOf: file, encoding: .utf8) else { return 0 }
+        let context = container.mainContext
+        var removed = 0
+        let lines = text.split(separator: "\n").map { $0.split(separator: "\t").map(String.init) }
+        // Children first: a strip's own delete takes its attachments with it.
+        let order = [CloudSchema.RecordType.attachment, CloudSchema.RecordType.sketchPage]
+        for parts in lines.sorted(by: { (order.contains($0[0]) ? 0 : 1) < (order.contains($1[0]) ? 0 : 1) }) where parts.count == 2 {
+            delete(parts[1], type: parts[0], in: context)
+            removed += 1
+        }
+        try? context.save()
+        return removed
+    }
+
     /// Phase 6 repair: removes from this board every item whose cached record came from another
     /// zone (the leak above), then drops the polluted bookkeeping. Returns the count by type.
     func removeItemsLeakedFromOtherZones(container: ModelContainer) -> [String: Int] {
