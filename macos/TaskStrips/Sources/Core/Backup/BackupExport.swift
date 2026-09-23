@@ -204,6 +204,29 @@ enum BackupExport {
                 return stretch
             }
         }
+        if !task.tallies.isEmpty {
+            object["tallies"] = task.tallies.map { tally -> [String: Any] in
+                var value: [String: Any] = [
+                    "id": tally.id.uuidString,
+                    "name": tally.name,
+                    // The unit as one string, so a backup stays readable and a new unit doesn't
+                    // need a new shape: "hours", "minutes", "count", "money:KWD", "custom:km".
+                    "unit": BackupExport.unitText(tally.unit),
+                    "entries": tally.entries.map { entry -> [String: Any] in
+                        var line: [String: Any] = [
+                            "id": entry.id.uuidString,
+                            "amount": entry.amount,
+                            "at": milliseconds(entry.at),
+                        ]
+                        if !entry.note.isEmpty { line["note"] = entry.note }
+                        if entry.fromTimer { line["fromTimer"] = true }
+                        return line
+                    },
+                ]
+                if let target = tally.target { value["target"] = target }
+                return value
+            }
+        }
         if !task.checklist.isEmpty {
             object["checklist"] = task.checklist.map { item -> [String: Any] in
                 var step: [String: Any] = ["id": item.id.uuidString, "text": item.text, "isDone": item.isDone]
@@ -300,5 +323,15 @@ enum BackupExport {
         utc.timeZone = TimeZone(identifier: "UTC") ?? .gmt
         guard let instant = utc.date(from: wallClock) else { return milliseconds(date) }
         return milliseconds(instant)
+    }
+    /// A unit as one string, and back again in BackupImport.
+    static func unitText(_ unit: TallyUnit) -> String {
+        switch unit {
+        case .minutes: return "minutes"
+        case .hours: return "hours"
+        case .count: return "count"
+        case .money(let currency): return "money:\(currency)"
+        case .custom(let name): return "custom:\(name)"
+        }
     }
 }

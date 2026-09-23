@@ -77,6 +77,7 @@ change to the board in one ordered stream.
 | `checklist` | Bytes (JSON) | E | added 2026-09-23: the strip's steps. When there are any they decide `progress`. |
 | `deferUntil` | Date | — | added 2026-09-23: the day the strip comes back onto the board. |
 | `sessions` | Bytes (JSON) | — | added 2026-09-23: stretches of time spent on the strip. Times rather than words, so not encrypted. |
+| `tallies` | Bytes (JSON) | E | added 2026-09-23: the strip's running totals — hours, money, anything counted — with their entries and targets. Encrypted: what somebody called a total and what they spent is as much their business as the strip's own words. |
 | `calendarEvent` | String | — | added 2026-09-23: the calendar event blocked out for the strip, by its external identifier so it means the same event on every device. |
 
 ### `Attachment` — a file on a strip
@@ -109,6 +110,7 @@ and isn't synced.
 | `checklist` | Bytes (JSON) | E | added 2026-09-23: the strip's steps. When there are any they decide `progress`. |
 | `deferUntil` | Date | — | added 2026-09-23: the day the strip comes back onto the board. |
 | `sessions` | Bytes (JSON) | — | added 2026-09-23: stretches of time spent on the strip. Times rather than words, so not encrypted. |
+| `tallies` | Bytes (JSON) | E | added 2026-09-23: the strip's running totals — hours, money, anything counted — with their entries and targets. Encrypted: what somebody called a total and what they spent is as much their business as the strip's own words. |
 | `calendarEvent` | String | — | added 2026-09-23: the calendar event blocked out for the strip, by its external identifier so it means the same event on every device. |
 
 ### `Note` — a quick note
@@ -120,6 +122,7 @@ and isn't synced.
 | `checklist` | Bytes (JSON) | E | added 2026-09-23: the strip's steps. When there are any they decide `progress`. |
 | `deferUntil` | Date | — | added 2026-09-23: the day the strip comes back onto the board. |
 | `sessions` | Bytes (JSON) | — | added 2026-09-23: stretches of time spent on the strip. Times rather than words, so not encrypted. |
+| `tallies` | Bytes (JSON) | E | added 2026-09-23: the strip's running totals — hours, money, anything counted — with their entries and targets. Encrypted: what somebody called a total and what they spent is as much their business as the strip's own words. |
 | `calendarEvent` | String | — | added 2026-09-23: the calendar event blocked out for the strip, by its external identifier so it means the same event on every device. |
 
 Sync Notes aren't a type of their own: they're folded into Notes (decided 2026-09-22), and
@@ -139,6 +142,7 @@ Android's Sync Note text arrives as an ordinary note in Phase 6.
 | `checklist` | Bytes (JSON) | E | added 2026-09-23: the strip's steps. When there are any they decide `progress`. |
 | `deferUntil` | Date | — | added 2026-09-23: the day the strip comes back onto the board. |
 | `sessions` | Bytes (JSON) | — | added 2026-09-23: stretches of time spent on the strip. Times rather than words, so not encrypted. |
+| `tallies` | Bytes (JSON) | E | added 2026-09-23: the strip's running totals — hours, money, anything counted — with their entries and targets. Encrypted: what somebody called a total and what they spent is as much their business as the strip's own words. |
 | `calendarEvent` | String | — | added 2026-09-23: the calendar event blocked out for the strip, by its external identifier so it means the same event on every device. |
 | `file` | Asset | | the file |
 
@@ -154,6 +158,7 @@ Android's Sync Note text arrives as an ordinary note in Phase 6.
 | `checklist` | Bytes (JSON) | E | added 2026-09-23: the strip's steps. When there are any they decide `progress`. |
 | `deferUntil` | Date | — | added 2026-09-23: the day the strip comes back onto the board. |
 | `sessions` | Bytes (JSON) | — | added 2026-09-23: stretches of time spent on the strip. Times rather than words, so not encrypted. |
+| `tallies` | Bytes (JSON) | E | added 2026-09-23: the strip's running totals — hours, money, anything counted — with their entries and targets. Encrypted: what somebody called a total and what they spent is as much their business as the strip's own words. |
 | `calendarEvent` | String | — | added 2026-09-23: the calendar event blocked out for the strip, by its external identifier so it means the same event on every device. |
 
 ### `Sketch` and `SketchPage`

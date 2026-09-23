@@ -50,6 +50,9 @@ enum CloudRecordCoding {
         record[K.repeatDays] = task.repeatIntervalDays.map(Int64.init)
         record[K.deferUntil] = task.deferUntil
         record[K.sessions] = json(task.sessions)
+        // Encrypted: a tally carries what somebody called it and what they spent, which is as
+        // much their business as the strip's own words.
+        record.encryptedValues[K.tallies] = json(task.tallies)
         record[K.calendarEvent] = task.calendarEventID
         record[K.createdAt] = task.createdAt
     }
@@ -83,6 +86,7 @@ enum CloudRecordCoding {
         task.repeatIntervalDays = (record[K.repeatDays] as? Int64).map(Int.init)
         task.deferUntil = record[K.deferUntil] as? Date
         if let v: [TaskWorkSession] = value(record[K.sessions]) { task.sessions = v }
+        if let v: [TaskTally] = value(record.encryptedValues[K.tallies]) { task.tallies = v }
         task.calendarEventID = record[K.calendarEvent] as? String
         if let v = record[K.createdAt] as? Date { task.createdAt = v }
     }

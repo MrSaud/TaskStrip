@@ -39,6 +39,7 @@ struct ImportedTask {
     var deferUntil: Date?
     var checklist: [TaskChecklistItem] = []
     var sessions: [TaskWorkSession] = []
+    var tallies: [TaskTally] = []
     var calendarEventID: String?
     var tags: [String] = []
     var contacts: [TaskContact] = []
@@ -261,6 +262,23 @@ enum BackupImport {
                 id: UUID(uuidString: stretch["id"] as? String ?? "") ?? UUID(),
                 startedAt: startedAt,
                 endedAt: dateValue(stretch, "endedAt")
+            )
+        }
+        task.tallies = ((object["tallies"] as? [[String: Any]]) ?? []).map { value in
+            TaskTally(
+                id: UUID(uuidString: value["id"] as? String ?? "") ?? UUID(),
+                name: value["name"] as? String ?? "",
+                unit: unit(from: value["unit"] as? String ?? "hours"),
+                entries: ((value["entries"] as? [[String: Any]]) ?? []).map { line in
+                    TaskTallyEntry(
+                        id: UUID(uuidString: line["id"] as? String ?? "") ?? UUID(),
+                        amount: (line["amount"] as? NSNumber)?.doubleValue ?? 0,
+                        at: dateValue(line, "at") ?? .now,
+                        note: line["note"] as? String ?? "",
+                        fromTimer: line["fromTimer"] as? Bool ?? false
+                    )
+                },
+                target: (value["target"] as? NSNumber)?.doubleValue
             )
         }
         task.checklist = ((object["checklist"] as? [[String: Any]]) ?? []).map { step in
@@ -549,6 +567,7 @@ enum BackupImport {
             item.deferUntil = imported.deferUntil
             item.checklist = imported.checklist
             item.sessions = imported.sessions
+            item.tallies = imported.tallies
             item.calendarEventID = imported.calendarEventID
             context.insert(item)
             created.append(item)
@@ -656,5 +675,19 @@ enum BackupImport {
         var local = Calendar(identifier: .gregorian)
         local.timeZone = timeZone
         return local.date(from: wallClock) ?? instant
+    }
+
+    /// The other half of BackupExport.unitText. Anything unrecognised is hours, which is what a
+    /// tally is most often counting and never loses the entries underneath it.
+    static func unit(from text: String) -> TallyUnit {
+        let pieces = text.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+        switch pieces.first.map(String.init) {
+        case "minutes": return .minutes
+        case "hours": return .hours
+        case "count": return .count
+        case "money": return .money(currency: pieces.count > 1 ? String(pieces[1]) : "")
+        case "custom": return .custom(pieces.count > 1 ? String(pieces[1]) : "")
+        default: return .hours
+        }
     }
 }

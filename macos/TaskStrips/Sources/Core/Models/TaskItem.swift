@@ -120,6 +120,9 @@ final class TaskItem: Identifiable {
     var calendarEventID: String?
     /// The time spent on this strip, one stretch at a time.
     var sessions: [TaskWorkSession] = []
+    /// Running totals kept on this strip: hours spent, money spent, anything that accumulates.
+    /// A strip owns its own and nothing adds them up across strips.
+    var tallies: [TaskTally] = []
     /// The steps this strip breaks into. When there are any, they decide its progress.
     var checklist: [TaskChecklistItem] = []
     /// Not before this: the strip is off the board until the day comes, then it's back on it.

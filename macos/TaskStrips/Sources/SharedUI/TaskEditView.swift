@@ -44,6 +44,7 @@ struct TaskEditView: View {
     @State private var showDeleteConfirm = false
     @State private var hasReminder: Bool
     @State private var reminderMinutesBefore: Int
+    @State private var tallies: [TaskTally]
     @State private var repeats: Bool
     @State private var repeatIntervalDays: Double
     @State private var reminderDenied = false
@@ -96,6 +97,7 @@ struct TaskEditView: View {
         _attachments = State(initialValue: editingTask?.attachments ?? [])
         _hasReminder = State(initialValue: editingTask?.reminderMinutesBefore != nil)
         _reminderMinutesBefore = State(initialValue: editingTask?.reminderMinutesBefore ?? 30)
+        _tallies = State(initialValue: editingTask?.tallies ?? [])
         _repeats = State(initialValue: editingTask?.repeatIntervalDays != nil)
         _repeatIntervalDays = State(initialValue: Double(editingTask?.repeatIntervalDays ?? 7))
         _blockedByID = State(initialValue: editingTask?.blockedByID)
@@ -313,6 +315,10 @@ struct TaskEditView: View {
                 )
             }
 
+            Section("TOTALS") {
+                TalliesSection(tallies: $tallies)
+            }
+
             Section("LINKED SKETCH") {
                 sketchLink
             }
@@ -447,6 +453,7 @@ struct TaskEditView: View {
         task.waitingOnName = waitingOnName
         task.waitingOnFollowUpDays = hasFollowUp ? Int(waitingOnFollowUpDays) : nil
         task.linkedSketchID = linkedSketchID
+        task.tallies = tallies
 
         if editingTask == nil {
             modelContext.insert(task)

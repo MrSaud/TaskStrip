@@ -78,6 +78,18 @@ struct TaskRowView: View {
                             .font(.system(.caption2, design: .monospaced))
                             .foregroundStyle(TaskStripTheme.paper.opacity(0.6))
                     }
+                    // What this strip has cost so far, in whatever it's counted in. On the row
+                    // because the whole point of keeping a total is seeing it without opening
+                    // anything — and in urgent where a target has been passed.
+                    if !StripTally.summary(task.tallies).isEmpty {
+                        Label(StripTally.summary(task.tallies), systemImage: "sum")
+                            .font(.system(.caption2, design: .monospaced))
+                            .foregroundStyle(
+                                task.tallies.contains(where: \.isOverTarget)
+                                    ? TaskStripTheme.urgent
+                                    : TaskStripTheme.paper.opacity(0.6)
+                            )
+                    }
                     if let steps = StripChecklist.summary(of: task.checklist) {
                         Label(steps, systemImage: "checklist")
                             .font(.system(.caption2, design: .monospaced))

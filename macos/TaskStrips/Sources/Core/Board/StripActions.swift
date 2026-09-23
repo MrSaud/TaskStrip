@@ -43,6 +43,9 @@ enum StripActions {
         if let entry = StripTime.logEntry(for: spent) {
             task.actionLog.append(TaskActionLogEntry(text: entry, timestamp: now))
         }
+        // And it goes into the strip's own total, so the clock is a way of entering a value
+        // rather than a second record of the same hours.
+        task.tallies = StripTally.recording(seconds: spent, in: task.tallies, at: now)
     }
 
     static func toggleTimer(on task: TaskItem, in all: [TaskItem], now: Date = .now) {
