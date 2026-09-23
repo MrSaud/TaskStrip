@@ -117,6 +117,16 @@ struct TaskStripsApp: App {
                 fflush(stdout)
             }
         }
+        if ProcessInfo.processInfo.arguments.contains("-OpenNewestMessage") {
+            Task { @MainActor in
+                try? await Task.sleep(for: .seconds(20))
+                for window in NSApplication.shared.windows where window.isVisible {
+                    print("WINDOW \(window.title.isEmpty ? "(sheet)" : window.title): "
+                          + "\(Int(window.frame.width))x\(Int(window.frame.height))")
+                }
+                fflush(stdout)
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("-EraseBoardTestZone") {
             Task { await SchemaSeeder.eraseZone("BoardTest") { print($0); fflush(stdout) } }
         }

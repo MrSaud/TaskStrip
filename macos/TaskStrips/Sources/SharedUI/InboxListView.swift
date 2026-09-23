@@ -34,6 +34,21 @@ struct InboxListView: View {
         .sheet(item: $reading) { message in
             MailMessageView(message: message)
         }
+        #if DEBUG
+        // `-OpenNewestMessage`, for checking how big the reader opens on a device or a simulator.
+        // With no account set up it opens on a made-up message, which still sizes the sheet.
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("-OpenNewestMessage") else { return }
+            for _ in 0..<15 {
+                if let first = reader.messages.first { reading = first; return }
+                try? await Task.sleep(for: .seconds(1))
+            }
+            reading = MailMessage(
+                id: "sample", subject: "A message, for measuring the window",
+                sender: "Someone <someone@example.com>", receivedAt: .now, isRead: false
+            )
+        }
+        #endif
     }
 
     private var header: some View {

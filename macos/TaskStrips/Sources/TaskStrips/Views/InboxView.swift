@@ -36,8 +36,18 @@ struct InboxView: View {
         .task { server.refresh() }
         .sheet(item: $reading) { message in
             MailMessageView(message: message)
-                .frame(minWidth: 520, minHeight: 520)
         }
+        #if DEBUG
+        // `-OpenNewestMessage`, for checking how big the reader actually opens without a hand on
+        // the trackpad.
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("-OpenNewestMessage") else { return }
+            for _ in 0..<20 {
+                if let first = everything.first { reading = first; return }
+                try? await Task.sleep(for: .seconds(1))
+            }
+        }
+        #endif
     }
 
     private var header: some View {

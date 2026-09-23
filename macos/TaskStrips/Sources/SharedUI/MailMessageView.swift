@@ -21,8 +21,13 @@ struct MailMessageView: View {
             Divider()
             content
         }
-        .frame(minWidth: 380, minHeight: 420)
+        // Big enough to read in: a message is paragraphs, not a form. A sheet on a Mac takes its
+        // width from the minimum rather than the ideal when its content stretches, which is why
+        // the minimum is the size worth opening at. On an iPad it asks for the page-sized sheet
+        // rather than the postcard a sheet gets by default.
+        .frame(minWidth: 820, idealWidth: 960, minHeight: 520, idealHeight: 760)
         .background(TaskStripTheme.bayBackground)
+        .pageSizedSheet()
         .task { await read() }
     }
 
@@ -31,10 +36,10 @@ struct MailMessageView: View {
             HStack(alignment: .top, spacing: 8) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(message.subject)
-                        .font(.headline)
+                        .font(.title3.weight(.semibold))
                         .textSelection(.enabled)
                     Text(message.sender)
-                        .font(.system(.caption, design: .monospaced))
+                        .font(.system(.footnote, design: .monospaced))
                         .foregroundStyle(TaskStripTheme.amber.opacity(0.9))
                         .textSelection(.enabled)
                     HStack(spacing: 6) {
@@ -43,7 +48,7 @@ struct MailMessageView: View {
                             Text("· \(account)")
                         }
                     }
-                    .font(.caption2)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
@@ -115,11 +120,15 @@ struct MailMessageView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     Text(loaded?.text.isEmpty == false ? loaded!.text : "This message has no text — only attachments.")
-                        .font(.callout)
+                        .font(.body)
+                        .lineSpacing(3)
                         .textSelection(.enabled)
+                        // Mail is written in lines meant to be read, not to be stretched across
+                        // a wide window; the text stops where reading gets uncomfortable.
+                        .frame(maxWidth: 760, alignment: .leading)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 16)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 18)
 
                     if let loaded, !loaded.attachments.isEmpty || loaded.isTruncated {
                         MailAttachmentsView(
@@ -127,8 +136,10 @@ struct MailMessageView: View {
                             isTruncated: loaded.isTruncated,
                             onFetchWholeMessage: { Task { await read(force: true, whole: true) } }
                         )
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 16)
+                        .frame(maxWidth: 760, alignment: .leading)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 20)
                     }
                 }
             }
@@ -160,5 +171,24 @@ struct MailMessageView: View {
             problem = failure
         }
         isReading = false
+    }
+}
+
+
+extension View {
+    /// The largest sheet each platform offers. An iPad's default sheet is a form sheet about the
+    /// size of a postcard, which is no way to read a message; iOS 18 can ask for a page-sized one
+    /// and earlier versions get the full height instead.
+    @ViewBuilder
+    func pageSizedSheet() -> some View {
+        #if os(iOS)
+        if #available(iOS 18.0, *) {
+            presentationSizing(.page)
+        } else {
+            presentationDetents([.large])
+        }
+        #else
+        self
+        #endif
     }
 }
