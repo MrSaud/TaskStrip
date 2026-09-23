@@ -10,12 +10,29 @@ struct BoardTemperature: View {
     @ObservedObject private var reader = BoardWeatherReader.shared
 
     var body: some View {
-        if let weather = reader.weather {
-            Label(weather.label(), systemImage: weather.symbol)
-                .font(.system(size: size, weight: .semibold, design: .monospaced))
-                .foregroundStyle(TaskStripTheme.amber)
-                .accessibilityLabel("\(weather.label()) outside")
+        Button {
+            // Tapping means now: a reading that never arrived is the only reason anyone taps it.
+            reader.refresh(force: true)
+        } label: {
+            if let weather = reader.weather {
+                Label(weather.label(), systemImage: weather.symbol)
+                    .foregroundStyle(TaskStripTheme.amber)
+                    .accessibilityLabel("\(weather.label()) outside. Tap to read it again.")
+            } else {
+                // Switched on and nothing to show yet: better a dash that can be tapped than a
+                // gap that looks like the setting did nothing.
+                Label("—°", systemImage: reader.state == .refused ? "location.slash" : "thermometer.medium")
+                    .foregroundStyle(TaskStripTheme.paper.opacity(0.4))
+                    .accessibilityLabel(
+                        reader.state == .refused
+                            ? "No temperature: Task Strips can't see where you are"
+                            : "Waiting for the temperature"
+                    )
+            }
         }
+        .buttonStyle(.plain)
+        .font(.system(size: size, weight: .semibold, design: .monospaced))
+        .help(reader.state == .refused ? "Location is off for Task Strips" : "The temperature where you are")
     }
 }
 

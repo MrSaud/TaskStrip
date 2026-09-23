@@ -253,6 +253,11 @@ struct BoardScreen: View {
                 }
             }
             .modifier(BoardBackup(isBackingUp: $isBackingUp, isRestoring: $isRestoring))
+            .onChange(of: showWeather) { _, wanted in
+                // Asked for while the board is open: the permission prompt should come now, not
+                // the next time the app starts.
+                if wanted { BoardWeatherReader.shared.refresh(force: true) }
+            }
             .modifier(SyncConfirmationAlert())
             // As on the Mac: the widget is handed a rendering, keyed on what it shows, so an edit
             // that changes nothing visible doesn't spend one of WidgetKit's reloads.

@@ -157,6 +157,11 @@ struct TaskListView: View {
             // The widget is handed a rendering rather than the data, so something has to hand it
             // over — this is that. Keyed on the snapshot itself, which compares only what the
             // widget shows, so an edit that changes nothing visible doesn't spend a reload.
+            .onChange(of: showWeather) { _, wanted in
+                // Asked for while the board is open: the permission prompt should come now, not
+                // the next time the app starts.
+                if wanted { BoardWeatherReader.shared.refresh(force: true) }
+            }
             .modifier(SyncConfirmationAlert())
             .task { WidgetPublisher.publish(tasks: allTasks, reminders: allReminders) }
             .onChange(of: WidgetPublisher.snapshot(tasks: allTasks, reminders: allReminders)) { _, _ in

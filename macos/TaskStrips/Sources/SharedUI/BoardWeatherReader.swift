@@ -23,6 +23,15 @@ final class BoardWeatherReader: NSObject, ObservableObject {
         weather = cache.last
     }
 
+    /// What's stopping a reading, if anything — so a board with nothing to show can say why
+    /// rather than showing nothing and looking broken.
+    enum State: Equatable {
+        case reading
+        case refused
+        case waiting
+        case unavailable
+    }
+
     var isAllowed: Bool {
         switch locations.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse: true
@@ -30,9 +39,19 @@ final class BoardWeatherReader: NSObject, ObservableObject {
         }
     }
 
-    /// Reads it again if what's cached has gone stale. Safe to call as often as the board likes.
-    func refresh(now: Date = .now) {
-        if let weather, weather.isFresh(now: now) { return }
+    var state: State {
+        switch locations.authorizationStatus {
+        case .denied, .restricted: return .refused
+        case .authorizedAlways, .authorizedWhenInUse: return weather == nil ? .waiting : .reading
+        default: return weather == nil ? .unavailable : .reading
+        }
+    }
+
+    /// Reads it again if what's cached has gone stale. Safe to call as often as the board likes;
+    /// `force` is for the person tapping it, who means now rather than when it suits.
+    func refresh(now: Date = .now, force: Bool = false) {
+        if !force, let weather, weather.isFresh(now: now) { return }
+        if force { asking = false }
         guard !asking else { return }
         asking = true
 

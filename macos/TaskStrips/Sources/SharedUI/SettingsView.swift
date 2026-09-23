@@ -148,6 +148,25 @@ struct SettingsView: View {
                     }
                 }
                 Toggle("Temperature beside the clock", isOn: $showWeather)
+                if showWeather {
+                    switch BoardWeatherReader.shared.state {
+                    case .reading:
+                        Label("Reading it", systemImage: "checkmark.circle")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    case .refused:
+                        Label(
+                            "Task Strips can't see where you are — \(Platform.settingsApp) can change that.",
+                            systemImage: "location.slash"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(TaskStripTheme.urgent)
+                    case .waiting, .unavailable:
+                        Label("Waiting for a location…", systemImage: "location")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             } footer: {
                 Text("Both calendars stack on a phone and sit on one line on a Mac. One calendar "
                      + "on its own reads larger. The clock keeps to the minute, digits or hands. "
