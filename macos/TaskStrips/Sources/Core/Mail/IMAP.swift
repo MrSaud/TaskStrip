@@ -97,7 +97,15 @@ enum IMAPCommand {
     /// newest are at the end.
     static func fetchNewest(tag: String, total: Int, count: Int) -> String {
         let from = max(total - count + 1, 1)
-        return "\(tag) FETCH \(from):\(total) (FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)])\r\n"
+        // The UID as well as the headers: a sequence number is only true until something is
+        // deleted, and the UID is what asking for the message itself later has to quote.
+        return "\(tag) FETCH \(from):\(total) (UID FLAGS BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID)])\r\n"
+    }
+
+    /// The whole message, up to a limit. PEEK again: opening a message in this app doesn't mark
+    /// it read on the server, the way opening it in a mail client would.
+    static func fetchBody(tag: String, uid: Int, limit: Int) -> String {
+        "\(tag) UID FETCH \(uid) (BODY.PEEK[]<0.\(limit)>)\r\n"
     }
 
     static func logout(tag: String) -> String { "\(tag) LOGOUT\r\n" }

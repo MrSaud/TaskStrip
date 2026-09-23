@@ -69,6 +69,7 @@ final class IMAPReader: ObservableObject {
                             return (account.name, .success(read.map {
                                 var message = $0
                                 message.account = account.name
+                                message.accountID = account.id
                                 return message
                             }))
                         } catch {
@@ -95,6 +96,34 @@ final class IMAPReader: ObservableObject {
                 }
                 problem = failures.isEmpty ? nil : failures.joined(separator: "\n")
             }
+        }
+    }
+
+    /// A message, or why it couldn't be read. Not `Result`: the failure here is a sentence for
+    /// someone to read, not an error to be thrown further.
+    enum Outcome {
+        case success(MailBody)
+        case failure(String)
+    }
+
+    /// The message itself, asked for when someone opens one.
+    ///
+    /// Not kept: a list of headers is small enough to cache, and a folder of everyone's mail on
+    /// disk is a different thing to be responsible for. Re-opening a message asks again.
+    func body(for message: MailMessage) async -> Outcome {
+        guard let accountID = message.accountID, let uid = message.uid,
+              let account = store.accounts.first(where: { $0.id == accountID })
+        else {
+            return .failure("This message was read before the app could ask for its text — refresh the inbox.")
+        }
+        guard let password = store.password(for: account) else {
+            return .failure("No password saved for \(account.name).")
+        }
+        do {
+            let body = try await IMAPConnection(account: account, password: password).fetchBody(uid: uid)
+            return .success(body)
+        } catch {
+            return .failure(error.localizedDescription)
         }
     }
 

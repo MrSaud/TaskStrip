@@ -5,8 +5,8 @@ import Network
 /// few headers, say goodbye.
 ///
 /// TLS from the first byte, on 993 — there is no plaintext path here and no falling back to one.
-/// It fetches headers only, with BODY.PEEK so nothing is marked read by being looked at, and it
-/// never asks for a message body: this is a list to glance at.
+/// Everything is asked for with BODY.PEEK, so nothing is marked read by being looked at, and
+/// nothing here moves, deletes or sends anything: it reads a list, and it reads a message.
 actor IMAPConnection {
     enum Failure: LocalizedError, Equatable {
         case couldNotConnect(String)
@@ -29,7 +29,10 @@ actor IMAPConnection {
     private var connection: NWConnection?
     private var tag = 0
     /// Everything read from the server that hasn't been matched to a command yet.
-    private var buffer = ""
+    ///
+    /// Bytes, not text: a chunk can end halfway through a character, and decoding each chunk as
+    /// it arrives turns those into question marks. It's decoded once, whole, at the end.
+    private var buffer = Data()
 
     init(account: IMAPAccount, password: String) {
         self.account = account
@@ -52,6 +55,26 @@ actor IMAPConnection {
         )
         _ = try? await send(IMAPCommand.logout(tag: nextTag()), failure: Failure.serverSaid)
         return MailInbox.newest(IMAPFetch.messages(from: fetch, now: now), count: count)
+    }
+
+    /// One message, as the person reading it wants it: the words, not the MIME.
+    ///
+    /// A connection of its own, opened and closed around the one fetch — the list's connection is
+    /// long gone by the time someone clicks a row.
+    func fetchBody(uid: Int, limit: Int = MailBodyParser.byteLimit) async throws -> MailBody {
+        try await connect()
+        defer { close() }
+
+        _ = try await waitForGreeting()
+        _ = try await send(IMAPCommand.login(tag: nextTag(), email: account.email, password: password), failure: Failure.refused)
+        _ = try await send(IMAPCommand.selectInbox(tag: nextTag()), failure: Failure.serverSaid)
+        let answer = try await sendForBytes(
+            IMAPCommand.fetchBody(tag: nextTag(), uid: uid, limit: limit), failure: Failure.serverSaid
+        )
+        _ = try? await send(IMAPCommand.logout(tag: nextTag()), failure: Failure.serverSaid)
+
+        guard let raw = IMAPFetch.literal(in: answer) else { throw Failure.serverSaid("no message came back") }
+        return MailBodyParser.read(raw, wasTruncated: raw.count >= limit)
     }
 
     // MARK: - The socket
@@ -95,6 +118,11 @@ actor IMAPConnection {
     /// Sends a command and reads until the line wearing its tag arrives.
     @discardableResult
     private func send(_ command: String, failure: @escaping (String) -> Failure) async throws -> String {
+        let answer = try await sendForBytes(command, failure: failure)
+        return String(data: answer, encoding: .utf8) ?? String(data: answer, encoding: .isoLatin1) ?? ""
+    }
+
+    private func sendForBytes(_ command: String, failure: @escaping (String) -> Failure) async throws -> Data {
         guard let connection else { throw Failure.silence }
         let tag = String(command.prefix(while: { $0 != " " }))
 
@@ -109,29 +137,32 @@ actor IMAPConnection {
         }
 
         while true {
-            if let outcome = IMAPResponse.completion(for: tag, in: buffer) {
+            // Latin-1 for the protocol chatter only: it maps every byte to a character without
+            // ever failing, so a tag can be found in a buffer that is half binary.
+            if let outcome = IMAPResponse.completion(for: tag, in: String(decoding: buffer, as: UTF8.self)) ??
+                IMAPResponse.completion(for: tag, in: String(data: buffer, encoding: .isoLatin1) ?? "") {
                 let answer = buffer
-                buffer = ""
+                buffer = Data()
                 switch outcome {
                 case .ok: return answer
                 case .no(let detail), .bad(let detail): throw failure(detail)
                 }
             }
-            buffer += try await receive()
+            buffer.append(try await receive())
         }
     }
 
     /// The server speaks first; its greeting is read before anything is asked of it.
     private func waitForGreeting() async throws -> String {
-        while !buffer.contains("\r\n") {
-            buffer += try await receive()
+        while buffer.range(of: Data("\r\n".utf8)) == nil {
+            buffer.append(try await receive())
         }
-        let greeting = buffer
-        buffer = ""
+        let greeting = String(decoding: buffer, as: UTF8.self)
+        buffer = Data()
         return greeting
     }
 
-    private func receive() async throws -> String {
+    private func receive() async throws -> Data {
         guard let connection else { throw Failure.silence }
         return try await withCheckedThrowingContinuation { continuation in
             connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { data, _, isComplete, error in
@@ -143,10 +174,7 @@ actor IMAPConnection {
                     continuation.resume(throwing: isComplete ? Failure.silence : Failure.silence)
                     return
                 }
-                // Headers can carry any encoding; anything that isn't valid UTF-8 is read as
-                // Latin-1 rather than dropped, since a mangled subject beats a missing message.
-                let text = String(data: data, encoding: .utf8) ?? String(decoding: data, as: UTF8.self)
-                continuation.resume(returning: text)
+                continuation.resume(returning: data)
             }
         }
     }

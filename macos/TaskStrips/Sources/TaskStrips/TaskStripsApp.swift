@@ -87,6 +87,29 @@ struct TaskStripsApp: App {
     init() {
         Self.movePasswordsToICloudKeychain()
         #if DEBUG
+        // Reads the newest message the way the reader does and prints the shape of what came
+        // back — how much, in what charset, how it decoded. Never the message itself: proving
+        // the plumbing works shouldn't mean printing someone's mail to a terminal.
+        if ProcessInfo.processInfo.arguments.contains("-CheckMessageReading") {
+            Task { @MainActor in
+                let reader = IMAPReader.shared
+                reader.refresh(force: true)
+                try? await Task.sleep(for: .seconds(12))
+                guard let newest = reader.messages.first else {
+                    print("READ-CHECK no messages"); fflush(stdout); return
+                }
+                print("READ-CHECK asking for uid \(newest.uid.map(String.init) ?? "—") of \(newest.account ?? "—")")
+                switch await reader.body(for: newest) {
+                case .success(let body):
+                    print("READ-CHECK ok: \(body.text.count) characters, \(body.text.split(separator: "\n").count) lines, "
+                          + "fromHTML \(body.fromHTML), truncated \(body.isTruncated), "
+                          + "non-ASCII \(body.text.unicodeScalars.contains { $0.value > 127 })")
+                case .failure(let problem):
+                    print("READ-CHECK failed: \(problem)")
+                }
+                fflush(stdout)
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("-EraseBoardTestZone") {
             Task { await SchemaSeeder.eraseZone("BoardTest") { print($0); fflush(stdout) } }
         }

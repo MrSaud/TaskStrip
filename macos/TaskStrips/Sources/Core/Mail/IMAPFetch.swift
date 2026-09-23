@@ -21,7 +21,9 @@ enum IMAPFetch {
                 continue
             }
 
-            let seen = body[..<brace.lowerBound].uppercased().contains("\\SEEN")
+            let attributes = body[..<brace.lowerBound]
+            let seen = attributes.uppercased().contains("\\SEEN")
+            let uid = self.uid(in: attributes)
             // The literal starts after the line break that follows the brace.
             let afterBrace = body[braceEnd.upperBound...]
             guard let newline = afterBrace.range(of: "\r\n") ?? afterBrace.range(of: "\n") else {
@@ -38,11 +40,35 @@ enum IMAPFetch {
                     subject: fields.subject.isEmpty ? "(no subject)" : fields.subject,
                     sender: fields.from,
                     receivedAt: fields.date ?? now,
-                    isRead: seen
+                    isRead: seen,
+                    uid: uid
                 )
             )
             rest = afterBrace[headerStart...].dropFirst(min(length, afterBrace[headerStart...].count))
         }
         return messages
+    }
+
+    /// `UID 43742` among the attributes, which is how the message is asked for later.
+    static func uid(in attributes: Substring) -> Int? {
+        guard let range = attributes.range(of: "UID ") else { return nil }
+        let digits = attributes[range.upperBound...].prefix { $0.isNumber }
+        return Int(digits)
+    }
+
+    /// The literal a body fetch answers with, as the bytes it arrived as.
+    ///
+    /// Bytes rather than text: a message body can be in any charset, and its own headers say
+    /// which. Decoding it as anything before reading those headers is how a message ends up as
+    /// question marks.
+    static func literal(in response: Data) -> Data? {
+        guard let brace = response.range(of: Data("{".utf8)),
+              let braceEnd = response[brace.upperBound...].range(of: Data("}".utf8)),
+              let count = Int(String(decoding: response[brace.upperBound..<braceEnd.lowerBound], as: UTF8.self)),
+              let newline = response[braceEnd.upperBound...].range(of: Data("\r\n".utf8))
+        else { return nil }
+        let start = newline.upperBound
+        let end = response.index(start, offsetBy: count, limitedBy: response.endIndex) ?? response.endIndex
+        return Data(response[start..<end])
     }
 }

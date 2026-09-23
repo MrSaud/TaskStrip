@@ -1,3 +1,4 @@
+import CoreFoundation
 import Foundation
 
 /// The headers of a message, as they arrive in a FETCH reply, turned into something to show.
@@ -108,12 +109,27 @@ enum IMAPHeaders {
             return nil
         }
         guard let bytes else { return nil }
+        return string(from: bytes, charset: charset)
+    }
+
+    /// Bytes as the charset they were written in. Shared with the body reader, which meets the
+    /// same handful of charsets a header does.
+    static func string(from bytes: Data, charset: String) -> String? {
         let encodingName = charset.lowercased()
         if encodingName.contains("utf-8") || encodingName.contains("utf8") {
-            return String(data: bytes, encoding: .utf8)
+            return String(data: bytes, encoding: .utf8) ?? String(data: bytes, encoding: .isoLatin1)
         }
         if encodingName.contains("1256") {   // Arabic Windows, which older mail still uses
             return String(data: bytes, encoding: .windowsCP1256)
+        }
+        if encodingName.contains("1252") {
+            return String(data: bytes, encoding: .windowsCP1252)
+        }
+        if encodingName.contains("8859-6") {   // Arabic ISO, which Foundation only names in CF
+            let arabic = CFStringConvertEncodingToNSStringEncoding(
+                CFStringEncoding(CFStringEncodings.isoLatinArabic.rawValue)
+            )
+            return String(data: bytes, encoding: String.Encoding(rawValue: arabic))
         }
         if encodingName.contains("8859-1") || encodingName.contains("latin") {
             return String(data: bytes, encoding: .isoLatin1)

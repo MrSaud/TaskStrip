@@ -12,6 +12,7 @@ struct InboxView: View {
 
     @AppStorage(AppSettingsKey.inboxAccount) private var account = ""
     @AppStorage(AppSettingsKey.inboxUnreadOnly) private var unreadOnly = false
+    @State private var reading: MailMessage?
 
     private var everything: [MailMessage] { server.messages }
 
@@ -33,6 +34,10 @@ struct InboxView: View {
         }
         .background(TaskStripTheme.bayBackground)
         .task { server.refresh() }
+        .sheet(item: $reading) { message in
+            MailMessageView(message: message)
+                .frame(minWidth: 520, minHeight: 520)
+        }
     }
 
     private var header: some View {
@@ -84,7 +89,7 @@ struct InboxView: View {
         List {
             ForEach(messages) { message in
                 Button {
-                    open(message)
+                    reading = message
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         HStack(spacing: 6) {
@@ -119,6 +124,8 @@ struct InboxView: View {
                 .buttonStyle(.plain)
                 .listRowBackground(Color.clear)
                 .contextMenu {
+                    Button("Read") { reading = message }
+                    // Only where Mail has the account too — the link is a Mail link.
                     Button("Open in Mail") { open(message) }
                     Button("Copy Link") {
                         if let link = message.link { Platform.copy(link) }

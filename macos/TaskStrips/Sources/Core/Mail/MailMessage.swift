@@ -13,6 +13,10 @@ struct MailMessage: Identifiable, Equatable, Codable {
     /// Which account it arrived on: the one that asked for it. Older cached lists have none,
     /// which is why it's optional rather than blank.
     var account: String?
+    /// The account's id and the message's UID in that account's inbox — between them, everything
+    /// needed to go back and ask the server for the message itself.
+    var accountID: UUID?
+    var uid: Int?
 
     /// The link that opens this message back in Mail.
     var link: String? {
@@ -21,6 +25,17 @@ struct MailMessage: Identifiable, Equatable, Codable {
             withAllowedCharacters: .alphanumerics.union(.init(charactersIn: "-._~@"))
         )
         return escaped.map { "message://\($0)" }
+    }
+
+    /// "ahmad@example.com" out of "Ahmad Alenezi <ahmad@example.com>", for a reply to be
+    /// addressed to. An address with no name around it is already the answer.
+    var senderAddress: String? {
+        if let open = sender.firstIndex(of: "<"), let close = sender[open...].firstIndex(of: ">") {
+            let address = sender[sender.index(after: open)..<close].trimmingCharacters(in: .whitespaces)
+            return address.contains("@") ? address : nil
+        }
+        let trimmed = sender.trimmingCharacters(in: .whitespaces)
+        return trimmed.contains("@") ? trimmed : nil
     }
 
     /// "Ahmad Alenezi" out of "Ahmad Alenezi <ahmad@example.com>", which is how Mail hands the

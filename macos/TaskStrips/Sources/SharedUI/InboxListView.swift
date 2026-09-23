@@ -12,6 +12,7 @@ struct InboxListView: View {
 
     @AppStorage(AppSettingsKey.inboxAccount) private var account = ""
     @AppStorage(AppSettingsKey.inboxUnreadOnly) private var unreadOnly = false
+    @State private var reading: MailMessage?
 
     /// The same narrowing the Mac's pane does, over the same list — the phone simply has one
     /// source feeding it rather than two.
@@ -30,6 +31,9 @@ struct InboxListView: View {
         }
         .background(TaskStripTheme.bayBackground)
         .task { reader.refresh() }
+        .sheet(item: $reading) { message in
+            MailMessageView(message: message)
+        }
     }
 
     private var header: some View {
@@ -74,35 +78,42 @@ struct InboxListView: View {
     private var list: some View {
         List {
             ForEach(messages) { message in
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack(spacing: 6) {
-                        if !message.isRead {
-                            Circle()
-                                .fill(TaskStripTheme.amber)
-                                .frame(width: 6, height: 6)
+                Button {
+                    reading = message
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            if !message.isRead {
+                                Circle()
+                                    .fill(TaskStripTheme.amber)
+                                    .frame(width: 6, height: 6)
+                            }
+                            Text(message.senderName)
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(TaskStripTheme.amber.opacity(0.9))
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                            Text(message.receivedAt.formatted(date: .abbreviated, time: .shortened))
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(.secondary)
                         }
-                        Text(message.senderName)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(TaskStripTheme.amber.opacity(0.9))
-                            .lineLimit(1)
-                        Spacer(minLength: 0)
-                        Text(message.receivedAt.formatted(date: .abbreviated, time: .shortened))
-                            .font(.system(.caption2, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                        Text(message.subject)
+                            .lineLimit(2)
+                            .fontWeight(message.isRead ? .regular : .semibold)
+                        if account.isEmpty, let name = message.account, !name.isEmpty {
+                            Text(name)
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
                     }
-                    Text(message.subject)
-                        .lineLimit(2)
-                        .fontWeight(message.isRead ? .regular : .semibold)
-                    if account.isEmpty, let name = message.account, !name.isEmpty {
-                        Text(name)
-                            .font(.system(.caption2, design: .monospaced))
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
                 .listRowBackground(Color.clear)
                 .contextMenu {
+                    Button("Read") { reading = message }
                     Button("Copy Subject") { Platform.copy(message.subject) }
                     if let link = message.link {
                         Button("Copy Link") { Platform.copy(link) }
