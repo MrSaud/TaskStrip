@@ -148,7 +148,7 @@ struct SketchListView: View {
         // the same picture it was before the edit as far as any cache can tell.
         let image = store.pages(of: note.id).first.flatMap { SketchRenderer.image(atPath: $0) }
         return Rectangle()
-            .fill(TaskStripTheme.paper)
+            .fill(TaskStripTheme.sketchPaper)
             .aspectRatio(1, contentMode: .fit)
             .overlay {
                 if let image {

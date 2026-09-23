@@ -166,7 +166,7 @@ struct SketchCanvasView: View {
             }
         }
         .frame(width: size.width, height: size.height)
-        .background(TaskStripTheme.paper)
+        .background(TaskStripTheme.sketchPaper)
         .contentShape(Rectangle())
         .overlay(alignment: .top) {
             if refusedFinger {

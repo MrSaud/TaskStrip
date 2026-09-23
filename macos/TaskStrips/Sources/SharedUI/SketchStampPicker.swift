@@ -76,10 +76,10 @@ struct SketchStampPicker: View {
                                 } label: {
                                     SketchStampLabel(stamp: stamp, ink: ink)
                                         .frame(width: 52, height: 52)
-                                        // Paper, not the sheet's own dark: an icon takes the ink
-                                        // it will be stamped in, and dark ink on a dark tile is
-                                        // a stamp you can't see until it's on the page.
-                                        .background(TaskStripTheme.paper, in: RoundedRectangle(cornerRadius: 8))
+                                        // The page's own paper, not the sheet's background: an
+                                        // icon takes the ink it will be stamped in, so it has to
+                                        // be shown on what it will be stamped on.
+                                        .background(TaskStripTheme.sketchPaper, in: RoundedRectangle(cornerRadius: 8))
                                 }
                                 .buttonStyle(.plain)
                                 .help(stamp.name)

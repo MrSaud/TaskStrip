@@ -77,6 +77,13 @@ enum TaskStripTheme {
     /// What sits on amber — the opposite of `paper`, so a lit chip always reads.
     static let ink = Color("Ink")
 
+    /// The sketch page's paper, which is a thing rather than a theme: cream in the dark and cream
+    /// in daylight, because the PNG a page is saved as is cream either way. Letting it follow the
+    /// theme made the page go dark in daylight while the saved picture stayed pale.
+    ///
+    /// Must match SketchRenderer.paper, which is what actually gets written to disk.
+    static let sketchPaper = Color(hex: 0xF4EFE1)
+
     /// The colours that mean something stay themselves in both, darkened a little in daylight so
     /// they hold their weight on pale paper.
     static let amber = Color("Amber")
