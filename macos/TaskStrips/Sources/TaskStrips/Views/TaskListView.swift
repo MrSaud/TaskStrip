@@ -50,6 +50,7 @@ struct TaskListView: View {
     @State private var isCapturingVoice = false
     @State private var showArchive = false
     @State private var showReview = false
+    @State private var showValues = false
     @State private var showStorage = false
     @State private var showCredentials = false
     @State private var showSketches = false
@@ -274,6 +275,9 @@ struct TaskListView: View {
                         onDeleted: {}
                     )
                 }
+            }
+            .sheet(isPresented: $showValues) {
+                ValueReportView(tasks: allTasks)
             }
             .sheet(isPresented: $showReview) {
                 WeeklyReviewView(tasks: activeTasks) { strip in
@@ -659,6 +663,14 @@ struct TaskListView: View {
                     Label("Archived Strips", systemImage: "archivebox")
                 }
                 .help("Archived Strips (⇧⌘R)")
+            }
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    showValues = true
+                } label: {
+                    Label("Hours and Costs", systemImage: "sum")
+                }
+                .help("What the board's hours and money add up to")
             }
             ToolbarItem(placement: .navigation) {
                 Button {

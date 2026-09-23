@@ -87,6 +87,7 @@ struct BoardScreen: View {
     @State private var page: Page = Page.atLaunch
     @ObservedObject private var documents = DocumentIndexer.shared
     @State private var showReview = false
+    @State private var showValues = false
 
     /// The order the panes sit in across the board, which is not the order they're declared in:
     /// the inbox reads better beside the strips than beyond the notes.
@@ -290,6 +291,9 @@ struct BoardScreen: View {
                     SketchCanvasView(noteID: sketch.id)
                 }
             }
+            .sheet(isPresented: $showValues) {
+                NavigationStack { ValueReportView(tasks: allTasks) }
+            }
             .sheet(isPresented: $showReview) {
                 NavigationStack {
                     WeeklyReviewView(tasks: allTasks) { strip in
@@ -484,6 +488,17 @@ struct BoardScreen: View {
                 } label: {
                     Label(item.title, systemImage: item.systemImage)
                 }
+            }
+            Divider()
+            Button {
+                showValues = true
+            } label: {
+                Label("Hours and Costs", systemImage: "sum")
+            }
+            Button {
+                showReview = true
+            } label: {
+                Label("The Week in Review", systemImage: "calendar.badge.clock")
             }
             Divider()
             Button {
