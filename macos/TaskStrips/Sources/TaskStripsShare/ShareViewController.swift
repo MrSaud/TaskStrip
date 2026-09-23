@@ -39,11 +39,17 @@ final class ShareModel: ObservableObject {
     @Published var files: [URL] = []
     @Published var tag = ""
     @Published var problem: String?
+    /// The strip this is being filed onto, or nil for a new one.
+    @Published var target: StripIndexEntry?
+    @Published var strips: [StripIndexEntry] = []
 
     private let items: [NSExtensionItem]
 
     init(items: [NSExtensionItem]) {
         self.items = items
+        // Written by the app whenever the board changes; if it isn't there, the only thing on
+        // offer is a new strip, which is what this always used to do.
+        strips = StripIndex.read()
     }
 
     /// Files win: a photo shared with a caption is a photo for the library, not a strip.
@@ -52,9 +58,10 @@ final class ShareModel: ObservableObject {
     var kind: SharedEntry.Kind { files.isEmpty || !links.isEmpty ? .strip : .files }
 
     var canFile: Bool {
+        if target != nil { return true }
         switch kind {
-        case .strip: !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        case .files: true
+        case .strip: return !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        case .files: return true
         }
     }
 
@@ -110,6 +117,8 @@ final class ShareModel: ObservableObject {
             title: title.trimmingCharacters(in: .whitespacesAndNewlines),
             notes: notes,
             contacts: contacts,
+            links: links,
+            targetStripID: target?.id,
             tag: tag.trimmingCharacters(in: .whitespacesAndNewlines)
         )
         do {
@@ -186,7 +195,38 @@ struct ShareSheetView: View {
             Form {
                 if model.isLoading {
                     ProgressView()
+                } else if let target = model.target {
+                    Section("Onto this strip") {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(target.title)
+                            if !target.tags.isEmpty {
+                                Text(target.tags.joined(separator: ", "))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Button("File as a new strip instead") { model.target = nil }
+                    }
+                    if !model.links.isEmpty {
+                        Section("What's being added") {
+                            ForEach(model.links, id: \.self) { link in
+                                Label(EmailLink.label(for: link), systemImage: "envelope")
+                            }
+                            ForEach(model.files, id: \.self) { file in
+                                Label(file.lastPathComponent, systemImage: "doc")
+                            }
+                        }
+                    }
                 } else if model.kind == .strip {
+                    if !model.strips.isEmpty {
+                        Section {
+                            NavigationLink {
+                                StripPickerView(strips: model.strips) { model.target = $0 }
+                            } label: {
+                                Label("File onto an existing strip…", systemImage: "tray.and.arrow.down")
+                            }
+                        }
+                    }
                     Section("New strip") {
                         TextField("Title", text: $model.title)
                         if !model.notes.isEmpty {
@@ -234,12 +274,53 @@ struct ShareSheetView: View {
                     Button("Cancel", action: onCancel)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(model.kind == .strip ? "File Strip" : "Add") {
+                    Button(model.target != nil ? "Add to Strip" : (model.kind == .strip ? "File Strip" : "Add")) {
                         if model.file() { onDone() }
                     }
                     .disabled(model.isLoading || !model.canFile)
                 }
             }
         }
+    }
+}
+
+/// The board, to choose from. A list of names is all the extension can have — it can't open the
+/// app's store — and for filing an email onto the right strip, a list of names is enough.
+private struct StripPickerView: View {
+    let strips: [StripIndexEntry]
+    let onPick: (StripIndexEntry) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var search = ""
+
+    private var shown: [StripIndexEntry] { StripIndex.matching(search, in: strips) }
+
+    var body: some View {
+        List {
+            if shown.isEmpty {
+                Text("No strip by that name.")
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(shown) { strip in
+                Button {
+                    onPick(strip)
+                    dismiss()
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(strip.title)
+                            .strikethrough(strip.isDone)
+                            .foregroundStyle(.primary)
+                        if !strip.tags.isEmpty {
+                            Text(strip.tags.joined(separator: ", "))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+        .searchable(text: $search, prompt: "Search strips")
+        .navigationTitle("Choose a strip")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

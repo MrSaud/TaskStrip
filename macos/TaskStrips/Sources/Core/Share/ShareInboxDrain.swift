@@ -33,6 +33,19 @@ enum ShareInboxDrain {
         var nextIndex = StripActions.nextOrderIndex(in: tasks)
 
         for (entry, folder) in ShareInbox.pending(root: root) {
+            // Shared onto a strip that already exists: the link, the files and anything written
+            // join it rather than starting something new.
+            if let id = entry.targetStripID, let strip = tasks.first(where: { $0.id == id }) {
+                apply(entry, in: folder, to: strip, store: store, filed: &filed)
+                do {
+                    try context.save()
+                    ShareInbox.remove(folder)
+                } catch {
+                    filed.failures += 1
+                }
+                continue
+            }
+
             switch entry.kind {
             case .strip:
                 let task = TaskItem(title: entry.title, orderIndex: nextIndex, priority: defaultPriority)
@@ -83,5 +96,51 @@ enum ShareInboxDrain {
             }
         }
         return filed
+    }
+
+    /// Adds what was shared to a strip that's already on the board.
+    private static func apply(
+        _ entry: SharedEntry,
+        in folder: URL,
+        to strip: TaskItem,
+        store: AttachmentStore,
+        filed: inout Filed
+    ) {
+        for address in entry.links where !strip.links.contains(where: { $0.url == address }) {
+            strip.links.append(
+                TaskLink(url: address, label: EmailLink.isMessage(address) ? entry.title : "")
+            )
+            strip.actionLog.append(TaskActionLogEntry(text: "Linked an email"))
+        }
+        for name in entry.fileNames {
+            let url = folder.appending(path: name)
+            guard let copy = try? store.add(
+                contentsOf: url, kind: AttachmentKind.inferred(fromExtension: url.pathExtension)
+            ) else {
+                filed.failures += 1
+                continue
+            }
+            strip.attachments.append(copy)
+        }
+        let notes = entry.notes.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !notes.isEmpty, !strip.notes.contains(notes) {
+            strip.notes = strip.notes.isEmpty ? notes : strip.notes + "\n\n" + notes
+        }
+        filed.strips += 1
+    }
+}
+
+extension StripIndexEntry {
+    /// The board as the share sheet needs to see it: what each strip is called, and enough to
+    /// find it again. Archived strips are left out — nothing is filed onto them.
+    static func board(_ tasks: [TaskItem]) -> [StripIndexEntry] {
+        tasks
+            .filter { !$0.isArchived && !$0.isTombstoned }
+            .map {
+                StripIndexEntry(
+                    id: $0.id, title: $0.title, tags: $0.tags,
+                    isDone: $0.isDone, orderIndex: $0.orderIndex
+                )
+            }
     }
 }

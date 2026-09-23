@@ -228,6 +228,8 @@ struct BoardScreen: View {
             // that changes nothing visible doesn't spend one of WidgetKit's reloads.
             .onChange(of: WidgetPublisher.snapshot(tasks: allTasks, reminders: allReminders), initial: true) {
                 WidgetPublisher.publish(tasks: allTasks, reminders: allReminders)
+                // The share sheet's list of strips to file an email onto.
+                StripIndex.write(StripIndexEntry.board(allTasks))
             }
             // Whatever the Share Extension left while the app was away.
             .onChange(of: scenePhase, initial: true) { _, phase in

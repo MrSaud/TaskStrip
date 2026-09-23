@@ -209,3 +209,126 @@ final class StripMailTests: XCTestCase {
         XCTAssertEqual(strip.links.first?.label, "The quote")
     }
 }
+
+/// The list of strips the share sheet offers, and what happens when something is filed onto one.
+final class StripIndexTests: XCTestCase {
+    private var root: URL!
+
+    override func setUpWithError() throws {
+        root = FileManager.default.temporaryDirectory.appending(path: "index-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    }
+
+    override func tearDownWithError() throws {
+        try? FileManager.default.removeItem(at: root)
+    }
+
+    private var file: URL { root.appending(path: "strips.json") }
+
+    private func entry(_ title: String, tags: [String] = [], done: Bool = false, order: Int = 0) -> StripIndexEntry {
+        StripIndexEntry(id: UUID(), title: title, tags: tags, isDone: done, orderIndex: order)
+    }
+
+    func testTheListSurvivesTheTripThroughTheAppGroup() {
+        let strips = [entry("Renew the passport", tags: ["HOME"], order: 1), entry("Quarterly report", order: 2)]
+        StripIndex.write(strips, to: file)
+        XCTAssertEqual(StripIndex.read(from: file), strips)
+    }
+
+    func testNoListAtAllIsAnEmptyList() {
+        XCTAssertTrue(StripIndex.read(from: root.appending(path: "nothing.json")).isEmpty)
+    }
+
+    func testStripsAreFoundByNameOrTagAndKeepTheBoardsOrder() {
+        let strips = [
+            entry("Quarterly report", tags: ["WORK"], order: 2),
+            entry("Renew the passport", tags: ["HOME"], order: 1),
+            entry("Book the dentist", tags: ["HEALTH"], done: true, order: 0),
+        ]
+        XCTAssertEqual(StripIndex.matching("", in: strips).map(\.title),
+                       ["Renew the passport", "Quarterly report", "Book the dentist"],
+                       "board order, and anything finished last")
+        XCTAssertEqual(StripIndex.matching("passport", in: strips).map(\.title), ["Renew the passport"])
+        XCTAssertEqual(StripIndex.matching("work", in: strips).map(\.title), ["Quarterly report"], "by tag")
+        XCTAssertTrue(StripIndex.matching("aubergine", in: strips).isEmpty)
+    }
+
+    func testOnlyTheStripsWorthFilingOntoAreOffered() throws {
+        let container = try ModelContainer(
+            for: Schema(BoardSchema.models),
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let context = ModelContext(container)
+        let live = TaskItem(title: "Live", orderIndex: 0)
+        let archived = TaskItem(title: "Archived", orderIndex: 1)
+        archived.isArchived = true
+        context.insert(live)
+        context.insert(archived)
+
+        let offered = StripIndexEntry.board([live, archived])
+        XCTAssertEqual(offered.map(\.title), ["Live"])
+    }
+}
+
+final class ShareOntoAStripTests: XCTestCase {
+    @MainActor
+    func testAnEmailSharedOntoAStripJoinsItRatherThanMakingANewOne() throws {
+        let container = try ModelContainer(
+            for: Schema(BoardSchema.models),
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let context = ModelContext(container)
+        let strip = TaskItem(title: "Renew the passport", orderIndex: 0)
+        context.insert(strip)
+
+        let root = FileManager.default.temporaryDirectory.appending(path: "share-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try ShareInbox.add(
+            SharedEntry(
+                kind: .strip,
+                title: "Your appointment is confirmed",
+                links: ["message:%3Cappt-9@mail.example.com%3E"],
+                targetStripID: strip.id
+            ),
+            files: [],
+            root: root
+        )
+
+        let filed = ShareInboxDrain.run(context: context, tasks: [strip], defaultPriority: .normal, root: root)
+        XCTAssertEqual(filed.strips, 1)
+        XCTAssertEqual(try context.fetch(FetchDescriptor<TaskItem>()).count, 1, "no second strip")
+        XCTAssertEqual(strip.links.first?.url, "message:%3Cappt-9@mail.example.com%3E")
+        XCTAssertEqual(strip.links.first?.label, "Your appointment is confirmed")
+        XCTAssertEqual(strip.actionLog.last?.text, "Linked an email")
+    }
+
+    /// The strip could have been deleted between sharing and opening the app. Nothing is lost:
+    /// it becomes a strip of its own.
+    @MainActor
+    func testAStripThatHasGoneFallsBackToANewOne() throws {
+        let container = try ModelContainer(
+            for: Schema(BoardSchema.models),
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+        )
+        let context = ModelContext(container)
+
+        let root = FileManager.default.temporaryDirectory.appending(path: "share-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try ShareInbox.add(
+            SharedEntry(
+                kind: .strip, title: "Orphan",
+                links: ["message:%3Cgone@mail.example.com%3E"], targetStripID: UUID()
+            ),
+            files: [], root: root
+        )
+
+        _ = ShareInboxDrain.run(context: context, tasks: [], defaultPriority: .normal, root: root)
+        let strips = try context.fetch(FetchDescriptor<TaskItem>())
+        XCTAssertEqual(strips.map(\.title), ["Orphan"])
+        XCTAssertEqual(strips.first?.links.count, 1)
+    }
+}
