@@ -4,6 +4,9 @@ import SwiftUI
 // paper-on-tray look, DUE/TAGS fields, progress track) — the v1 subset relevant to core tasks,
 // leaving out attachment/voice-note indicators since Storage isn't in scope yet.
 struct TaskRowView: View {
+    /// The file whose words brought this strip into a search, if that's why it's here.
+    var foundInFile: String?
+
     let task: TaskItem
     let blocker: TaskItem?
 
@@ -163,6 +166,15 @@ struct TaskRowView: View {
                         .font(.system(.caption, design: .monospaced))
                         .foregroundStyle(TaskStripTheme.paper.opacity(0.6))
                         .lineLimit(1)
+                }
+
+                // Why a strip nobody searched for by name is on screen.
+                if let foundInFile {
+                    Label("found in \(foundInFile)", systemImage: "doc.text.magnifyingglass")
+                        .font(.system(.caption2, design: .monospaced))
+                        .foregroundStyle(TaskStripTheme.amber.opacity(0.85))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
                 }
 
                 ZStack(alignment: .trailing) {

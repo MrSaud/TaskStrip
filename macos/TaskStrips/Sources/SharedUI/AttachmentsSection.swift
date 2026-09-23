@@ -37,6 +37,7 @@ struct AttachmentsSection: View {
                 DocumentDatesView(
                     title: attachment.name,
                     url: store.url(for: attachment),
+                    attachment: attachment,
                     onUse: onDateFound
                 )
             }

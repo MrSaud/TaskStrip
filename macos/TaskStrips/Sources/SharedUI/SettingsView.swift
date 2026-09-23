@@ -71,6 +71,7 @@ enum PasswordMoveStatus {
 /// The cmd-, window. Deliberately small: only settings that change something the app already
 /// does, rather than a page of switches invented to fill it.
 struct SettingsView: View {
+    @ObservedObject private var documents = DocumentIndexer.shared
     @AppStorage(AppSettingsKey.defaultPriority) private var defaultPriority = Priority.normal
     @AppStorage(AppSettingsKey.defaultNotesRtl) private var defaultNotesRtl = false
     @AppStorage(AppSettingsKey.confirmBeforeDelete) private var confirmBeforeDelete = true
@@ -101,6 +102,23 @@ struct SettingsView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
+            Section {
+                LabeledContent("Files read", value: "\(documents.readCount)")
+                if documents.waiting > 0 {
+                    LabeledContent("Still to read", value: "\(documents.waiting)")
+                }
+                Button("Read them all again") { documents.forget() }
+            } header: {
+                Text("Searching documents")
+            } footer: {
+                Text("The words in the files on your strips are read on this device — printed text "
+                     + "straight from a PDF, anything else through the camera's own text "
+                     + "recognition — so a search finds an invoice by its number. Nothing is sent "
+                     + "anywhere, and a few files are read at a time while the board is open.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
             Section("New strips") {
                 Picker("Priority", selection: $defaultPriority) {
                     ForEach(Priority.allCases) { priority in

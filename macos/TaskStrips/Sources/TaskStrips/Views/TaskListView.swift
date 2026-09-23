@@ -60,6 +60,8 @@ struct TaskListView: View {
     @State private var showDrive = false
     @State private var progress: BackupProgress?
     @ObservedObject private var reader = SpeechReader.shared
+    /// The files on the board, read in the background so a search can reach inside them.
+    @ObservedObject private var documents = DocumentIndexer.shared
     @State private var selectedTaskID: TaskItem.ID?
     @State private var pendingDeletion: TaskItem?
 
@@ -98,11 +100,22 @@ struct TaskListView: View {
         )
     }
 
+    /// Which strips turned up because of what's inside a file on them, and which file it was.
+    private var documentMatches: [UUID: String] {
+        documents.matches(for: filter.trimmedSearch, in: activeTasks)
+    }
+
     private var filtered: [TaskItem] {
-        filter.apply(to: activeTasks)
+        filter.apply(to: activeTasks, foundInFiles: Set(documentMatches.keys))
     }
 
     private var canReorder: Bool { filter.allowsReordering }
+
+    /// Reads whatever's new, a few files at a time. Called when the board appears and whenever
+    /// its files change, so an attachment added today is searchable today.
+    private func readDocuments() {
+        documents.refresh(for: activeTasks)
+    }
 
     private func blocker(for task: TaskItem) -> TaskItem? {
         StripActions.blocker(for: task, in: allTasks)
@@ -168,6 +181,8 @@ struct TaskListView: View {
             }
             .modifier(SyncConfirmationAlert())
             .task { WidgetPublisher.publish(tasks: allTasks, reminders: allReminders) }
+            .task { readDocuments() }
+            .onChange(of: allTasks.map(\.attachments.count)) { _, _ in readDocuments() }
             .onChange(of: WidgetPublisher.snapshot(tasks: allTasks, reminders: allReminders)) { _, _ in
                 WidgetPublisher.publish(tasks: allTasks, reminders: allReminders)
             }
@@ -492,7 +507,7 @@ struct TaskListView: View {
 
     @ViewBuilder
     private func row(for task: TaskItem) -> some View {
-        TaskRowView(task: task, blocker: blocker(for: task))
+        TaskRowView(foundInFile: documentMatches[task.id], task: task, blocker: blocker(for: task))
             // Now that the List carries a selection, rows follow the Mac convention: one click
             // picks the strip — which is what lights up the Strip menu — and two open it. 991191a
             // wrapped the row in a Button because a bare .onTapGesture wouldn't reliably open the

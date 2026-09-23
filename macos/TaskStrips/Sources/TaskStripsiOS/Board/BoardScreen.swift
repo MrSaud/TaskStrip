@@ -85,6 +85,7 @@ struct BoardScreen: View {
     @State private var now = Date.now
 
     @State private var page: Page = Page.atLaunch
+    @ObservedObject private var documents = DocumentIndexer.shared
 
     /// The order the panes sit in across the board, which is not the order they're declared in:
     /// the inbox reads better beside the strips than beyond the notes.
@@ -254,6 +255,8 @@ struct BoardScreen: View {
             // Stuck to the bottom: the three things worth starting without thinking, where a
             // thumb already is. It rides above the keyboard and the search field rather than
             // scrolling away with the board.
+            .task { documents.refresh(for: allTasks) }
+            .onChange(of: allTasks.map(\.attachments.count)) { _, _ in documents.refresh(for: allTasks) }
             .safeAreaInset(edge: .bottom, spacing: 0) { quickActions }
             .navigationTitle("Task Strips")
             .navigationBarTitleDisplayMode(.inline)
@@ -565,8 +568,15 @@ private struct StripsPage: View {
     @State private var blockedBy: TaskItem?
     @State private var pendingArchive: TaskItem?
     @State private var pendingDeletion: TaskItem?
+    /// The board's files, read in the background so a search can reach inside them.
+    @ObservedObject private var documents = DocumentIndexer.shared
 
-    private var visible: [TaskItem] { filter.apply(to: strips) }
+    /// Which strips turned up because of what's inside a file on them, and which file it was.
+    private var documentMatches: [UUID: String] {
+        documents.matches(for: filter.trimmedSearch, in: strips)
+    }
+
+    private var visible: [TaskItem] { filter.apply(to: strips, foundInFiles: Set(documentMatches.keys)) }
     private var active: [TaskItem] { visible.filter { !$0.isDone } }
     private var completed: [TaskItem] { visible.filter(\.isDone) }
 
@@ -677,7 +687,11 @@ private struct StripsPage: View {
     }
 
     private func row(_ strip: TaskItem) -> some View {
-        TaskRowView(task: strip, blocker: StripActions.blocker(for: strip, in: allTasks))
+        TaskRowView(
+            foundInFile: documentMatches[strip.id],
+            task: strip,
+            blocker: StripActions.blocker(for: strip, in: allTasks)
+        )
             .contentShape(Rectangle())
             // Behind the row, as on the Mac: a message dragged from Mail on an iPad is linked to
             // the strip, a file is attached to it.

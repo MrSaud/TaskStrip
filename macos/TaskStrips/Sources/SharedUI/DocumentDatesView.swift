@@ -9,6 +9,9 @@ import SwiftUI
 struct DocumentDatesView: View {
     let title: String
     let url: URL
+    /// The attachment this came from, where there is one, so the words read here can be kept for
+    /// searching instead of being read again later.
+    var attachment: TaskAttachment?
     /// Called with the date to put on the strip — as a due date, or as a reminder.
     let onUse: (FoundDate, Use) -> Void
 
@@ -171,6 +174,7 @@ struct DocumentDatesView: View {
         do {
             let text = try await DocumentTextReader.text(of: url)
             found = DocumentDates.find(in: text)
+            if let attachment { DocumentIndexer.shared.remember(text, for: attachment) }
         } catch {
             problem = error.localizedDescription
         }

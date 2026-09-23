@@ -54,8 +54,15 @@ struct BoardFilter: Equatable {
         self = BoardFilter(search: search, sort: sort)
     }
 
-    func apply(to tasks: [TaskItem], now: Date = .now, calendar: Calendar = .current) -> [TaskItem] {
-        var result = tasks.filter { matches($0, now: now, calendar: calendar) }
+    /// `foundInFiles` is the strips whose attachments answer the search — worked out by whatever
+    /// holds the document index, since a filter shouldn't know how to read a PDF.
+    func apply(
+        to tasks: [TaskItem],
+        now: Date = .now,
+        calendar: Calendar = .current,
+        foundInFiles: Set<UUID> = []
+    ) -> [TaskItem] {
+        var result = tasks.filter { matches($0, now: now, calendar: calendar, foundInFiles: foundInFiles) }
         switch sort {
         case .manual: break
         case .progressAscending: result.sort { $0.progress < $1.progress }
@@ -64,7 +71,7 @@ struct BoardFilter: Equatable {
         return result
     }
 
-    private func matches(_ task: TaskItem, now: Date, calendar: Calendar) -> Bool {
+    private func matches(_ task: TaskItem, now: Date, calendar: Calendar, foundInFiles: Set<UUID> = []) -> Bool {
         // A strip waiting for its day is off the board, unless someone asked to see them —
         // except once it's searched for by name, when hiding it would look like losing it.
         if !showsDeferred, trimmedSearch.isEmpty,
@@ -77,7 +84,10 @@ struct BoardFilter: Equatable {
             let inTitle = task.title.localizedCaseInsensitiveContains(query)
             let inNotes = task.notes.localizedCaseInsensitiveContains(query)
             let inTags = task.tags.contains { $0.localizedCaseInsensitiveContains(query) }
-            guard inTitle || inNotes || inTags else { return false }
+            // And in the words of the files on it: the invoice number is in the invoice, not in
+            // whatever somebody thought to type in the title.
+            let inFiles = foundInFiles.contains(task.id)
+            guard inTitle || inNotes || inTags || inFiles else { return false }
         }
         if let tag, !task.tags.contains(where: { $0.caseInsensitiveCompare(tag) == .orderedSame }) { return false }
         if !priorities.isEmpty, !priorities.contains(task.priority) { return false }
