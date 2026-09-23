@@ -71,10 +71,13 @@ struct MailMessageView: View {
                 }
                 Spacer(minLength: 0)
                 Button("Done") { dismiss() }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
             }
 
-            HStack(spacing: 12) {
+            // Buttons big enough to hit with a thumb: these are the things anyone actually does
+            // with a message, and they were caption-sized text links.
+            HStack(spacing: 10) {
                 if message.senderAddress != nil {
                     Button {
                         replying = MailDraft.reply(
@@ -86,7 +89,8 @@ struct MailMessageView: View {
                     } label: {
                         Label("Reply", systemImage: "arrowshape.turn.up.left")
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
                     .disabled(sendingAccount == nil)
                     .help(sendingAccount == nil ? "Add a mail account to reply" : "Reply to this message")
                 }
@@ -96,7 +100,8 @@ struct MailMessageView: View {
                     } label: {
                         Label("Copy Text", systemImage: "doc.on.doc")
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
                 }
                 // A picture of the message, opened in the sketch canvas: highlight the line that
                 // matters, ring the number that's wrong, and the marked-up page is a sketch note
@@ -107,17 +112,18 @@ struct MailMessageView: View {
                     } label: {
                         Label("Mark Up", systemImage: "highlighter")
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.bordered)
+                    .controlSize(.large)
                     .help("Take a picture of this message and draw on it")
                 }
                 Spacer(minLength: 0)
                 if loaded?.fromHTML == true {
                     Label("from the HTML version", systemImage: "chevron.left.forwardslash.chevron.right")
-                        .font(.caption2)
+                        .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
             }
-            .font(.caption)
+            .font(.callout)
         }
         .padding(14)
         .background(TaskStripTheme.baySurfaceFaded)

@@ -43,7 +43,7 @@ struct InboxFilterMenu: View {
             }
         } label: {
             Image(systemName: isNarrowed ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                .font(.caption)
+                .font(.title3)
         }
         .menuStyle(.borderlessButton)
         .fixedSize()

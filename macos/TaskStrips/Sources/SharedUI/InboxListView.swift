@@ -83,7 +83,8 @@ struct InboxListView: View {
                     )
                 } label: {
                     Image(systemName: "square.and.pencil")
-                        .font(.caption)
+                        .font(.title3)
+                        .padding(.horizontal, 2)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Write a message")
@@ -99,7 +100,9 @@ struct InboxListView: View {
                 Button {
                     reader.refresh(force: true)
                 } label: {
-                    Image(systemName: "arrow.clockwise").font(.caption)
+                    Image(systemName: "arrow.clockwise")
+                        .font(.title3)
+                        .padding(.horizontal, 2)
                 }
                 .buttonStyle(.plain)
             }

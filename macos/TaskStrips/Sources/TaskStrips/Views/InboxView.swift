@@ -82,7 +82,8 @@ struct InboxView: View {
                     )
                 } label: {
                     Image(systemName: "square.and.pencil")
-                        .font(.caption)
+                        .font(.title3)
+                        .padding(.horizontal, 2)
                 }
                 .buttonStyle(.plain)
                 .help("Write a message")
@@ -100,7 +101,8 @@ struct InboxView: View {
                     refresh()
                 } label: {
                     Image(systemName: "arrow.clockwise")
-                        .font(.caption)
+                        .font(.title3)
+                        .padding(.horizontal, 2)
                 }
                 .buttonStyle(.plain)
                 .help("Ask the servers again")

@@ -70,16 +70,18 @@ struct MailComposeView: View {
     private var header: some View {
         HStack(alignment: .firstTextBaseline) {
             Text(draft.inReplyTo == nil ? "NEW MESSAGE" : "REPLY")
-                .font(.caption.weight(.semibold))
+                .font(.subheadline.weight(.semibold))
                 .foregroundStyle(TaskStripTheme.amber)
             Spacer(minLength: 0)
             Button("Cancel") { dismiss() }
-                .buttonStyle(.borderless)
+                .buttonStyle(.bordered)
+                .controlSize(.large)
             if isSending {
                 ProgressView().controlSize(.small)
             } else {
                 Button("Send") { confirming = true }
                     .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
                     .disabled(!readyDraft.isSendable || account == nil)
             }
         }

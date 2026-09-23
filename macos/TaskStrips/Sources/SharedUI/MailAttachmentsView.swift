@@ -94,6 +94,10 @@ struct MailAttachmentsView: View {
                 saving = attachment
             } label: {
                 Image(systemName: "square.and.arrow.down")
+                    .font(.title3)
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 6)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
             .help("Save this file")
@@ -111,6 +115,10 @@ struct MailAttachmentsView: View {
                 }
             } label: {
                 Image(systemName: "tray.and.arrow.down")
+                    .font(.title3)
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 6)
+                    .contentShape(Rectangle())
             }
             .menuStyle(.borderlessButton)
             .fixedSize()
