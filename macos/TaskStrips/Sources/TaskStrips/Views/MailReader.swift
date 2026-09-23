@@ -69,12 +69,15 @@ final class MailReader: ObservableObject {
             if total is 0 then return ""
             set startAt to total - \(MailInbox.askFor - 1)
             if startAt < 1 then set startAt to 1
-            set slice to messages startAt thru total of box
-            set theIDs to message id of slice
-            set theSubjects to subject of slice
-            set theSenders to sender of slice
-            set theDates to date received of slice
-            set theReads to read status of slice
+            -- The range is asked for five times rather than held in a variable: a variable holds
+            -- a list of references, and Mail won't read a property off one of those ("Can't get
+            -- message id of {message id 43742 of mailbox…}"). Asked as a range it answers with a
+            -- list of values, which is the whole point of asking in bulk.
+            set theIDs to message id of (messages startAt thru total of box)
+            set theSubjects to subject of (messages startAt thru total of box)
+            set theSenders to sender of (messages startAt thru total of box)
+            set theDates to date received of (messages startAt thru total of box)
+            set theReads to read status of (messages startAt thru total of box)
         end tell
     end timeout
 
@@ -150,7 +153,16 @@ final class MailReader: ObservableObject {
                     } else if busy {
                         message = "Mail is too busy to answer — it's often downloading. Try again in a moment."
                     } else {
-                        message = "Mail didn't answer. Is it running?"
+                        // Whatever else went wrong, say what Mail actually said: an integration
+                        // that fails with a shrug is one nobody can fix.
+                        let reason = problem
+                            .split(separator: "\n")
+                            .last
+                            .map { String($0).trimmingCharacters(in: .whitespaces) } ?? ""
+                        // Trimmed: AppleScript errors can carry a list of every message it
+                        // stumbled over, and a pane is not a log.
+                        let short = reason.count > 160 ? String(reason.prefix(160)) + "…" : reason
+                        message = short.isEmpty ? "Mail didn't answer. Is it running?" : "Mail said: \(short)"
                     }
                     continuation.resume(returning: .failure(message))
                     return
