@@ -29,6 +29,8 @@ struct SketchCanvasView: View {
     /// This note's paper, kept beside its pages and shown over them.
     @State private var paper: SketchPaper = .clean
     @State private var showDeletePageConfirm = false
+    /// Asked before closing a page with strokes on it that haven't been saved.
+    @State private var showCloseConfirm = false
 
     /// iPad and iPhone only: whether a finger draws, or only an Apple Pencil. Off means a hand
     /// resting on the page leaves nothing behind, which is what palm rejection amounts to here.
@@ -64,6 +66,21 @@ struct SketchCanvasView: View {
             // when the first page is saved.
             store.setPaper(chosen, of: noteID)
             onChange()
+        }
+        .confirmationDialog(
+            "Close without saving?", isPresented: $showCloseConfirm, titleVisibility: .visible
+        ) {
+            Button("Save and Close") {
+                persistCurrentPage()
+                dismiss()
+            }
+            Button("Discard Drawing", role: .destructive) {
+                strokes = []
+                dismiss()
+            }
+            Button("Keep Drawing", role: .cancel) {}
+        } message: {
+            Text("This page has strokes that haven't been saved yet.")
         }
         .confirmationDialog(
             "Delete this page?", isPresented: $showDeletePageConfirm, titleVisibility: .visible
@@ -282,6 +299,10 @@ struct SketchCanvasView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(width == .fine ? "Fine pen" : "Bold pen")
             }
+
+            Divider().frame(height: 24)
+
+            SketchPaperPicker(paper: $paper)
         }
         .padding(.vertical, 10)
         .frame(maxWidth: .infinity)
@@ -301,6 +322,13 @@ struct SketchCanvasView: View {
                 Button("Place Image") { confirmImagePlacement() }
             }
         } else {
+            // The way out, before anything else: a sheet with only a Save is a sheet you can't
+            // leave without saving, and on a Mac there's no back button to fall back on.
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Close") { close() }
+                    .keyboardShortcut(.escape, modifiers: [])
+            }
+
             ToolbarItemGroup {
                 Button {
                     goToPage(pageIndex - 1)
@@ -350,8 +378,6 @@ struct SketchCanvasView: View {
                     Label("Add page", systemImage: "doc.badge.plus")
                 }
 
-                SketchPaperPicker(paper: $paper)
-
                 #if os(iOS)
                 // A switch rather than a settings trip: which hand is drawing changes while you
                 // draw — Pencil for the diagram, finger for a quick scrawl.
@@ -384,6 +410,16 @@ struct SketchCanvasView: View {
                 }
             }
             #endif
+        }
+    }
+
+    /// Leaves the page. Strokes that haven't been saved are worth a question — they're this
+    /// sitting's work, and nothing else is holding them.
+    private func close() {
+        if strokes.isEmpty {
+            dismiss()
+        } else {
+            showCloseConfirm = true
         }
     }
 

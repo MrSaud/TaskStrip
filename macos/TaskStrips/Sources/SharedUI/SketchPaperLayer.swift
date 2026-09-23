@@ -64,8 +64,10 @@ struct SketchPaperLayer: View {
     }
 }
 
-/// The paper this note is on, as a menu of samples. Each one shows what it does rather than
-/// naming a colour the person then has to picture.
+/// The paper this note is on, picked from beside the pens.
+///
+/// It sits in the palette rather than the toolbar because a Mac sheet's toolbar quietly dropped
+/// it — twice, as a Menu and as a Picker — and because paper belongs with the ink anyway.
 struct SketchPaperPicker: View {
     @Binding var paper: SketchPaper
 
@@ -78,7 +80,21 @@ struct SketchPaperPicker: View {
             }
             .pickerStyle(.inline)
         } label: {
-            Label("Paper: \(paper.title)", systemImage: "doc.plaintext")
+            HStack(spacing: 5) {
+                Image(systemName: "doc.plaintext")
+                Text(paper.title)
+                    .lineLimit(1)
+            }
+            .font(.caption)
+            .foregroundStyle(TaskStripTheme.paper)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 5)
+            .background(TaskStripTheme.bayBackground, in: Capsule())
         }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
+        .help("The paper this note is drawn on")
+        .accessibilityLabel("Paper: \(paper.title)")
     }
 }
