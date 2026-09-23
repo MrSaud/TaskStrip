@@ -16,6 +16,12 @@ final class MailReader: ObservableObject {
     @Published private(set) var problem: String?
     @Published private(set) var isReading = false
     private var lastRead: Date?
+    private let cache = MailInboxCache()
+
+    private init() {
+        // What it last saw, so the pane opens with something rather than a spinner.
+        messages = cache.messages
+    }
 
     /// Mail is asked at most this often; the pane may ask whenever it likes.
     static let freshFor: TimeInterval = 5 * 60
@@ -37,9 +43,15 @@ final class MailReader: ObservableObject {
                 isReading = false
                 switch outcome {
                 case .success(let text):
-                    messages = MailInbox.newest(MailInbox.parse(text))
+                    let read = MailInbox.newest(MailInbox.parse(text))
+                    if !read.isEmpty {
+                        messages = read
+                        cache.messages = read
+                    }
                     problem = messages.isEmpty ? "Nothing in the inbox." : nil
                 case .failure(let message):
+                    // A list already on screen beats an apology: the failure is only shown when
+                    // there's nothing to show instead.
                     problem = message
                 }
             }
@@ -93,18 +105,21 @@ final class MailReader: ObservableObject {
 
     /// What Mail is given to answer in, and a little longer before the process is pulled out from
     /// under it.
-    private static let scriptTimeout: TimeInterval = 20
-    private static let processTimeout: TimeInterval = 30
+    /// Generous, because Mail's mood decides this rather than the size of the question: the same
+    /// request for a dozen messages answered in five seconds once and not at all in thirty the
+    /// next time. Nobody waits on it — the pane is already showing the last list.
+    private static let scriptTimeout: TimeInterval = 90
+    private static let processTimeout: TimeInterval = 100
 
-    /// What to ask when Mail can't manage the proper question: a few messages by index, no count
-    /// of a mailbox with thousands in it. They may be the oldest Mail holds rather than the
+    /// What to ask when Mail can't manage the proper question: five messages by index, no count
+    /// of a mailbox with thirty thousand in it. They may be the oldest Mail holds rather than the
     /// newest — the list sorts what it gets — but something beats a pane of apology.
     private static let fallbackScript = """
     with timeout of \(Int(scriptTimeout)) seconds
         tell application "Mail"
             set box to inbox
             set output to ""
-            repeat with i from 1 to \(MailInbox.count)
+            repeat with i from 1 to 5
                 try
                     set m to message i of box
                     set output to output & (message id of m) & tab & (subject of m) & tab & ¬

@@ -90,3 +90,32 @@ final class MailInboxTests: XCTestCase {
         XCTAssertEqual(shown.first?.subject, "Message 39", "the newest of them")
     }
 }
+
+/// Mail answers when it feels like it, so the pane keeps the last list it saw.
+final class MailInboxCacheTests: XCTestCase {
+    private func message(_ id: String, _ subject: String) -> MailMessage {
+        MailMessage(
+            id: id, subject: subject, sender: "someone@example.com",
+            receivedAt: Date(timeIntervalSince1970: 1_799_000_000), isRead: false
+        )
+    }
+
+    func testTheLastListSurvivesUntilTheNextOne() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "inbox-\(UUID().uuidString)"))
+        let cache = MailInboxCache(defaults: defaults)
+        XCTAssertTrue(cache.messages.isEmpty)
+
+        let list = [message("a", "First"), message("b", "Second")]
+        cache.messages = list
+        XCTAssertEqual(cache.messages, list)
+    }
+
+    /// An empty answer is Mail having trouble, not an empty inbox — it mustn't wipe what's kept.
+    func testAnEmptyListIsNotWorthKeeping() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "inbox-\(UUID().uuidString)"))
+        let cache = MailInboxCache(defaults: defaults)
+        cache.messages = [message("a", "First")]
+        cache.messages = []
+        XCTAssertTrue(cache.messages.isEmpty, "it clears rather than pretending, and the reader keeps what it has")
+    }
+}

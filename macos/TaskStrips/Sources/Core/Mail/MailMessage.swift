@@ -2,7 +2,7 @@ import Foundation
 
 /// A message as the board needs to show it: who it's from, what it's about, when it came, and
 /// whether it's been read. Nothing of the body — this is a list to glance at, not a mail client.
-struct MailMessage: Identifiable, Equatable {
+struct MailMessage: Identifiable, Equatable, Codable {
     /// The Message-ID, which is also what `message:` links point at — so a message in this list
     /// can be filed onto a strip exactly as one dragged out of Mail is.
     var id: String
@@ -57,11 +57,40 @@ enum MailInbox {
 
     /// How many to ask Mail for before picking. Mail hands messages over in the order its mailbox
     /// holds them, which is not the order they arrived — the first one it offered here was from
-    /// 2014 — so a wider net is cast and the newest are taken from it.
-    static let askFor = 60
+    /// 2014 — so the last stretch is taken and sorted. Kept small: on a 30,000-message unified
+    /// inbox, each property of a dozen messages costs Mail a couple of seconds.
+    static let askFor = 8
 
     /// The newest first, however Mail happened to hand them over.
     static func newest(_ messages: [MailMessage], count: Int = count) -> [MailMessage] {
         Array(messages.sorted { $0.receivedAt > $1.receivedAt }.prefix(count))
+    }
+}
+
+/// The last list Mail gave, kept so the pane has something to show the moment it opens.
+///
+/// Mail answers when it feels like it — on a thirty-thousand-message unified inbox the same
+/// request took five seconds once and timed out at thirty the next — so the pane shows what it
+/// last saw and quietly refreshes behind that, rather than making someone wait to see anything.
+struct MailInboxCache {
+    private let defaults: UserDefaults
+    private static let key = "mailInbox.last"
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    var messages: [MailMessage] {
+        get {
+            guard let data = defaults.data(forKey: Self.key) else { return [] }
+            return (try? JSONDecoder().decode([MailMessage].self, from: data)) ?? []
+        }
+        nonmutating set {
+            guard !newValue.isEmpty, let data = try? JSONEncoder().encode(newValue) else {
+                defaults.removeObject(forKey: Self.key)
+                return
+            }
+            defaults.set(data, forKey: Self.key)
+        }
     }
 }

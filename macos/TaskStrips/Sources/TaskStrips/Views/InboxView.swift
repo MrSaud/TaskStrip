@@ -25,6 +25,13 @@ struct InboxView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(TaskStripTheme.amber)
             Spacer(minLength: 0)
+            // A refresh that failed while a list is up is worth a mark, not a page of apology.
+            if reader.problem != nil, !reader.messages.isEmpty {
+                Image(systemName: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(TaskStripTheme.high)
+                    .help(reader.problem ?? "")
+            }
             if reader.isReading {
                 ProgressView()
                     .controlSize(.small)
