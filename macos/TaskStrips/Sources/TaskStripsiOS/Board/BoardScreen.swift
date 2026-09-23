@@ -105,9 +105,10 @@ struct BoardScreen: View {
                 }
                     .foregroundStyle(.secondary)
                     Spacer(minLength: 0)
-                    // Small enough for the narrowest phone, and it only moves on the minute, on
-                    // the same timer as the date beside it.
-                    BoardClock(date: now, style: clockStyle, size: 28)
+                    // As big as the date lines beside it are tall — bigger again on an iPad,
+                    // which has the room. It only moves on the minute, on the same timer as the
+                    // date beside it.
+                    BoardClock(date: now, style: clockStyle, faceSize: isWide ? 56 : 44, digitSize: 15)
                 }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14)

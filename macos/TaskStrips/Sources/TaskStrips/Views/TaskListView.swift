@@ -174,7 +174,7 @@ struct TaskListView: View {
                     .font(.callout.monospaced())
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 0)
-                BoardClock(date: context.date, style: clockStyle, size: 34)
+                BoardClock(date: context.date, style: clockStyle, faceSize: 56, digitSize: 16)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 14)

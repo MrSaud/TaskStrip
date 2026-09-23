@@ -7,8 +7,12 @@ import SwiftUI
 struct BoardClock: View {
     let date: Date
     var style: BoardClockStyle = .digital
-    /// The face's diameter; the digits follow it, so one number sizes the clock on any screen.
-    var size: CGFloat = 30
+    /// The face's diameter when the clock has hands — big enough to read the hands at a glance,
+    /// which is the whole point of a face.
+    var faceSize: CGFloat = 48
+    /// The digits' point size when it hasn't. Kept apart from the face: a face wants to be as
+    /// big as the header allows, digits only as big as the words beside them.
+    var digitSize: CGFloat = 15
 
     var body: some View {
         switch style {
@@ -16,13 +20,13 @@ struct BoardClock: View {
             EmptyView()
         case .digital:
             Text(date.formatted(date: .omitted, time: .shortened))
-                .font(.system(size: size * 0.46, weight: .semibold, design: .monospaced))
+                .font(.system(size: digitSize, weight: .semibold, design: .monospaced))
                 .foregroundStyle(TaskStripTheme.amber)
                 .monospacedDigit()
                 .accessibilityLabel("The time")
         case .analog:
             face
-                .frame(width: size, height: size)
+                .frame(width: faceSize, height: faceSize)
                 .accessibilityLabel("The time, \(date.formatted(date: .omitted, time: .shortened))")
         }
     }
@@ -33,28 +37,37 @@ struct BoardClock: View {
             let radius = min(canvasSize.width, canvasSize.height) / 2
             let centre = CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2)
 
+            let inset = max(1, radius * 0.05)
             context.stroke(
-                Path(ellipseIn: CGRect(x: centre.x - radius + 1, y: centre.y - radius + 1,
-                                       width: (radius - 1) * 2, height: (radius - 1) * 2)),
+                Path(ellipseIn: CGRect(x: centre.x - radius + inset, y: centre.y - radius + inset,
+                                       width: (radius - inset) * 2, height: (radius - inset) * 2)),
                 with: .color(TaskStripTheme.amber.opacity(0.7)),
-                lineWidth: 1.5
+                lineWidth: max(1.5, radius * 0.06)
             )
 
-            // Quarter marks only: at this size twelve ticks turn into a smudge.
-            for quarter in 0..<4 {
-                let angle = Double(quarter) / 4 * 2 * .pi
+            // All twelve hours once there's room for them; below that they'd run together, so a
+            // small face keeps the quarters only.
+            let hours = radius >= 16 ? 12 : 4
+            for mark in 0..<hours {
+                let angle = Double(mark) / Double(hours) * 2 * .pi
+                let isQuarter = mark % (hours / 4) == 0
                 var tick = Path()
-                tick.move(to: point(from: centre, angle: angle, distance: radius * 0.78))
+                tick.move(to: point(from: centre, angle: angle, distance: radius * (isQuarter ? 0.74 : 0.82)))
                 tick.addLine(to: point(from: centre, angle: angle, distance: radius * 0.92))
-                context.stroke(tick, with: .color(TaskStripTheme.amber.opacity(0.45)), lineWidth: 1)
+                context.stroke(
+                    tick,
+                    with: .color(TaskStripTheme.amber.opacity(isQuarter ? 0.65 : 0.35)),
+                    lineWidth: isQuarter ? 1.5 : 1
+                )
             }
 
-            hand(&context, from: centre, turn: hands.hour, length: radius * 0.5, width: 2.2,
-                 colour: TaskStripTheme.paper)
-            hand(&context, from: centre, turn: hands.minute, length: radius * 0.78, width: 1.6,
-                 colour: TaskStripTheme.paper.opacity(0.85))
+            // Hands thicken with the face, so a big clock doesn't read as a spider.
+            hand(&context, from: centre, turn: hands.hour, length: radius * 0.5,
+                 width: max(2.2, radius * 0.13), colour: TaskStripTheme.paper)
+            hand(&context, from: centre, turn: hands.minute, length: radius * 0.8,
+                 width: max(1.6, radius * 0.09), colour: TaskStripTheme.paper.opacity(0.85))
 
-            let pin = radius * 0.1
+            let pin = max(1.5, radius * 0.09)
             context.fill(
                 Path(ellipseIn: CGRect(x: centre.x - pin, y: centre.y - pin, width: pin * 2, height: pin * 2)),
                 with: .color(TaskStripTheme.amber)
