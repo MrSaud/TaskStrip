@@ -13,6 +13,7 @@ struct IMAPAccountsView: View {
     @State private var senderName = ""
     @State private var problem: String?
     @State private var isTesting = false
+    @State private var editingSignature: IMAPAccount?
     /// What DNS said about the address being typed, once it has said it.
     @State private var provider: MailHost.Provider?
     @State private var lookingUp = false
@@ -34,8 +35,22 @@ struct IMAPAccountsView: View {
                                 Text("sends via \(account.outgoingHost):\(account.outgoingPort)")
                                     .font(.caption)
                                     .foregroundStyle(.tertiary)
+                                if let signature = account.signature, !signature.isEmpty {
+                                    Text("signature: \(signature.text.split(separator: "\n").first.map(String.init) ?? "")")
+                                        .font(.caption)
+                                        .foregroundStyle(.tertiary)
+                                        .lineLimit(1)
+                                }
                             }
                             Spacer(minLength: 0)
+                            Button {
+                                editingSignature = account
+                            } label: {
+                                Image(systemName: account.signature?.isEmpty == false
+                                      ? "signature" : "square.and.pencil")
+                            }
+                            .buttonStyle(.plain)
+                            .help("The signature on mail sent from this account")
                             Button(role: .destructive) {
                                 store.remove(account)
                                 accounts = store.accounts
@@ -130,6 +145,17 @@ struct IMAPAccountsView: View {
             }
         }
         .onAppear { accounts = store.accounts }
+        .sheet(item: $editingSignature) { account in
+            MailSignatureView(account: account) { signature in
+                var edited = account
+                edited.signature = signature.isEmpty ? nil : signature
+                // Saved through the store so it reaches the phone and the iPad with the account.
+                if let password = store.password(for: edited) {
+                    store.save(edited, password: password)
+                    accounts = store.accounts
+                }
+            }
+        }
     }
 
     /// Asks DNS who runs this domain's mail. Slow answers are nobody's problem: the field is

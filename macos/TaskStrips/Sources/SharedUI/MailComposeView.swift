@@ -24,6 +24,8 @@ struct MailComposeView: View {
     @State private var problem: String?
     @State private var confirming = false
     @State private var sentNote: String?
+    /// Off for the one message where a signature would be wrong — a two-word reply.
+    @State private var includesSignature = true
     /// Which field the suggestions belong to, so they appear under the one being typed in.
     @State private var typingIn: Field?
 
@@ -52,6 +54,7 @@ struct MailComposeView: View {
             cc: showsCc ? cc : "",
             subject: subject,
             body: text,
+            signature: includesSignature ? account?.signature : nil,
             inReplyTo: draft.inReplyTo
         )
     }
@@ -148,6 +151,19 @@ struct MailComposeView: View {
                 TextEditor(text: $text)
                     .frame(minHeight: 200)
                     .font(.body)
+            }
+
+            // Shown rather than typed into the message, so the plain and the styled halves can't
+            // drift apart — and switchable, because not every message wants one.
+            if let signature = account?.signature, !signature.isEmpty {
+                Section {
+                    Toggle("Add my signature", isOn: $includesSignature)
+                    if includesSignature {
+                        Text(signature.text)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
             }
 
             if let problem {

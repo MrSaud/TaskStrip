@@ -17,6 +17,9 @@ struct IMAPAccount: Codable, Equatable, Identifiable {
     var smtpPort: Int?
     /// The name on mail sent from this account.
     var senderName: String?
+    /// What goes at the bottom of everything sent from it. Per account, because the signature on
+    /// work mail is not the one on personal mail.
+    var signature: MailSignature?
 
     var name: String { label.isEmpty ? email : label }
 

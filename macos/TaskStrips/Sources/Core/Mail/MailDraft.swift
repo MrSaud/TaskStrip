@@ -16,6 +16,9 @@ struct MailDraft: Equatable, Identifiable {
     var cc: String = ""
     var subject: String
     var body: String
+    /// What goes at the bottom, and how it should look. A styled one makes the message go out
+    /// in both plain text and HTML; without one it stays plain text alone.
+    var signature: MailSignature?
     /// Set when this is a reply: the Message-ID being answered, so mail programs thread it under
     /// the message it belongs to rather than starting a new conversation.
     var inReplyTo: String?
@@ -74,11 +77,58 @@ struct MailDraft: Equatable, Identifiable {
             lines.append("References: \(bracketed)")
         }
         lines.append("MIME-Version: 1.0")
+
+        guard let signature, !signature.isEmpty else {
+            lines.append("Content-Type: text/plain; charset=utf-8")
+            lines.append("Content-Transfer-Encoding: quoted-printable")
+            lines.append("")
+            lines.append(MailDraft.quotedPrintable(body))
+            return lines.joined(separator: "\r\n")
+        }
+
+        // Both halves of the same message: the plain one for anything that prefers it, the HTML
+        // one because a colour or a size survives no other way. A client shows whichever it
+        // likes, so the two have to say the same thing — which is why both are written from the
+        // same body and the same signature.
+        let boundary = MailDraft.boundary(for: messageID)
+        lines.append("Content-Type: multipart/alternative; boundary=\"\(boundary)\"")
+        lines.append("")
+        lines.append("--\(boundary)")
         lines.append("Content-Type: text/plain; charset=utf-8")
         lines.append("Content-Transfer-Encoding: quoted-printable")
         lines.append("")
-        lines.append(MailDraft.quotedPrintable(body))
+        lines.append(MailDraft.quotedPrintable(body + "\n\n" + signature.plainText))
+        lines.append("--\(boundary)")
+        lines.append("Content-Type: text/html; charset=utf-8")
+        lines.append("Content-Transfer-Encoding: quoted-printable")
+        lines.append("")
+        lines.append(MailDraft.quotedPrintable(MailDraft.htmlBody(body, signature: signature)))
+        lines.append("--\(boundary)--")
         return lines.joined(separator: "\r\n")
+    }
+
+    /// The typed message as HTML: escaped, with its line breaks kept, and the signature under a
+    /// rule. Nothing clever — a message somebody typed is paragraphs, not a web page.
+    static func htmlBody(_ body: String, signature: MailSignature) -> String {
+        let written = MailSignature.escaped(body)
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\n", with: "<br>\n")
+        return """
+        <html><body style="font-family: -apple-system, Helvetica, Arial, sans-serif; font-size: 14px;">
+        <div>\(written)</div>
+        <br>
+        \(signature.html)
+        </body></html>
+        """
+    }
+
+    /// Tied to the message's own id, so it can't collide with anything in the body — a boundary
+    /// that appears inside a message cuts it in half.
+    static func boundary(for messageID: String) -> String {
+        "taskstrips-" + messageID
+            .replacingOccurrences(of: "@", with: "-")
+            .replacingOccurrences(of: ".", with: "-")
+            .prefix(48)
     }
 
     private func addressField(name: String, address: String) -> String {
