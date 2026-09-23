@@ -161,3 +161,26 @@ final class IMAPFetchTests: XCTestCase {
         XCTAssertEqual(IMAPFetch.messages(from: reply(headers: headers), now: now).first?.receivedAt, now)
     }
 }
+
+/// A server's refusal is often true and unhelpful at the same time.
+final class IMAPRefusalTests: XCTestCase {
+    func testGooglesRefusalIsTranslatedIntoWhatToDo() throws {
+        let said = "[ALERT] Application-specific password required: https://support.google.com/accounts/answer/185833 (Failure)"
+        let advice = try XCTUnwrap(IMAPRefusal.advice(for: said))
+        XCTAssertTrue(advice.contains("App passwords"), advice)
+    }
+
+    func testAPlainRefusalSaysWhereToLook() throws {
+        let advice = try XCTUnwrap(IMAPRefusal.advice(for: "[AUTHENTICATIONFAILED] Invalid credentials"))
+        XCTAssertTrue(advice.lowercased().contains("app-specific"), advice)
+    }
+
+    func testAServerThatWantsOAuthSaysSo() throws {
+        let advice = try XCTUnwrap(IMAPRefusal.advice(for: "LOGIN failed: basic authentication is disabled"))
+        XCTAssertTrue(advice.contains("OAuth"), advice)
+    }
+
+    func testSomethingElseIsLeftAsTheServerPutIt() {
+        XCTAssertNil(IMAPRefusal.advice(for: "Server unavailable, try later"))
+    }
+}

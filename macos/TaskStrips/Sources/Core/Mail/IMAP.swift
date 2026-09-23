@@ -53,6 +53,31 @@ enum IMAPHost {
     }
 }
 
+/// What a refusal actually means, where the server's own words need translating.
+///
+/// Google answers a correct account password with "Application-specific password required" and a
+/// support link — true, but it reads like a bug unless you already know that an app password is
+/// a different, sixteen-letter one you have to go and make.
+enum IMAPRefusal {
+    static func advice(for message: String) -> String? {
+        let text = message.lowercased()
+        if text.contains("application-specific password") {
+            return "Google needs an app password: your Google Account › Security › 2-Step "
+                + "Verification › App passwords. It's sixteen letters, and it goes in the password "
+                + "field here instead of your own."
+        }
+        if text.contains("authenticationfailed") || text.contains("invalid credentials") {
+            return "The address or password wasn't accepted. On iCloud and Yahoo this field wants "
+                + "an app-specific password rather than your own."
+        }
+        if text.contains("basic authentication") || text.contains("authenticate") && text.contains("disabled") {
+            return "This server has turned password sign-in off and wants OAuth, which this app "
+                + "doesn't do yet."
+        }
+        return nil
+    }
+}
+
 /// The half of IMAP this app speaks: log in, choose the inbox, ask for the newest few headers.
 ///
 /// Every command carries a tag, and a reply belongs to the command whose tag it repeats. Kept

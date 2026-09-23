@@ -77,9 +77,16 @@ struct IMAPAccountsView: View {
                 }
 
                 if let problem {
-                    Text(problem)
-                        .font(.caption)
-                        .foregroundStyle(TaskStripTheme.urgent)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(problem)
+                            .font(.caption)
+                            .foregroundStyle(TaskStripTheme.urgent)
+                        if let advice = IMAPRefusal.advice(for: problem) {
+                            Text(advice)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
                 }
 
                 Button(isTesting ? "Checking…" : "Add account") { add() }
