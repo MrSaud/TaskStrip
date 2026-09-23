@@ -10,6 +10,7 @@ struct IMAPAccountsView: View {
     @State private var password = ""
     @State private var host = ""
     @State private var port = "993"
+    @State private var senderName = ""
     @State private var problem: String?
     @State private var isTesting = false
     /// What DNS said about the address being typed, once it has said it.
@@ -29,6 +30,10 @@ struct IMAPAccountsView: View {
                                 Text("\(account.host):\(account.port)")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
+                                // Where a message sent from this account goes out through.
+                                Text("sends via \(account.outgoingHost):\(account.outgoingPort)")
+                                    .font(.caption)
+                                    .foregroundStyle(.tertiary)
                             }
                             Spacer(minLength: 0)
                             Button(role: .destructive) {
@@ -63,6 +68,7 @@ struct IMAPAccountsView: View {
                         lookUp(address)
                     }
                 SecureField("Password", text: $password)
+                TextField("Your name (optional)", text: $senderName)
                 TextField("Server", text: $host)
                     #if os(iOS)
                     .textInputAutocapitalization(.never)
@@ -117,7 +123,8 @@ struct IMAPAccountsView: View {
                 Text("The account and its password are kept in your iCloud keychain, like the other "
                      + "credentials — never in the app's own store or its backups — so adding it "
                      + "here adds it on your Mac, iPhone and iPad. Mail is read over TLS, headers "
-                     + "only, and left unread.")
+                     + "only, and left unread. The same sign-in sends, through this provider's "
+                     + "outgoing server, and a copy of anything sent goes to your Sent folder.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -147,10 +154,12 @@ struct IMAPAccountsView: View {
     /// Signs in before saving: a wrong password is worth catching while the person is still
     /// looking at the field they typed it into.
     private func add() {
+        let trimmedName = senderName.trimmingCharacters(in: .whitespaces)
         let account = IMAPAccount(
             email: email.trimmingCharacters(in: .whitespaces),
             host: host.trimmingCharacters(in: .whitespaces),
-            port: Int(port) ?? 993
+            port: Int(port) ?? 993,
+            senderName: trimmedName.isEmpty ? nil : trimmedName
         )
         isTesting = true
         problem = nil
@@ -171,6 +180,7 @@ struct IMAPAccountsView: View {
                 password = ""
                 host = ""
                 port = "993"
+                senderName = ""
                 provider = nil
                 IMAPReader.shared.refresh(force: true)
             }

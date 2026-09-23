@@ -15,6 +15,7 @@ struct MailMessageView: View {
     @State private var problem: String?
     @State private var isReading = true
     @State private var markingUp: SketchOpening?
+    @State private var replying: MailDraft?
     @State private var snapshotProblem: String?
 
     var body: some View {
@@ -26,6 +27,9 @@ struct MailMessageView: View {
         .readerSize()
         .background(TaskStripTheme.bayBackground)
         .task { await read() }
+        .sheet(item: $replying) { draft in
+            MailComposeView(draft: draft, accounts: IMAPReader.shared.accounts)
+        }
         .canvasPresentation(item: $markingUp) { opening in
             NavigationStack {
                 SketchCanvasView(
@@ -71,15 +75,20 @@ struct MailMessageView: View {
             }
 
             HStack(spacing: 12) {
-                // Replying is Mail's job — this app doesn't send anything. The reply opens there
-                // with the address and subject already filled in.
-                if let reply = replyURL {
+                if message.senderAddress != nil {
                     Button {
-                        openURL(reply)
+                        replying = MailDraft.reply(
+                            to: message,
+                            from: sendingAccount?.email ?? "",
+                            fromName: sendingAccount?.senderName ?? "",
+                            body: loaded
+                        )
                     } label: {
                         Label("Reply", systemImage: "arrowshape.turn.up.left")
                     }
                     .buttonStyle(.borderless)
+                    .disabled(sendingAccount == nil)
+                    .help(sendingAccount == nil ? "Add a mail account to reply" : "Reply to this message")
                 }
                 if let text = loaded?.text, !text.isEmpty {
                     Button {
@@ -172,15 +181,12 @@ struct MailMessageView: View {
         }
     }
 
-    /// A reply Mail can open: the sender, and the subject with one Re: rather than two.
-    private var replyURL: URL? {
-        guard let address = message.senderAddress else { return nil }
-        let subject = message.subject.lowercased().hasPrefix("re:") ? message.subject : "Re: \(message.subject)"
-        var components = URLComponents()
-        components.scheme = "mailto"
-        components.path = address
-        components.queryItems = [URLQueryItem(name: "subject", value: subject)]
-        return components.url
+    /// The account a reply goes from: the one this message arrived on, so a reply to work mail
+    /// comes from the work address rather than from whichever account happens to be first.
+    private var sendingAccount: IMAPAccount? {
+        let accounts = IMAPReader.shared.accounts
+        if let id = message.accountID, let match = accounts.first(where: { $0.id == id }) { return match }
+        return accounts.first
     }
 
     /// `whole` is the second, deliberate fetch: the reading is worth a couple of hundred

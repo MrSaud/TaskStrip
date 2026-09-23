@@ -13,6 +13,7 @@ struct InboxListView: View {
     @AppStorage(AppSettingsKey.inboxAccount) private var account = ""
     @AppStorage(AppSettingsKey.inboxUnreadOnly) private var unreadOnly = false
     @State private var reading: MailMessage?
+    @State private var composing: MailDraft?
 
     /// The same narrowing the Mac's pane does, over the same list — the phone simply has one
     /// source feeding it rather than two.
@@ -34,6 +35,9 @@ struct InboxListView: View {
         // Full screen rather than a sheet: on an iPad a sheet is a card in the middle of the
         // screen, which is a poor way to read a message and a worse one to mark one up. The
         // reader has its own Done button, so nothing is lost by taking the whole screen.
+        .sheet(item: $composing) { draft in
+            MailComposeView(draft: draft, accounts: reader.accounts)
+        }
         .canvasPresentation(item: $reading) { message in
             MailMessageView(message: message)
         }
@@ -71,6 +75,18 @@ struct InboxListView: View {
                 Image(systemName: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(TaskStripTheme.high)
+            }
+            if let sender = reader.accounts.first {
+                Button {
+                    composing = MailDraft(
+                        from: sender.email, fromName: sender.senderName ?? "", to: "", subject: "", body: ""
+                    )
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Write a message")
             }
             InboxFilterMenu(
                 accounts: MailInboxMerge.accounts(in: reader.messages),

@@ -77,6 +77,77 @@ actor IMAPConnection {
         return MailBodyParser.read(raw, wasTruncated: raw.count >= limit)
     }
 
+    /// Files a copy of a sent message in the Sent folder.
+    ///
+    /// Submission doesn't do this: a message handed to an outgoing server exists nowhere else
+    /// afterwards, so without this a reply sent from the phone would be missing from the Mac and
+    /// from every other mail program. Gmail files its own, and most other providers don't.
+    ///
+    /// Returns the mailbox it was filed in, or nil when the account has no Sent folder to file
+    /// it in — which is worth saying out loud rather than failing the send that already happened.
+    @discardableResult
+    func appendToSent(_ message: String) async throws -> String? {
+        try await connect()
+        defer { close() }
+
+        _ = try await waitForGreeting()
+        _ = try await send(IMAPCommand.login(tag: nextTag(), email: account.email, password: password), failure: Failure.refused)
+        let mailboxes = try await send(IMAPCommand.listAll(tag: nextTag()), failure: Failure.serverSaid)
+        guard let sent = IMAPResponse.sentMailbox(in: mailboxes) else { return nil }
+
+        let bytes = Data(message.utf8)
+        // The command announces the length, the server answers with "+", and the message follows
+        // as the literal it was told to expect.
+        let appendTag = nextTag()
+        try await write(IMAPCommand.append(tag: appendTag, mailbox: sent, bytes: bytes.count))
+        _ = try await waitForContinuation()
+        // Exactly the bytes that were announced, then the line break that ends the command.
+        try await write(message + "\r\n")
+        try await waitForCompletion(of: appendTag)
+        _ = try? await send(IMAPCommand.logout(tag: nextTag()), failure: Failure.serverSaid)
+        return sent
+    }
+
+    /// The server's "+ go ahead", which is how it says it's ready for the literal.
+    private func waitForContinuation() async throws -> String {
+        while true {
+            if let text = String(data: buffer, encoding: .utf8) ?? String(data: buffer, encoding: .isoLatin1),
+               text.contains("+ ") || text.hasPrefix("+") {
+                buffer = Data()
+                return text
+            }
+            buffer.append(try await receive())
+        }
+    }
+
+    /// Reads on until the tagged line for a command whose text was already written.
+    private func waitForCompletion(of tag: String) async throws {
+        while true {
+            let text = String(data: buffer, encoding: .utf8) ?? String(data: buffer, encoding: .isoLatin1) ?? ""
+            if let outcome = IMAPResponse.completion(for: tag, in: text) {
+                buffer = Data()
+                switch outcome {
+                case .ok: return
+                case .no(let detail), .bad(let detail): throw Failure.serverSaid(detail)
+                }
+            }
+            buffer.append(try await receive())
+        }
+    }
+
+    private func write(_ text: String) async throws {
+        guard let connection else { throw Failure.silence }
+        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+            connection.send(content: Data(text.utf8), completion: .contentProcessed { error in
+                if let error {
+                    continuation.resume(throwing: Failure.couldNotConnect(error.localizedDescription))
+                } else {
+                    continuation.resume()
+                }
+            })
+        }
+    }
+
     // MARK: - The socket
 
     private func connect() async throws {

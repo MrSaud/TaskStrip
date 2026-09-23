@@ -11,8 +11,17 @@ struct IMAPAccount: Codable, Equatable, Identifiable {
     var port: Int = 993
     /// What to call it in the pane when more than one is set up.
     var label: String = ""
+    /// The outgoing server, where it isn't the one this account's incoming server implies.
+    /// Optional so an account saved before the app could send still decodes.
+    var smtpHost: String?
+    var smtpPort: Int?
+    /// The name on mail sent from this account.
+    var senderName: String?
 
     var name: String { label.isEmpty ? email : label }
+
+    var outgoingHost: String { smtpHost ?? SMTPHost.guess(forIMAPHost: host) }
+    var outgoingPort: Int { smtpPort ?? SMTPHost.port }
 }
 
 /// Which server an address belongs to, for the ones that can be guessed.
@@ -110,6 +119,16 @@ enum IMAPCommand {
 
     static func logout(tag: String) -> String { "\(tag) LOGOUT\r\n" }
 
+    /// Every mailbox the account has, with the attributes that say what each one is for.
+    static func listAll(tag: String) -> String { "\(tag) LIST \"\" \"*\"\r\n" }
+
+    /// Puts a message into a mailbox — how a sent message gets into Sent. The byte count is
+    /// declared first and the message follows; \Seen because a message you wrote yourself has
+    /// been read by the only person who needs to.
+    static func append(tag: String, mailbox: String, bytes: Int) -> String {
+        "\(tag) APPEND \(quoted(mailbox)) (\\Seen) {\(bytes)}\r\n"
+    }
+
     static func quoted(_ text: String) -> String {
         let escaped = text
             .replacingOccurrences(of: "\\", with: "\\\\")
@@ -141,6 +160,42 @@ enum IMAPResponse {
             }
         }
         return nil
+    }
+
+    /// Which mailbox is the Sent one, out of a LIST reply.
+    ///
+    /// Servers disagree about the name — "Sent", "Sent Messages", "Sent Items", and Gmail's
+    /// "[Gmail]/Sent Mail" — but most of them tag it `\Sent` in the attributes, which is worth
+    /// far more than guessing at names. Only when nothing is tagged does the name matter, and
+    /// then the usual four are tried in the order they're commonly used.
+    static func sentMailbox(in text: String) -> String? {
+        var names: [String] = []
+        for line in text.split(separator: "\r\n") {
+            guard line.hasPrefix("* LIST ") else { continue }
+            guard let close = line.range(of: ")") else { continue }
+            let attributes = line[line.startIndex..<close.upperBound].lowercased()
+            guard let name = mailboxName(in: line) else { continue }
+            if attributes.contains("\\sent") { return name }
+            names.append(name)
+        }
+        let usual = ["sent", "sent messages", "sent items", "[gmail]/sent mail", "inbox.sent"]
+        for candidate in usual {
+            if let match = names.first(where: { $0.lowercased() == candidate }) { return match }
+        }
+        return nil
+    }
+
+    /// The last field of a LIST line: `* LIST (\HasNoChildren \Sent) "/" "[Gmail]/Sent Mail"`.
+    static func mailboxName(in line: Substring) -> String? {
+        guard let close = line.range(of: ")") else { return nil }
+        let rest = line[close.upperBound...].trimmingCharacters(in: .whitespaces)
+        // The delimiter comes first — `"/"` or `NIL` — and the name is what's left.
+        let pieces = rest.split(separator: " ", maxSplits: 1, omittingEmptySubsequences: true)
+        guard pieces.count == 2 else { return nil }
+        let name = pieces[1].trimmingCharacters(in: .whitespaces)
+        return name.trimmingCharacters(in: CharacterSet(charactersIn: "\"")).isEmpty
+            ? nil
+            : name.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
     }
 
     /// How many messages the mailbox holds, from `* 1234 EXISTS`.

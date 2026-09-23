@@ -131,6 +131,45 @@ final class IMAPReader: ObservableObject {
         }
     }
 
+    /// Sends a message, then files a copy where every other device will see it.
+    ///
+    /// The two are separate errands on purpose. Sending succeeded or it didn't; filing the copy
+    /// can fail afterwards without un-sending anything, and the difference is worth saying to
+    /// whoever pressed Send rather than calling the whole thing a failure.
+    enum SendOutcome {
+        case sent(filedIn: String?)
+        case filingFailed(String)
+        case failed(String)
+    }
+
+    func send(_ draft: MailDraft, from account: IMAPAccount) async -> SendOutcome {
+        guard let password = store.password(for: account) else {
+            return .failed("No password saved for \(account.name).")
+        }
+        let written: String
+        do {
+            written = try await SMTPConnection(
+                host: account.outgoingHost,
+                port: account.outgoingPort,
+                email: account.email,
+                password: password
+            ).send(draft)
+        } catch {
+            return .failed(error.localizedDescription)
+        }
+        do {
+            let mailbox = try await IMAPConnection(account: account, password: password)
+                .appendToSent(written)
+            return .sent(filedIn: mailbox)
+        } catch {
+            return .filingFailed(error.localizedDescription)
+        }
+    }
+
+    /// The accounts that can send, which is all of them: every account here signs in with a
+    /// password, and the outgoing server is the incoming one's twin.
+    var accounts: [IMAPAccount] { store.accounts }
+
     /// Tries an account before it's saved, so a wrong password is caught while someone is still
     /// looking at the field they typed it into.
     static func test(_ account: IMAPAccount, password: String) async -> String? {

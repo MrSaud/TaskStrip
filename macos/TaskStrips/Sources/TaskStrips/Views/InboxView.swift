@@ -13,6 +13,7 @@ struct InboxView: View {
     @AppStorage(AppSettingsKey.inboxAccount) private var account = ""
     @AppStorage(AppSettingsKey.inboxUnreadOnly) private var unreadOnly = false
     @State private var reading: MailMessage?
+    @State private var composing: MailDraft?
 
     private var everything: [MailMessage] { server.messages }
 
@@ -34,6 +35,9 @@ struct InboxView: View {
         }
         .background(TaskStripTheme.bayBackground)
         .task { server.refresh() }
+        .sheet(item: $composing) { draft in
+            MailComposeView(draft: draft, accounts: server.accounts)
+        }
         .sheet(item: $reading) { message in
             MailMessageView(message: message)
         }
@@ -70,6 +74,18 @@ struct InboxView: View {
                     .font(.caption)
                     .foregroundStyle(TaskStripTheme.high)
                     .help(problem)
+            }
+            if let sender = server.accounts.first {
+                Button {
+                    composing = MailDraft(
+                        from: sender.email, fromName: sender.senderName ?? "", to: "", subject: "", body: ""
+                    )
+                } label: {
+                    Image(systemName: "square.and.pencil")
+                        .font(.caption)
+                }
+                .buttonStyle(.plain)
+                .help("Write a message")
             }
             InboxFilterMenu(
                 accounts: MailInboxMerge.accounts(in: everything),
