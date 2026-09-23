@@ -11,8 +11,10 @@ import UIKit
 struct StrokeCatcher: UIViewRepresentable {
     /// When true, a finger is ignored and only a Pencil draws.
     var pencilOnly: Bool
-    var onBegan: (CGPoint) -> Void
-    var onMoved: ([CGPoint]) -> Void
+    var onBegan: (CGPoint, CGFloat) -> Void
+    /// The points the hand actually made, and the ones the system expects next — drawn but not
+    /// kept, so the line reaches the tip of the Pencil instead of trailing behind it.
+    var onMoved: ([SketchSample], [SketchSample]) -> Void
     var onEnded: () -> Void
     /// A finger arrived while only a Pencil is allowed — worth saying, or the pad looks broken.
     var onRefused: () -> Void
@@ -29,8 +31,8 @@ struct StrokeCatcher: UIViewRepresentable {
 
     final class TouchView: UIView {
         var pencilOnly = false
-        var onBegan: (CGPoint) -> Void = { _ in }
-        var onMoved: ([CGPoint]) -> Void = { _ in }
+        var onBegan: (CGPoint, CGFloat) -> Void = { _, _ in }
+        var onMoved: ([SketchSample], [SketchSample]) -> Void = { _, _ in }
         var onEnded: () -> Void = {}
         var onRefused: () -> Void = {}
 
@@ -55,13 +57,28 @@ struct StrokeCatcher: UIViewRepresentable {
                 return
             }
             drawing = touch
-            onBegan(touch.location(in: self))
+            onBegan(touch.location(in: self), pressure(of: touch))
         }
 
         override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
             guard let drawing, touches.contains(drawing) else { return }
             let steps = event?.coalescedTouches(for: drawing) ?? [drawing]
-            onMoved(steps.map { $0.location(in: self) })
+            // Predicted touches are the system's guess at where the pen is heading. Drawn, they
+            // hide the few milliseconds between the tip and the line; kept, they'd be a guess in
+            // the middle of a stroke, so the next batch replaces them.
+            let predicted = event?.predictedTouches(for: drawing) ?? []
+            onMoved(steps.map(sample), predicted.map(sample))
+        }
+
+        private func sample(_ touch: UITouch) -> SketchSample {
+            SketchSample(point: touch.location(in: self), pressure: pressure(of: touch))
+        }
+
+        /// A Pencil reports how hard it's pressed; a finger reports a number that means nothing
+        /// much, so a finger draws at one weight.
+        private func pressure(of touch: UITouch) -> CGFloat {
+            guard touch.type == .pencil, touch.maximumPossibleForce > 0 else { return 1 }
+            return min(max(touch.force / touch.maximumPossibleForce, 0), 1)
         }
 
         override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {

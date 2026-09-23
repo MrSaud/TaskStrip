@@ -17,6 +17,69 @@ enum SketchStrokeShape {
     /// arguing with itself, and keeping them only makes the curve wobble.
     static let minimumSpacing: CGFloat = 1.2
 
+    /// A line and, where there was a pen pressing on it, how hard — the two always the same
+    /// length, because a width per point is no use if the widths belong to other points.
+    struct Line: Equatable {
+        var points: [CGPoint] = []
+        var pressures: [CGFloat] = []
+
+        var hasPressure: Bool { pressures.count == points.count && !pressures.isEmpty }
+    }
+
+    /// Cleaning and smoothing, carrying the pressures along with the points they belong to.
+    static func line(of stroke: SketchStroke, subdivisions: Int = 6) -> Line {
+        let cleaned = cleaned(Line(points: stroke.points, pressures: stroke.pressures))
+        return smoothed(cleaned, subdivisions: subdivisions)
+    }
+
+    static func cleaned(_ line: Line, spacing: CGFloat = minimumSpacing) -> Line {
+        guard let first = line.points.first else { return Line() }
+        let hasPressure = line.hasPressure
+        var result = Line(points: [first], pressures: hasPressure ? [line.pressures[0]] : [])
+        for index in line.points.indices.dropFirst() {
+            guard let last = result.points.last else { continue }
+            let point = line.points[index]
+            guard hypot(point.x - last.x, point.y - last.y) >= spacing else { continue }
+            result.points.append(point)
+            if hasPressure { result.pressures.append(line.pressures[index]) }
+        }
+        // A stroke that never moved is still a dot, and a two-point stroke is still a line.
+        if result.points.count == 1, line.points.count > 1, let last = line.points.last, last != first {
+            result.points.append(last)
+            if hasPressure, let lastPressure = line.pressures.last { result.pressures.append(lastPressure) }
+        }
+        return result
+    }
+
+    /// The same curve as `smoothed(_:)`, with the pressures carried across it: each subdivided
+    /// point takes the pressure between the two it sits between.
+    static func smoothed(_ line: Line, subdivisions: Int = 6) -> Line {
+        guard line.points.count > 2, subdivisions > 1 else { return line }
+        let hasPressure = line.hasPressure
+        var result = Line(
+            points: [line.points[0]],
+            pressures: hasPressure ? [line.pressures[0]] : []
+        )
+
+        for index in 0..<(line.points.count - 1) {
+            let p0 = line.points[max(index - 1, 0)]
+            let p1 = line.points[index]
+            let p2 = line.points[index + 1]
+            let p3 = line.points[min(index + 2, line.points.count - 1)]
+
+            for step in 1...subdivisions {
+                let t = CGFloat(step) / CGFloat(subdivisions)
+                result.points.append(catmullRom(p0, p1, p2, p3, t))
+                if hasPressure {
+                    let from = line.pressures[index]
+                    let to = line.pressures[index + 1]
+                    result.pressures.append(from + (to - from) * t)
+                }
+            }
+        }
+        return result
+    }
+
     static func cleaned(_ points: [CGPoint], spacing: CGFloat = minimumSpacing) -> [CGPoint] {
         guard let first = points.first else { return [] }
         var result = [first]
@@ -69,6 +132,23 @@ enum SketchStrokeShape {
     /// A pen keeps one width. A brush tapers at both ends and thins where the hand moved fast,
     /// which is the difference between a line and a stroke — and it's smoothed afterwards, since
     /// a width that jumps from point to point reads as a lumpy nib rather than a fast hand.
+    static func widths(for line: Line, stroke: SketchStroke) -> [CGFloat] {
+        let widths = widths(for: line.points, stroke: stroke)
+        guard line.hasPressure, stroke.brush.answersToPressure else { return widths }
+        // A pen that doesn't change with the hand draws a line a machine could have drawn. This
+        // is what an Apple Pencil is for, and what the brushes were missing.
+        return zip(widths, line.pressures).map { width, pressure in
+            width * pressureFactor(pressure)
+        }
+    }
+
+    /// Light at 0.55 of the nib, hard at 1.35 — enough to see, not enough to turn a line into a
+    /// blob when someone leans on it.
+    static func pressureFactor(_ pressure: CGFloat) -> CGFloat {
+        let clamped = min(max(pressure, 0), 1)
+        return 0.55 + 0.8 * clamped
+    }
+
     static func widths(for points: [CGPoint], stroke: SketchStroke) -> [CGFloat] {
         let base = stroke.drawnWidth
         guard stroke.brush.tapers else { return Array(repeating: base, count: points.count) }

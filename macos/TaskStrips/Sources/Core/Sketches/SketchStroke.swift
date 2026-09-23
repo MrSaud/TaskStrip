@@ -3,11 +3,21 @@ import Foundation
 import ImageIO
 import UniformTypeIdentifiers
 
+/// Where the pen was and how hard it was pressing, 0…1. What a touch amounts to, for the parts
+/// of the app that never meet a touch.
+struct SketchSample: Equatable {
+    var point: CGPoint
+    var pressure: CGFloat = 1
+}
+
 /// One drag of the pen. Mirrors SketchCanvasScreen.kt's private SketchStroke: a list of points, an
 /// ink and a width, with no smoothing — the line is exactly where the pointer went.
 struct SketchStroke: Identifiable, Equatable {
     let id = UUID()
     var points: [CGPoint]
+    /// How hard the pen was pressed at each point, 0…1, parallel to `points`. Empty when nothing
+    /// was pressing — a finger, a trackpad, a mouse — and then the brush decides the width alone.
+    var pressures: [CGFloat] = []
     var ink: SketchInk
     /// The nib width the person picked, before the brush has its say.
     var width: CGFloat
@@ -22,8 +32,8 @@ struct SketchStroke: Identifiable, Equatable {
     }
 
     static func == (lhs: SketchStroke, rhs: SketchStroke) -> Bool {
-        lhs.id == rhs.id && lhs.points == rhs.points && lhs.ink == rhs.ink
-            && lhs.width == rhs.width && lhs.brush == rhs.brush
+        lhs.id == rhs.id && lhs.points == rhs.points && lhs.pressures == rhs.pressures
+            && lhs.ink == rhs.ink && lhs.width == rhs.width && lhs.brush == rhs.brush
     }
 }
 
@@ -149,12 +159,12 @@ enum SketchRenderer {
                     width: width,
                     height: width
                 ))
-            } else if stroke.brush.tapers {
+            } else if stroke.brush.tapers || stroke.pressures.contains(where: { $0 < 0.99 }) {
                 // One filled shape, because a width that changes can't be one stroked path, and
                 // stroking it piece by piece beads at every join.
-                let line = SketchStrokeShape.smoothed(SketchStrokeShape.cleaned(stroke.points))
+                let line = SketchStrokeShape.line(of: stroke)
                 let widths = SketchStrokeShape.widths(for: line, stroke: stroke)
-                let outline = SketchStrokeShape.outline(points: line, widths: widths)
+                let outline = SketchStrokeShape.outline(points: line.points, widths: widths)
                 guard let start = outline.first else { break }
                 context.setFillColor(red: red, green: green, blue: blue, alpha: alpha)
                 context.beginPath()
@@ -163,7 +173,7 @@ enum SketchRenderer {
                 context.closePath()
                 context.fillPath()
                 // The ends: a filled outline stops flat, and a nib doesn't.
-                for (point, index) in [(line.first, 0), (line.last, line.count - 1)] {
+                for (point, index) in [(line.points.first, 0), (line.points.last, line.points.count - 1)] {
                     guard let point else { continue }
                     let radius = widths[index] / 2
                     context.fillEllipse(in: CGRect(
@@ -171,7 +181,7 @@ enum SketchRenderer {
                     ))
                 }
             } else {
-                let line = SketchStrokeShape.smoothed(SketchStrokeShape.cleaned(stroke.points))
+                let line = SketchStrokeShape.line(of: stroke).points
                 context.setStrokeColor(red: red, green: green, blue: blue, alpha: alpha)
                 context.setLineWidth(width)
                 context.beginPath()

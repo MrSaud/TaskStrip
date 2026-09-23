@@ -112,3 +112,85 @@ final class SketchStrokeShapeTests: XCTestCase {
         }
     }
 }
+
+/// What a Pencil adds: a line that answers to the hand pressing it.
+final class SketchPressureTests: XCTestCase {
+    private func line(count: Int, pressures: [CGFloat]) -> SketchStrokeShape.Line {
+        SketchStrokeShape.Line(
+            points: (0..<count).map { CGPoint(x: CGFloat($0) * 10, y: 0) },
+            pressures: pressures
+        )
+    }
+
+    func testPressingHarderDrawsHeavier() {
+        let light = SketchStrokeShape.pressureFactor(0.1)
+        let firm = SketchStrokeShape.pressureFactor(0.5)
+        let hard = SketchStrokeShape.pressureFactor(1)
+
+        XCTAssertLessThan(light, firm)
+        XCTAssertLessThan(firm, hard)
+        XCTAssertGreaterThan(light, 0.4, "a light touch still draws")
+        XCTAssertLessThan(hard, 1.5, "leaning on it doesn't make a blob")
+    }
+
+    func testAPressedStrokeVariesAndAnUnpressedOneDoesNot() {
+        let points = (0..<5).map { CGPoint(x: CGFloat($0) * 10, y: 0) }
+        let pressed = SketchStroke(
+            points: points, pressures: [0.1, 0.4, 0.9, 0.4, 0.1], ink: .ink, width: 6, brush: .pen
+        )
+        let widths = SketchStrokeShape.widths(
+            for: SketchStrokeShape.Line(points: points, pressures: pressed.pressures), stroke: pressed
+        )
+        XCTAssertEqual(widths.count, points.count)
+        XCTAssertGreaterThan(widths[2], widths[0], "hardest in the middle")
+
+        let finger = SketchStroke(points: points, ink: .ink, width: 6, brush: .pen)
+        let even = SketchStrokeShape.widths(
+            for: SketchStrokeShape.Line(points: points, pressures: []), stroke: finger
+        )
+        XCTAssertEqual(Set(even).count, 1, "nothing pressing, one width")
+    }
+
+    func testAFeltNibAndAnEraserIgnoreHowHardYouLean() {
+        let points = (0..<4).map { CGPoint(x: CGFloat($0) * 10, y: 0) }
+        let pressures: [CGFloat] = [0.1, 0.9, 0.2, 1]
+        for brush in [SketchBrush.highlighter, .eraser] {
+            let stroke = SketchStroke(points: points, pressures: pressures, ink: .ink, width: 6, brush: brush)
+            let widths = SketchStrokeShape.widths(
+                for: SketchStrokeShape.Line(points: points, pressures: pressures), stroke: stroke
+            )
+            XCTAssertEqual(Set(widths).count, 1, "\(brush) doesn't answer to pressure")
+        }
+    }
+
+    // MARK: - Carrying the pressures along the line
+
+    func testCleaningKeepsEachPressureWithItsOwnPoint() {
+        let jittery = SketchStrokeShape.Line(
+            points: [CGPoint(x: 0, y: 0), CGPoint(x: 0.2, y: 0), CGPoint(x: 20, y: 0)],
+            pressures: [0.2, 0.9, 0.7]
+        )
+        let cleaned = SketchStrokeShape.cleaned(jittery)
+        XCTAssertEqual(cleaned.points.count, cleaned.pressures.count)
+        XCTAssertEqual(cleaned.pressures, [0.2, 0.7], "the dropped point took its pressure with it")
+    }
+
+    func testSmoothingSpreadsThePressuresAcrossTheNewPoints() throws {
+        let smoothed = SketchStrokeShape.smoothed(line(count: 4, pressures: [0, 0.5, 0.5, 1]))
+        XCTAssertEqual(smoothed.points.count, smoothed.pressures.count)
+        XCTAssertTrue(smoothed.hasPressure)
+        XCTAssertEqual(try XCTUnwrap(smoothed.pressures.first), 0, accuracy: 0.001)
+        XCTAssertEqual(try XCTUnwrap(smoothed.pressures.last), 1, accuracy: 0.001)
+        for pressure in smoothed.pressures {
+            XCTAssertTrue((0...1).contains(pressure), "\(pressure)")
+        }
+    }
+
+    func testAStrokeWithNoPressuresStaysThatWay() {
+        let plain = SketchStrokeShape.line(
+            of: SketchStroke(points: [.zero, CGPoint(x: 30, y: 0), CGPoint(x: 60, y: 10)], ink: .ink, width: 4)
+        )
+        XCTAssertFalse(plain.hasPressure)
+        XCTAssertTrue(plain.pressures.isEmpty)
+    }
+}

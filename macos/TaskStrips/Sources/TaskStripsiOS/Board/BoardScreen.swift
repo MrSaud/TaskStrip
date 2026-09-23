@@ -58,6 +58,7 @@ struct BoardScreen: View {
     @AppStorage(AppSettingsKey.dateStyle) private var dateStyle = BoardDateStyle.both
     @AppStorage(AppSettingsKey.clockStyle) private var clockStyle = BoardClockStyle.digital
     @AppStorage(AppSettingsKey.showCalendar) private var showCalendar = false
+    @AppStorage(AppSettingsKey.showSearch) private var showSearch = true
     /// iPad only: which lists are pinned side by side. The iPhone has its pager instead.
     @AppStorage(AppSettingsKey.boardPanes) private var panes: BoardPanes = .everything
     @State private var quote: Quote?
@@ -183,7 +184,7 @@ struct BoardScreen: View {
             .navigationTitle("Task Strips")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(TaskStripTheme.bayBackground, for: .navigationBar)
-            .searchable(if: showsStripControls, text: $filter.search, prompt: "Search strips")
+            .searchable(if: showsStripControls && showSearch, text: $filter.search, prompt: "Search strips")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) { menu }
                 if showsStripControls {
@@ -317,6 +318,17 @@ struct BoardScreen: View {
             quickAction("NOTE", systemImage: "note.text") { destination = .notes }
             quickAction("SKETCH", systemImage: "scribble") {
                 quickSketch = QuickSketch(id: SketchStore.newNoteID())
+            }
+            quickAction(
+                "Search",
+                systemImage: showSearch ? "magnifyingglass.circle.fill" : "magnifyingglass",
+                lit: showSearch,
+                iconOnly: true
+            ) {
+                showSearch.toggle()
+                // A search field switched off with something typed into it would go on filtering
+                // a board nobody can see the filter for.
+                if !showSearch { filter.search = "" }
             }
             // The calendar is a switch rather than a place to go, so it wears its icon alone:
             // four words of label is what pushed the others onto two lines on a phone.

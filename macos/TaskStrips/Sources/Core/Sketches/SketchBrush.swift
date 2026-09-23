@@ -71,6 +71,15 @@ enum SketchBrush: String, CaseIterable, Identifiable, Equatable {
     /// Whether the line thins towards both ends rather than running at one width.
     var tapers: Bool { self == .brush }
 
+    /// Whether a pen pressing harder draws heavier. A highlighter's nib is a felt block and an
+    /// eraser is an eraser: neither cares how hard you lean.
+    var answersToPressure: Bool {
+        switch self {
+        case .pen, .pencil, .brush: return true
+        case .highlighter, .eraser: return false
+        }
+    }
+
     func width(forNib nib: CGFloat) -> CGFloat { nib * widthScale }
 
     /// The ink to switch to when this brush is picked, or nil to leave the choice alone.

@@ -22,6 +22,8 @@ struct SketchCanvasView: View {
     @State private var pageIndex = 0
     @State private var strokes: [SketchStroke] = []
     @State private var currentStroke: SketchStroke?
+    /// Where the system thinks the pen is going next. Drawn, never kept.
+    @State private var predicted: [SketchSample] = []
     @State private var ink: SketchInk = .ink
     @State private var penWidth: SketchPenWidth = .fine
     @State private var brush: SketchBrush = .pen
@@ -118,8 +120,10 @@ struct SketchCanvasView: View {
                         .overlay(
                             StrokeCatcher(
                                 pencilOnly: !fingerDrawing,
-                                onBegan: { beginStroke(at: $0) },
-                                onMoved: { extendStroke(through: $0) },
+                                onBegan: { point, pressure in beginStroke(at: point, pressure: pressure) },
+                                onMoved: { made, predicted in
+                                    extendStroke(through: made, predicted: predicted)
+                                },
                                 onEnded: { endStroke() },
                                 onRefused: { flashPencilOnly() }
                             )
@@ -151,9 +155,8 @@ struct SketchCanvasView: View {
             SketchPaperLayer(paper: paper, size: size)
 
             Canvas { context, _ in
-                for stroke in strokes + [currentStroke].compactMap({ $0 }) {
-                    draw(stroke, in: &context)
-                }
+                for stroke in strokes { draw(stroke, in: &context) }
+                if let live = currentStroke { draw(withPrediction(live), in: &context) }
             }
 
             if let pendingImage {
@@ -182,6 +185,16 @@ struct SketchCanvasView: View {
         }
     }
 
+    /// The stroke as it should look right now: what the hand has made, plus where the system
+    /// says it's going. The prediction is only ever drawn — `strokes` never sees it.
+    private func withPrediction(_ stroke: SketchStroke) -> SketchStroke {
+        guard !predicted.isEmpty else { return stroke }
+        var drawn = stroke
+        drawn.points.append(contentsOf: predicted.map(\.point))
+        drawn.pressures.append(contentsOf: predicted.map(\.pressure))
+        return drawn
+    }
+
     /// The same brush rules the saved PNG is drawn with — see SketchRenderer.render. The two are
     /// kept side by side deliberately: what's on screen while drawing and what's on the page
     /// afterwards have to be the same line.
@@ -198,11 +211,12 @@ struct SketchCanvasView: View {
                 Path(ellipseIn: CGRect(x: first.x - radius, y: first.y - radius, width: width, height: width)),
                 with: .color(colour)
             )
-        } else if stroke.brush.tapers {
-            // One filled shape, ends rounded by hand — see SketchStrokeShape for why.
-            let line = SketchStrokeShape.smoothed(SketchStrokeShape.cleaned(stroke.points))
+        } else if stroke.brush.tapers || stroke.pressures.contains(where: { $0 < 0.99 }) {
+            // A filled shape, because a width that changes — tapered, or pressed harder in the
+            // middle — can't be one stroked path.
+            let line = SketchStrokeShape.line(of: stroke)
             let widths = SketchStrokeShape.widths(for: line, stroke: stroke)
-            let outline = SketchStrokeShape.outline(points: line, widths: widths)
+            let outline = SketchStrokeShape.outline(points: line.points, widths: widths)
             guard let start = outline.first else { return }
 
             var shape = Path()
@@ -213,7 +227,7 @@ struct SketchCanvasView: View {
 
             // The ends, filled separately: a nib is round, and an ellipse added to the outline's
             // own path winds the other way and punches a hole through the tip instead.
-            for (point, index) in [(line.first, 0), (line.last, line.count - 1)] {
+            for (point, index) in [(line.points.first, 0), (line.points.last, line.points.count - 1)] {
                 guard let point else { continue }
                 let radius = widths[index] / 2
                 context.fill(
@@ -224,7 +238,7 @@ struct SketchCanvasView: View {
                 )
             }
         } else {
-            let line = SketchStrokeShape.smoothed(SketchStrokeShape.cleaned(stroke.points))
+            let line = SketchStrokeShape.line(of: stroke).points
             var path = Path()
             path.move(to: line.first ?? first)
             for point in line.dropFirst() { path.addLine(to: point) }
@@ -252,17 +266,29 @@ struct SketchCanvasView: View {
 
     // MARK: - One stroke, whatever drew it
 
-    private func beginStroke(at point: CGPoint) {
-        currentStroke = SketchStroke(points: [point], ink: ink, width: penWidth.rawValue, brush: brush)
+    private func beginStroke(at point: CGPoint, pressure: CGFloat = 1) {
+        predicted = []
+        currentStroke = SketchStroke(
+            points: [point], pressures: [pressure], ink: ink,
+            width: penWidth.rawValue, brush: brush
+        )
+    }
+
+    private func extendStroke(through made: [SketchSample], predicted ahead: [SketchSample] = []) {
+        guard var stroke = currentStroke else { return }
+        stroke.points.append(contentsOf: made.map(\.point))
+        stroke.pressures.append(contentsOf: made.map(\.pressure))
+        currentStroke = stroke
+        // Kept apart from the stroke: a guess is worth drawing and not worth saving.
+        predicted = ahead
     }
 
     private func extendStroke(through points: [CGPoint]) {
-        guard var stroke = currentStroke else { return }
-        stroke.points.append(contentsOf: points)
-        currentStroke = stroke
+        extendStroke(through: points.map { SketchSample(point: $0) })
     }
 
     private func endStroke() {
+        predicted = []
         if let stroke = currentStroke { strokes.append(stroke) }
         currentStroke = nil
     }

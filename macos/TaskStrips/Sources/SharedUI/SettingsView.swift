@@ -25,6 +25,8 @@ enum AppSettingsKey {
     static let theme = "boardTheme"
     /// The hour the daily report goes out.
     static let reportHour = "dailyReportHour"
+    /// Whether the board carries its search field.
+    static let showSearch = "showBoardSearch"
     /// When the last automatic backup went up, so the next one knows whether a day has passed.
     static let lastAutoBackup = "lastAutoBackupAt"
 }

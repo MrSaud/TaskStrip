@@ -39,6 +39,21 @@ struct QuoteOfDayCard: View {
 
                 Spacer(minLength: 0)
 
+                // Its own button, always there: hiding the card was buried in the Share menu,
+                // which on a phone is a menu you have to know about to find.
+                Button {
+                    showQuote = false
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(TaskStripTheme.paper.opacity(0.5))
+                        .padding(4)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help("Hide the quote — Settings brings it back")
+                .accessibilityLabel("Hide the quote of the day")
+
                 // Only while the words are showing: there is nothing to share from a title line.
                 if !collapsed {
                     Menu {
