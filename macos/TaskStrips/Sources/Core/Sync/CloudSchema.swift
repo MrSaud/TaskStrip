@@ -52,6 +52,8 @@ enum CloudSchema {
         static let deferUntil = "deferUntil"
         /// The stretches of time spent on it (schema v1.3). Times, not words, so not encrypted.
         static let sessions = "sessions"
+        /// The calendar event blocked out for it (schema v1.3).
+        static let calendarEvent = "calendarEvent"
     }
 
     enum Attachment {

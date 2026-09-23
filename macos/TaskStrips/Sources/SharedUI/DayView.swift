@@ -1,3 +1,4 @@
+import EventKit
 import SwiftData
 import SwiftUI
 
@@ -13,14 +14,16 @@ struct DayView: View {
     let onEdit: (TaskItem) -> Void
 
     @Environment(\.modelContext) private var modelContext
+    @AppStorage(AppSettingsKey.showCalendar) private var showCalendar = false
     @State private var now = Date.now
+    @State private var events: [EKEvent] = []
 
     private var plan: DayPlan { DayPlan.make(tasks: tasks, reminders: reminders, now: now) }
 
     var body: some View {
         VStack(spacing: 0) {
             if showsHeader { header }
-            if plan.isEmpty {
+            if plan.isEmpty && events.isEmpty {
                 empty
             } else {
                 list
@@ -29,6 +32,19 @@ struct DayView: View {
         .background(TaskStripTheme.bayBackground)
         // A board left open overnight should wake up to the new day rather than yesterday's.
         .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { now = $0 }
+        .task(id: showCalendar) { await loadCalendar() }
+        .onChange(of: now) { _, _ in Task { await loadCalendar() } }
+    }
+
+    /// Today's events, once the person has asked for them and the calendar has said yes.
+    private func loadCalendar() async {
+        guard showCalendar else {
+            events = []
+            return
+        }
+        let calendar = StripCalendar.shared
+        if calendar.access == .unknown { _ = await calendar.requestReading() }
+        events = calendar.today(now: now)
     }
 
     private var header: some View {
@@ -54,6 +70,24 @@ struct DayView: View {
             section("DUE TODAY", plan.due, tint: TaskStripTheme.amber)
             section("CHASE", plan.chase, tint: TaskStripTheme.high, subtitle: { "waiting on \($0.waitingOnName)" })
             section("BACK TODAY", plan.returning, tint: TaskStripTheme.low)
+
+            if !events.isEmpty {
+                Section {
+                    ForEach(events, id: \.eventIdentifier) { event in
+                        HStack(spacing: 10) {
+                            Text(event.startDate.formatted(date: .omitted, time: .shortened))
+                                .font(.system(.caption, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                            Text(event.title ?? "")
+                                .lineLimit(1)
+                            Spacer(minLength: 0)
+                        }
+                        .listRowBackground(Color.clear)
+                    }
+                } header: {
+                    heading("IN THE CALENDAR", tint: TaskStripTheme.low)
+                }
+            }
 
             if !plan.reminders.isEmpty {
                 Section {

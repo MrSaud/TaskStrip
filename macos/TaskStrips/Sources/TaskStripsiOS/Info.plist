@@ -22,6 +22,10 @@
 	<string>$(CURRENT_PROJECT_VERSION)</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.productivity</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Showing what today already costs means reading today's events.</string>
+	<key>NSCalendarsWriteOnlyAccessUsageDescription</key>
+	<string>Blocking time for a strip puts an event in your calendar.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Task Strips asks for Face ID before showing a saved password.</string>
 	<key>NSMicrophoneUsageDescription</key>

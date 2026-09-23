@@ -19,6 +19,8 @@ enum AppSettingsKey {
     static let clockStyle = "boardClockStyle"
     /// Whether a finger draws on a sketch page, or only an Apple Pencil.
     static let fingerDrawing = "sketchFingerDrawing"
+    /// Whether Today shows what the calendar already has in it.
+    static let showCalendar = "showTodaysCalendar"
     /// When the last automatic backup went up, so the next one knows whether a day has passed.
     static let lastAutoBackup = "lastAutoBackupAt"
 }
@@ -66,6 +68,7 @@ struct SettingsView: View {
     @AppStorage(AppSettingsKey.showQuote) private var showQuote = true
     @AppStorage(AppSettingsKey.dateStyle) private var dateStyle = BoardDateStyle.both
     @AppStorage(AppSettingsKey.clockStyle) private var clockStyle = BoardClockStyle.digital
+    @AppStorage(AppSettingsKey.showCalendar) private var showCalendar = false
     @AppStorage(AppSettingsKey.showMenuBar) private var showMenuBar = true
     @ObservedObject private var drive = DriveSession.shared
     @State private var clientID = GoogleOAuth.clientID() ?? ""
@@ -124,6 +127,15 @@ struct SettingsView: View {
             } footer: {
                 Text("Both calendars stack on a phone and sit on one line on a Mac. One calendar "
                      + "on its own reads larger. The clock keeps to the minute, digits or hands.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Toggle("Today's calendar in the Today list", isOn: $showCalendar)
+            } footer: {
+                Text("Reads today's events so the day's list knows what the day already costs. "
+                     + "Nothing is written unless you block time for a strip yourself.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

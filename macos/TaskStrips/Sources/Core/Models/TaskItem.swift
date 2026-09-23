@@ -115,6 +115,9 @@ final class TaskItem: Identifiable {
     /// lightweight migration to fill in on an existing store.
     var attachments: [TaskAttachment] = []
     /// Fire a reminder this many minutes before `dueAt`. Nil means no reminder.
+    /// The calendar event blocked out for this strip, by the identifier that means the same
+    /// event on every device rather than the one that only means it here.
+    var calendarEventID: String?
     /// The time spent on this strip, one stretch at a time.
     var sessions: [TaskWorkSession] = []
     /// The steps this strip breaks into. When there are any, they decide its progress.

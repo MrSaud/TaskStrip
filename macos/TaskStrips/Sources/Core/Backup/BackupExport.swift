@@ -194,6 +194,7 @@ enum BackupExport {
         if let minutes = task.reminderMinutesBefore { object["reminderMinutesBefore"] = minutes }
         if let interval = task.repeatIntervalDays { object["repeatIntervalDays"] = interval }
         if let deferUntil = task.deferUntil { object["deferUntil"] = milliseconds(deferUntil) }
+        if let event = task.calendarEventID { object["calendarEventID"] = event }
         if !task.sessions.isEmpty {
             object["sessions"] = task.sessions.map { session -> [String: Any] in
                 var stretch: [String: Any] = [

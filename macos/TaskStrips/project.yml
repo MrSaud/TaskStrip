@@ -54,6 +54,8 @@ targets:
         CFBundleIconName: AppIcon
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSCalendarsWriteOnlyAccessUsageDescription: Blocking time for a strip puts an event in your calendar.
+        NSCalendarsFullAccessUsageDescription: Showing what today already costs means reading today's events.
         LSApplicationCategoryType: public.app-category.productivity
         NSHumanReadableCopyright: ""
         NSMicrophoneUsageDescription: "Task Strips records voice notes onto a strip. Nothing is recorded until you press Record, and the audio stays on this Mac."
@@ -129,6 +131,8 @@ targets:
         # An empty dictionary is enough: a plain launch screen in the system background colour.
         UILaunchScreen: {}
         UIApplicationSupportsIndirectInputEvents: true
+        NSCalendarsWriteOnlyAccessUsageDescription: Blocking time for a strip puts an event in your calendar.
+        NSCalendarsFullAccessUsageDescription: Showing what today already costs means reading today's events.
         # CKSyncEngine is woken by a silent push when another device changed the board.
         UIBackgroundModes: [remote-notification]
         UISupportedInterfaceOrientations:

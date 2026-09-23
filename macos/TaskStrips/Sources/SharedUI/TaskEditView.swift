@@ -24,6 +24,9 @@ struct TaskEditView: View {
     @State private var checklist: [TaskChecklistItem]
     @State private var newStep = ""
     @State private var running = false
+    @State private var calendarEventID: String?
+    @State private var calendarBlock: Date?
+    @State private var calendarRefused = false
     @State private var hasDeferUntil: Bool
     @State private var deferUntil: Date
     @State private var tags: [String]
@@ -83,6 +86,7 @@ struct TaskEditView: View {
         _dueAt = State(initialValue: editingTask?.dueAt ?? .now)
         _progress = State(initialValue: Double(editingTask?.progress ?? 0))
         _checklist = State(initialValue: editingTask?.checklist ?? [])
+        _calendarEventID = State(initialValue: editingTask?.calendarEventID)
         _hasDeferUntil = State(initialValue: editingTask?.deferUntil != nil)
         _deferUntil = State(initialValue: editingTask?.deferUntil ?? Date.now.addingTimeInterval(24 * 3600))
         _tags = State(initialValue: editingTask?.tags ?? [])
@@ -163,6 +167,32 @@ struct TaskEditView: View {
                 .disabled(editingTask == nil)
                 if editingTask == nil {
                     Text("File the strip first, then the clock has something to run on.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            Section("CALENDAR") {
+                if let calendarBlock {
+                    Label(
+                        calendarBlock.formatted(date: .abbreviated, time: .shortened),
+                        systemImage: "calendar.badge.clock"
+                    )
+                    Button(role: .destructive) {
+                        unblockTime()
+                    } label: {
+                        Label("Give the time back", systemImage: "calendar.badge.minus")
+                    }
+                } else {
+                    Button {
+                        blockTime()
+                    } label: {
+                        Label("Block an hour for this…", systemImage: "calendar.badge.plus")
+                    }
+                    .disabled(title.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+                if calendarRefused {
+                    Text("Task Strips can't write to your calendar. \(Platform.settingsApp) can change that.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -323,7 +353,18 @@ struct TaskEditView: View {
             }
         }
         .navigationTitle(isEditing ? "EDIT STRIP" : "NEW STRIP")
-        .onAppear { running = StripTime.isRunning(editingTask?.sessions ?? []) }
+        .onAppear {
+            running = StripTime.isRunning(editingTask?.sessions ?? [])
+            // The event may have been moved or deleted in the calendar since; what it says now
+            // is what the strip should show.
+            if let task = editingTask, let event = StripCalendar.shared.event(for: task) {
+                calendarBlock = event.startDate
+            } else if editingTask?.calendarEventID != nil {
+                calendarBlock = nil
+                editingTask?.calendarEventID = nil
+                calendarEventID = nil
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
                 Button("Cancel") { cancel() }
@@ -386,6 +427,7 @@ struct TaskEditView: View {
         task.dueAt = hasDueDate ? dueAt : nil
         task.checklist = checklist
         task.deferUntil = hasDeferUntil ? deferUntil : nil
+        task.calendarEventID = calendarEventID
         task.progress = StripChecklist.progress(of: checklist) ?? Int(progress)
         task.tags = tags
         task.links = links
@@ -542,6 +584,7 @@ struct TaskEditView: View {
         task.dueAt = hasDueDate ? dueAt : nil
         task.checklist = checklist
         task.deferUntil = hasDeferUntil ? deferUntil : nil
+        task.calendarEventID = calendarEventID
         task.progress = StripChecklist.progress(of: checklist) ?? Int(progress)
         task.isDone = editingTask?.isDone ?? false
         task.tags = tags
@@ -573,6 +616,38 @@ struct TaskEditView: View {
     private func open(_ link: TaskLink) {
         guard let url = URL(string: link.url.trimmingCharacters(in: .whitespaces)) else { return }
         Platform.open(url)
+    }
+
+    /// Blocks an hour in the calendar and remembers which event it is. The strip keeps only the
+    /// identifier; the event itself belongs to the calendar, where it can be moved like any other.
+    private func blockTime() {
+        Task { @MainActor in
+            let calendar = StripCalendar.shared
+            if calendar.access == .unknown, await calendar.requestWriting() == false {
+                calendarRefused = true
+                return
+            }
+            guard calendar.access == .allowed else {
+                calendarRefused = true
+                return
+            }
+            let planned = draftedStrip()
+            let start = StripCalendarPlan.start(for: planned)
+            guard let id = calendar.block(planned, at: start) else {
+                calendarRefused = true
+                return
+            }
+            calendarEventID = id
+            calendarBlock = start
+            editingTask?.calendarEventID = id
+        }
+    }
+
+    private func unblockTime() {
+        if let task = editingTask { StripCalendar.shared.unblock(task) }
+        editingTask?.calendarEventID = nil
+        calendarEventID = nil
+        calendarBlock = nil
     }
 
     /// What the clock has to say: what's been spent on this strip, and this week's share of it.
