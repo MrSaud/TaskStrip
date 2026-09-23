@@ -73,6 +73,18 @@ enum SketchBrush: String, CaseIterable, Identifiable, Equatable {
 
     func width(forNib nib: CGFloat) -> CGFloat { nib * widthScale }
 
+    /// The ink to switch to when this brush is picked, or nil to leave the choice alone.
+    ///
+    /// A highlighter is yellow — black ink at a quarter opacity is grey, which is not what anyone
+    /// reaches for a highlighter to do. Only the two defaults are ever swapped, so a colour
+    /// someone picked on purpose is never taken off them: pick red while highlighting and it
+    /// stays red.
+    func inkFollowingBrush(from current: SketchInk, previous: SketchBrush) -> SketchInk? {
+        if self == .highlighter, current == .ink { return .amber }
+        if previous == .highlighter, self != .highlighter, current == .amber { return .ink }
+        return nil
+    }
+
     /// The width at each point of a tapered stroke: thin where the brush lands and where it
     /// leaves, full in between. One width per point, so both renderers draw the same line.
     ///

@@ -8,12 +8,63 @@ struct SketchStampPicker: View {
     let onPick: (CGImage) -> Void
     @Environment(\.dismiss) private var dismiss
 
+    @State private var search = ""
+
     private let columns = [GridItem(.adaptive(minimum: 56), spacing: 10)]
+    private var groups: [SketchStamp.Group] { SketchStamp.groups(matching: search) }
 
     var body: some View {
+        VStack(spacing: 0) {
+            searchField
+            if groups.isEmpty {
+                empty
+            } else {
+                grid
+            }
+        }
+        .macFrame(minWidth: 420, minHeight: 460)
+        .background(TaskStripTheme.bayBackground)
+        .navigationTitle("STAMPS")
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Cancel") { dismiss() }
+            }
+        }
+    }
+
+    /// A field of its own rather than `.searchable`: this is a sheet inside a sheet, and on a Mac
+    /// that search would land in the window's toolbar, which belongs to the page behind it.
+    private var searchField: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("Search stamps", text: $search)
+                .textFieldStyle(.plain)
+                .autocorrectionDisabled()
+                .accessibilityIdentifier("stampSearch")
+            if !search.isEmpty {
+                Button {
+                    search = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Clear the search")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(TaskStripTheme.baySurface)
+        .clipShape(Capsule())
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
+    }
+
+    private var grid: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                ForEach(SketchStamp.groups) { group in
+                ForEach(groups) { group in
                     VStack(alignment: .leading, spacing: 8) {
                         Text(group.title.uppercased())
                             .font(.caption.weight(.semibold))
@@ -31,7 +82,8 @@ struct SketchStampPicker: View {
                                         .background(TaskStripTheme.paper, in: RoundedRectangle(cornerRadius: 8))
                                 }
                                 .buttonStyle(.plain)
-                                .accessibilityLabel(stamp.id)
+                                .help(stamp.name)
+                                .accessibilityLabel(stamp.name)
                             }
                         }
                     }
@@ -39,14 +91,20 @@ struct SketchStampPicker: View {
             }
             .padding(16)
         }
-        .macFrame(minWidth: 420, minHeight: 460)
-        .background(TaskStripTheme.bayBackground)
-        .navigationTitle("STAMPS")
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { dismiss() }
-            }
+    }
+
+    private var empty: some View {
+        VStack(spacing: 6) {
+            Spacer()
+            Text("NOTHING BY THAT NAME")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+            Text("Try \u{201C}tick\u{201D}, \u{201C}arrow\u{201D}, \u{201C}idea\u{201D} \u{2014} or the emoji itself.")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
+            Spacer()
         }
+        .frame(maxWidth: .infinity)
     }
 
     /// Drawn big and handed over as a picture: the page is a bitmap, so a stamp has to become one
@@ -72,7 +130,7 @@ struct SketchStampLabel: View {
     var size: CGFloat = 26
 
     var body: some View {
-        switch stamp {
+        switch stamp.kind {
         case .emoji(let character):
             Text(character)
                 .font(.system(size: size))

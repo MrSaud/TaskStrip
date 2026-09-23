@@ -69,8 +69,75 @@ final class SketchStampTests: XCTestCase {
         }
     }
 
+    func testEveryStampCanBeFoundByName() {
+        for stamp in SketchStamp.all {
+            XCTAssertFalse(stamp.name.isEmpty, stamp.id)
+            XCTAssertTrue(stamp.matches(stamp.name), stamp.id)
+        }
+    }
+
     func testIconsTakeTheInkAndEmojiKeepTheirOwnColours() {
-        XCTAssertTrue(SketchStamp.icon("checkmark").followsInk)
-        XCTAssertFalse(SketchStamp.emoji("✅").followsInk)
+        let icon = SketchStamp.all.first { if case .icon = $0.kind { return true } else { return false } }
+        let emoji = SketchStamp.all.first { if case .emoji = $0.kind { return true } else { return false } }
+        XCTAssertEqual(icon?.followsInk, true)
+        XCTAssertEqual(emoji?.followsInk, false)
+    }
+
+    // MARK: - Finding one
+
+    func testSearchMatchesTheNameAnyKeywordAndTheCharacterItself() {
+        let fire = try? XCTUnwrap(SketchStamp.all.first { $0.id == "emoji:🔥" })
+        XCTAssertEqual(fire?.matches("hot"), true, "by name")
+        XCTAssertEqual(fire?.matches("URGENT"), true, "by keyword, whatever the case")
+        XCTAssertEqual(fire?.matches("🔥"), true, "by the emoji itself")
+        XCTAssertEqual(fire?.matches("aubergine"), false)
+    }
+
+    func testAnEmptySearchIsNoSearchAtAll() {
+        XCTAssertEqual(SketchStamp.groups(matching: "").count, SketchStamp.groups.count)
+        XCTAssertEqual(SketchStamp.groups(matching: "   ").count, SketchStamp.groups.count)
+    }
+
+    func testASearchDropsTheGroupsWithNothingInThem() {
+        let found = SketchStamp.groups(matching: "arrow")
+        XCTAssertFalse(found.isEmpty)
+        for group in found {
+            XCTAssertFalse(group.stamps.isEmpty, group.title)
+        }
+        XCTAssertLessThan(found.flatMap(\.stamps).count, SketchStamp.all.count)
+    }
+
+    func testNamingAGroupKeepsTheWholeGroup() {
+        let arrows = try? XCTUnwrap(SketchStamp.groups.first { $0.title == "Arrows" })
+        let found = SketchStamp.groups(matching: "arrows")
+        XCTAssertEqual(found.first { $0.title == "Arrows" }?.stamps.count, arrows?.stamps.count)
+    }
+
+    func testASearchThatFindsNothingFindsNothing() {
+        XCTAssertTrue(SketchStamp.groups(matching: "qwertyuiop").isEmpty)
+    }
+
+    /// The point of the search is that there are too many to scroll.
+    func testThereAreEnoughStampsToBeWorthSearching() {
+        XCTAssertGreaterThan(SketchStamp.all.count, 100)
+    }
+}
+
+extension SketchBrushTests {
+    func testTheHighlighterArrivesWithAmberInIt() {
+        XCTAssertEqual(SketchBrush.highlighter.inkFollowingBrush(from: .ink, previous: .pen), .amber)
+    }
+
+    func testLeavingTheHighlighterGivesTheDarkInkBack() {
+        XCTAssertEqual(SketchBrush.pen.inkFollowingBrush(from: .amber, previous: .highlighter), .ink)
+    }
+
+    func testAColourPickedOnPurposeIsNeverTakenAway() {
+        // Red while highlighting stays red.
+        XCTAssertNil(SketchBrush.highlighter.inkFollowingBrush(from: .urgent, previous: .pen))
+        // Amber picked with the pen isn't touched by switching to another pen.
+        XCTAssertNil(SketchBrush.pencil.inkFollowingBrush(from: .amber, previous: .pen))
+        // Already amber, already highlighting: nothing to do.
+        XCTAssertNil(SketchBrush.highlighter.inkFollowingBrush(from: .amber, previous: .highlighter))
     }
 }

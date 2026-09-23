@@ -63,6 +63,9 @@ struct SketchCanvasView: View {
             paper = store.paper(of: noteID)
             reload(to: nil)
         }
+        .onChange(of: brush) { previous, chosen in
+            if let following = chosen.inkFollowingBrush(from: ink, previous: previous) { ink = following }
+        }
         .onChange(of: paper) { _, chosen in
             // A note with no pages yet has no folder to write into; the choice is written again
             // when the first page is saved.
@@ -196,23 +199,35 @@ struct SketchCanvasView: View {
                 with: .color(colour)
             )
         } else if stroke.brush.tapers {
-            let widths = SketchBrush.taperedWidths(pointCount: stroke.points.count, width: width)
-            for index in stroke.points.indices.dropFirst() {
-                var segment = Path()
-                segment.move(to: stroke.points[index - 1])
-                segment.addLine(to: stroke.points[index])
-                context.stroke(
-                    segment,
-                    with: .color(colour),
-                    style: StrokeStyle(
-                        lineWidth: (widths[index - 1] + widths[index]) / 2, lineCap: cap, lineJoin: .round
-                    )
+            // One filled shape, ends rounded by hand — see SketchStrokeShape for why.
+            let line = SketchStrokeShape.smoothed(SketchStrokeShape.cleaned(stroke.points))
+            let widths = SketchStrokeShape.widths(for: line, stroke: stroke)
+            let outline = SketchStrokeShape.outline(points: line, widths: widths)
+            guard let start = outline.first else { return }
+
+            var shape = Path()
+            shape.move(to: start)
+            for point in outline.dropFirst() { shape.addLine(to: point) }
+            shape.closeSubpath()
+            context.fill(shape, with: .color(colour))
+
+            // The ends, filled separately: a nib is round, and an ellipse added to the outline's
+            // own path winds the other way and punches a hole through the tip instead.
+            for (point, index) in [(line.first, 0), (line.last, line.count - 1)] {
+                guard let point else { continue }
+                let radius = widths[index] / 2
+                context.fill(
+                    Path(ellipseIn: CGRect(
+                        x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2
+                    )),
+                    with: .color(colour)
                 )
             }
         } else {
+            let line = SketchStrokeShape.smoothed(SketchStrokeShape.cleaned(stroke.points))
             var path = Path()
-            path.move(to: first)
-            for point in stroke.points.dropFirst() { path.addLine(to: point) }
+            path.move(to: line.first ?? first)
+            for point in line.dropFirst() { path.addLine(to: point) }
             context.stroke(
                 path,
                 with: .color(colour),

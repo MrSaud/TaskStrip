@@ -150,22 +150,33 @@ enum SketchRenderer {
                     height: width
                 ))
             } else if stroke.brush.tapers {
-                // Segment by segment, because one path can only have one width.
-                let widths = SketchBrush.taperedWidths(pointCount: stroke.points.count, width: width)
-                context.setStrokeColor(red: red, green: green, blue: blue, alpha: alpha)
-                for index in stroke.points.indices.dropFirst() {
-                    context.setLineWidth((widths[index - 1] + widths[index]) / 2)
-                    context.beginPath()
-                    context.move(to: stroke.points[index - 1])
-                    context.addLine(to: stroke.points[index])
-                    context.strokePath()
+                // One filled shape, because a width that changes can't be one stroked path, and
+                // stroking it piece by piece beads at every join.
+                let line = SketchStrokeShape.smoothed(SketchStrokeShape.cleaned(stroke.points))
+                let widths = SketchStrokeShape.widths(for: line, stroke: stroke)
+                let outline = SketchStrokeShape.outline(points: line, widths: widths)
+                guard let start = outline.first else { break }
+                context.setFillColor(red: red, green: green, blue: blue, alpha: alpha)
+                context.beginPath()
+                context.move(to: start)
+                for point in outline.dropFirst() { context.addLine(to: point) }
+                context.closePath()
+                context.fillPath()
+                // The ends: a filled outline stops flat, and a nib doesn't.
+                for (point, index) in [(line.first, 0), (line.last, line.count - 1)] {
+                    guard let point else { continue }
+                    let radius = widths[index] / 2
+                    context.fillEllipse(in: CGRect(
+                        x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2
+                    ))
                 }
             } else {
+                let line = SketchStrokeShape.smoothed(SketchStrokeShape.cleaned(stroke.points))
                 context.setStrokeColor(red: red, green: green, blue: blue, alpha: alpha)
                 context.setLineWidth(width)
                 context.beginPath()
-                context.move(to: first)
-                for point in stroke.points.dropFirst() { context.addLine(to: point) }
+                context.move(to: line.first ?? first)
+                for point in line.dropFirst() { context.addLine(to: point) }
                 context.strokePath()
             }
         }
