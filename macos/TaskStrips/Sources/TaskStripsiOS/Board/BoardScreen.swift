@@ -122,7 +122,6 @@ struct BoardScreen: View {
                     .padding(.vertical, 5)
                     .background(TaskStripTheme.baySurfaceFaded)
                     .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { now = $0 }
-                quickActions
                 if showQuote, let quote {
                     QuoteOfDayCard(quote: quote)
                 }
@@ -177,6 +176,10 @@ struct BoardScreen: View {
                 }
             }
             .background(TaskStripTheme.bayBackground)
+            // Stuck to the bottom: the three things worth starting without thinking, where a
+            // thumb already is. It rides above the keyboard and the search field rather than
+            // scrolling away with the board.
+            .safeAreaInset(edge: .bottom, spacing: 0) { quickActions }
             .navigationTitle("Task Strips")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(TaskStripTheme.bayBackground, for: .navigationBar)
@@ -305,19 +308,23 @@ struct BoardScreen: View {
         modelContext.insert(task)
     }
 
-    /// The two things that are worth catching before they're gone: a thought and a drawing.
-    /// Fixed on the board rather than folded into the menu, because a note you have to go and
-    /// find is a note you don't write.
+    /// The three things worth starting before the thought is gone, and the calendar's switch.
+    /// Fixed to the bottom of the window rather than folded into a menu, because a note you have
+    /// to go and find is a note you don't write.
     private var quickActions: some View {
         HStack(spacing: 8) {
+            quickAction("STRIP", systemImage: "plus.rectangle") { isCreating = true }
             quickAction("NOTE", systemImage: "note.text") { destination = .notes }
             quickAction("SKETCH", systemImage: "scribble") {
                 quickSketch = QuickSketch(id: SketchStore.newNoteID())
             }
+            // The calendar is a switch rather than a place to go, so it wears its icon alone:
+            // four words of label is what pushed the others onto two lines on a phone.
             quickAction(
-                "CALENDAR",
+                "Today's calendar",
                 systemImage: showCalendar ? "calendar.badge.checkmark" : "calendar",
-                lit: showCalendar
+                lit: showCalendar,
+                iconOnly: true
             ) {
                 showCalendar.toggle()
                 // Turning the calendar on with nowhere to show it would do nothing visible.
@@ -327,26 +334,37 @@ struct BoardScreen: View {
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .background(TaskStripTheme.baySurfaceFaded)
+        .padding(.vertical, 8)
+        .background(.bar)
     }
 
     private func quickAction(
         _ title: String,
         systemImage: String,
         lit: Bool = true,
+        iconOnly: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
+            Group {
+                if iconOnly {
+                    Image(systemName: systemImage)
+                } else {
+                    Label(title, systemImage: systemImage)
+                }
+            }
                 .font(.system(.caption, design: .monospaced))
                 .fontWeight(.semibold)
+                // One line, at its own width: on a narrow phone these wrapped into "SKET / CH".
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
                 .foregroundStyle(lit ? TaskStripTheme.ink : TaskStripTheme.paper.opacity(0.8))
                 .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.vertical, 7)
                 .background(lit ? TaskStripTheme.amber : TaskStripTheme.baySurface, in: Capsule())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 
     private var menu: some View {
