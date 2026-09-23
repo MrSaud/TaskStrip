@@ -67,6 +67,9 @@ struct BoardScreen: View {
     @State private var isBackingUp = false
     @State private var isRestoring = false
     @State private var isCapturingVoice = false
+    /// A sketch started from the board's own button, which exists the moment something is drawn
+    /// on it and not before.
+    @State private var quickSketch: QuickSketch?
     @State private var shareReport: String?
 
     private var boardTasks: [TaskItem] { allTasks.filter { !$0.isArchived } }
@@ -115,6 +118,7 @@ struct BoardScreen: View {
                     .padding(.vertical, 5)
                     .background(TaskStripTheme.baySurfaceFaded)
                     .onReceive(Timer.publish(every: 60, on: .main, in: .common).autoconnect()) { now = $0 }
+                quickActions
                 if showQuote, let quote {
                     QuoteOfDayCard(quote: quote)
                 }
@@ -194,6 +198,11 @@ struct BoardScreen: View {
                             Label("New strip", systemImage: "plus")
                         }
                     }
+                }
+            }
+            .canvasPresentation(item: $quickSketch) { sketch in
+                NavigationStack {
+                    SketchCanvasView(noteID: sketch.id)
                 }
             }
             .sheet(item: $editing) { task in
@@ -285,6 +294,35 @@ struct BoardScreen: View {
         task.notes = draft.notes
         task.notesRtl = defaultNotesRtl
         modelContext.insert(task)
+    }
+
+    /// The two things that are worth catching before they're gone: a thought and a drawing.
+    /// Fixed on the board rather than folded into the menu, because a note you have to go and
+    /// find is a note you don't write.
+    private var quickActions: some View {
+        HStack(spacing: 8) {
+            quickAction("NOTE", systemImage: "note.text") { destination = .notes }
+            quickAction("SKETCH", systemImage: "scribble") {
+                quickSketch = QuickSketch(id: SketchStore.newNoteID())
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(TaskStripTheme.baySurfaceFaded)
+    }
+
+    private func quickAction(_ title: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(.caption, design: .monospaced))
+                .fontWeight(.semibold)
+                .foregroundStyle(TaskStripTheme.ink)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(TaskStripTheme.amber, in: Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     private var menu: some View {
@@ -603,3 +641,8 @@ enum SampleBoard {
     }
 }
 #endif
+
+/// A sketch the board started, named before it exists so it can be presented.
+private struct QuickSketch: Identifiable {
+    let id: String
+}
