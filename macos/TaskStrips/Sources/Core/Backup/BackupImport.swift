@@ -280,6 +280,7 @@ enum BackupImport {
                         fromTimer: line["fromTimer"] as? Bool ?? false
                     )
                 },
+                announced: (value["announced"] as? [Int]) ?? [],
                 target: (value["target"] as? NSNumber)?.doubleValue
             )
         }

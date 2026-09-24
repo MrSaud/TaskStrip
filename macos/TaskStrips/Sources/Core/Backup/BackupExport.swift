@@ -225,6 +225,9 @@ enum BackupExport {
                     },
                 ]
                 if let target = tally.target { value["target"] = target }
+                // What it has already announced, or a budget restored from a backup says
+                // "nine tenths spent" again about a total it warned about last month.
+                if !tally.announced.isEmpty { value["announced"] = tally.announced }
                 return value
             }
         }
