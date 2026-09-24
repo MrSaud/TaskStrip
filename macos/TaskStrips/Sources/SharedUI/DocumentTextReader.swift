@@ -20,9 +20,20 @@ enum DocumentTextReader {
         }
     }
 
-    /// Both languages, in the order Vision should prefer them. Arabic recognition exists from
-    /// macOS 15 and iOS 18; on anything older Vision quietly ignores the ones it can't do.
-    static let languages = ["en-US", "ar", "ar-SA"]
+    /// Both languages, Arabic first, and spelled the way Vision spells them.
+    ///
+    /// This list is fussier than it looks. "ar" is not an identifier Vision knows — it wants
+    /// "ar-SA" — and one it doesn't know doesn't fail loudly: it reads the English and silently
+    /// returns nothing at all for the Arabic. A whole Arabic document came back empty that way.
+    static let wantedLanguages = ["ar-SA", "en-US"]
+
+    /// Only the ones this device actually offers, so a language dropped or renamed in a future
+    /// release can't take the rest down with it.
+    static func languages(for request: VNRecognizeTextRequest) -> [String] {
+        let supported = Set((try? request.supportedRecognitionLanguages()) ?? [])
+        let wanted = wantedLanguages.filter { supported.contains($0) }
+        return wanted.isEmpty ? ["en-US"] : wanted
+    }
 
     /// How many pages of a long PDF to read. The dates that matter are at the front of a letter
     /// or an invoice, and a hundred-page contract shouldn't hold up a sheet.
@@ -110,7 +121,7 @@ enum DocumentTextReader {
             }
             request.recognitionLevel = .accurate
             request.usesLanguageCorrection = true
-            request.recognitionLanguages = languages
+            request.recognitionLanguages = Self.languages(for: request)
 
             do {
                 try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])

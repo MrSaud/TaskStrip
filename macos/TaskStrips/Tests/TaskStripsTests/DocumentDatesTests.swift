@@ -1,3 +1,4 @@
+import Vision
 import XCTest
 @testable import TaskStrips
 
@@ -195,5 +196,32 @@ final class ScannedInvoiceTests: XCTestCase {
     func testAnAmountOfMoneyIsNotADate() {
         let found = DocumentDates.find(in: "Amount due: KD 412.500")
         XCTAssertTrue(found.isEmpty, found.map(\.matched).joined(separator: ", "))
+    }
+}
+
+/// The languages the reader asks Vision for.
+final class DocumentLanguageTests: XCTestCase {
+    /// The bug this exists for: "ar" is not an identifier Vision knows, and an unknown one
+    /// doesn't fail loudly — it reads the English and returns nothing at all for the Arabic.
+    /// Every Arabic document came back empty.
+    func testTheArabicIdentifierIsTheOneVisionActuallyKnows() {
+        XCTAssertTrue(DocumentTextReader.wantedLanguages.contains("ar-SA"))
+        XCTAssertFalse(DocumentTextReader.wantedLanguages.contains("ar"))
+    }
+
+    /// Arabic first: with English ahead of it, half the documents here are read as if the Arabic
+    /// weren't there.
+    func testArabicComesFirst() {
+        XCTAssertEqual(DocumentTextReader.wantedLanguages.first, "ar-SA")
+    }
+
+    /// Whatever this device offers, and never an empty list — that reads nothing at all.
+    func testOnlyLanguagesThisDeviceOffersAreAskedFor() {
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        let supported = Set((try? request.supportedRecognitionLanguages()) ?? [])
+        let asked = DocumentTextReader.languages(for: request)
+        XCTAssertFalse(asked.isEmpty)
+        XCTAssertTrue(asked.allSatisfy { supported.contains($0) || $0 == "en-US" }, asked.joined(separator: " "))
     }
 }
