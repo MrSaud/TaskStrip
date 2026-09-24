@@ -50,7 +50,7 @@ struct SpokenTextSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 440, height: 300)
+        .macFrame(width: 440, height: 300)
         .background(TaskStripTheme.bayBackground)
         .onAppear { focused = true }
     }

@@ -524,7 +524,7 @@ struct StorageTagSheet: View {
             }
         }
         .padding(20)
-        .frame(width: 440, height: 340)
+        .macFrame(width: 440, height: 340)
         .background(TaskStripTheme.bayBackground)
     }
 }

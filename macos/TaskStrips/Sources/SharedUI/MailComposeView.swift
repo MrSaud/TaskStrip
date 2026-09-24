@@ -69,7 +69,10 @@ struct MailComposeView: View {
             Divider()
             fields
         }
-        .frame(minWidth: 520, minHeight: 420)
+        // A Mac sheet has to be told how big to open; a phone's takes the screen it has.
+        // A 520-point minimum on a 375-point iPhone is a composer with its right-hand side
+        // off the edge.
+        .macFrame(minWidth: 520, minHeight: 420)
         .background(TaskStripTheme.bayBackground)
         .confirmationDialog(
             "Send this message?",

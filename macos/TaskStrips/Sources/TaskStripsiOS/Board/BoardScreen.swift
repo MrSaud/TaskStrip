@@ -409,6 +409,9 @@ struct BoardScreen: View {
     /// Fixed to the bottom of the window rather than folded into a menu, because a note you have
     /// to go and find is a note you don't write.
     private var quickActions: some View {
+        // Five, and no more: a sixth put the first pill's edge off the left of a 375-point phone
+        // and the last icon off the right. Anything else that wants to live down here goes in the
+        // menu instead, which is where the review and the reports are.
         HStack(spacing: 8) {
             quickAction("STRIP", systemImage: "plus.rectangle") { isCreating = true }
             quickAction("NOTE", systemImage: "note.text") { destination = .notes }
@@ -425,11 +428,6 @@ struct BoardScreen: View {
                 // A search field switched off with something typed into it would go on filtering
                 // a board nobody can see the filter for.
                 if !showSearch { filter.search = "" }
-            }
-            // Icon alone, like the calendar beside it: the bottom bar has room for three words,
-            // not five.
-            quickAction("The week in review", systemImage: "calendar.badge.clock", iconOnly: true) {
-                showReview = true
             }
             // The calendar is a switch rather than a place to go, so it wears its icon alone:
             // four words of label is what pushed the others onto two lines on a phone.
