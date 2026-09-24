@@ -11,6 +11,9 @@ import Foundation
 enum MailProvider: String, Codable, Equatable {
     case password
     case microsoft
+    /// Gmail, signed in with Google rather than with an app password. Still IMAP and SMTP
+    /// underneath — Google, unlike Microsoft, still answers both.
+    case google
 }
 
 struct IMAPAccount: Codable, Equatable, Identifiable {
@@ -37,6 +40,14 @@ struct IMAPAccount: Codable, Equatable, Identifiable {
     var name: String { label.isEmpty ? email : label }
 
     var signsInWithMicrosoft: Bool { provider == .microsoft }
+    /// Signed in with Google: the same servers, a token instead of a password.
+    var signsInWithGoogle: Bool { provider == .google }
+    /// Whether this account authenticates with a token rather than something typed.
+    var usesToken: Bool { provider == .microsoft || provider == .google }
+
+    static func google(email: String) -> IMAPAccount {
+        IMAPAccount(email: email, host: "imap.gmail.com", port: 993, provider: .google)
+    }
 
     /// An account Microsoft signs in for. It has no host of its own: Graph is one address for
     /// everybody, and which mailbox is decided by the token.

@@ -25,6 +25,8 @@ actor IMAPConnection {
     }
 
     private let account: IMAPAccount
+    /// The password, or — for an account signed in with Google — the access token that stands in
+    /// for one.
     private let password: String
     private var connection: NWConnection?
     private var tag = 0
@@ -46,7 +48,7 @@ actor IMAPConnection {
         defer { close() }
 
         _ = try await waitForGreeting()
-        _ = try await send(IMAPCommand.login(tag: nextTag(), email: account.email, password: password), failure: Failure.refused)
+        try await signIn()
         let select = try await send(IMAPCommand.selectInbox(tag: nextTag()), failure: Failure.serverSaid)
         guard let total = IMAPResponse.exists(in: select), total > 0 else { return [] }
 
@@ -66,7 +68,7 @@ actor IMAPConnection {
         defer { close() }
 
         _ = try await waitForGreeting()
-        _ = try await send(IMAPCommand.login(tag: nextTag(), email: account.email, password: password), failure: Failure.refused)
+        try await signIn()
         _ = try await send(IMAPCommand.selectInbox(tag: nextTag()), failure: Failure.serverSaid)
         let answer = try await sendForBytes(
             IMAPCommand.fetchBody(tag: nextTag(), uid: uid, limit: limit), failure: Failure.serverSaid
@@ -91,7 +93,7 @@ actor IMAPConnection {
         defer { close() }
 
         _ = try await waitForGreeting()
-        _ = try await send(IMAPCommand.login(tag: nextTag(), email: account.email, password: password), failure: Failure.refused)
+        try await signIn()
         let mailboxes = try await send(IMAPCommand.listAll(tag: nextTag()), failure: Failure.serverSaid)
         guard let sent = IMAPResponse.sentMailbox(in: mailboxes) else { return nil }
 
@@ -146,6 +148,15 @@ actor IMAPConnection {
                 }
             })
         }
+    }
+
+    /// A password, or a token where the account has one. XOAUTH2 is the same conversation with a
+    /// different word in it: the server is handed a bearer token rather than something typed.
+    private func signIn() async throws {
+        let command = account.signsInWithGoogle
+            ? XOAUTH2.imapCommand(tag: nextTag(), email: account.email, accessToken: password)
+            : IMAPCommand.login(tag: nextTag(), email: account.email, password: password)
+        _ = try await send(command, failure: Failure.refused)
     }
 
     // MARK: - The socket

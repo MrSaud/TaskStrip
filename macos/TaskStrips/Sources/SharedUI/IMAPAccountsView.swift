@@ -15,6 +15,8 @@ struct IMAPAccountsView: View {
     @State private var isTesting = false
     @State private var editingSignature: IMAPAccount?
     @State private var signingInWithMicrosoft = false
+    @State private var signingInWithGoogle = false
+    @AppStorage(GoogleAuth.clientIDKey) private var googleClientID = ""
     /// What DNS said about the address being typed, once it has said it.
     @State private var provider: MailHost.Provider?
     @State private var lookingUp = false
@@ -31,7 +33,9 @@ struct IMAPAccountsView: View {
                                 Text(account.email)
                                 Text(account.signsInWithMicrosoft
                                      ? "Microsoft 365 · signed in"
-                                     : "\(account.host):\(account.port)")
+                                     : account.signsInWithGoogle
+                                         ? "\(account.host):\(account.port) · signed in with Google"
+                                         : "\(account.host):\(account.port)")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                                 if !account.signsInWithMicrosoft {
@@ -86,6 +90,31 @@ struct IMAPAccountsView: View {
                      + "on Microsoft's own page and the app keeps only the token it hands back. "
                      + "If your organisation asks an administrator to approve the app, that "
                      + "happens once for everyone there.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Section {
+                Button {
+                    Task { await signInWithGoogle() }
+                } label: {
+                    Label(
+                        signingInWithGoogle ? "Signing in…" : "Sign in with Google",
+                        systemImage: "person.badge.key"
+                    )
+                }
+                .disabled(signingInWithGoogle || googleClientID.isEmpty)
+                TextField("Google client ID", text: $googleClientID)
+                    #if os(iOS)
+                    .textInputAutocapitalization(.never)
+                    #endif
+            } header: {
+                Text("Gmail")
+            } footer: {
+                Text("Signing in with Google means no app password to make or to keep — the "
+                     + "password is typed on Google's own page and the app keeps only the token. "
+                     + "Google gives each app its own client ID: make one for an iOS app in the "
+                     + "Google Cloud console and paste it above.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -199,6 +228,28 @@ struct IMAPAccountsView: View {
             var account = existing ?? IMAPAccount.microsoft(email: address)
             account.provider = .microsoft
             await MicrosoftTokens.shared.save(tokens, for: account.id)
+            store.save(account, password: "")
+            accounts = store.accounts
+            IMAPReader.shared.refresh(force: true)
+        } catch {
+            problem = error.localizedDescription
+        }
+    }
+
+    /// Google's own sign-in. What comes back is a token that stands where a password stood, so
+    /// nothing else about reading or sending this account changes.
+    @MainActor
+    private func signInWithGoogle() async {
+        signingInWithGoogle = true
+        problem = nil
+        defer { signingInWithGoogle = false }
+        do {
+            let (tokens, address) = try await GoogleSignIn.shared.signIn()
+            // Signing in as somebody already here refreshes them rather than listing them twice.
+            let existing = accounts.first { $0.email.caseInsensitiveCompare(address) == .orderedSame }
+            var account = existing ?? IMAPAccount.google(email: address)
+            account.provider = .google
+            await GoogleTokens.shared.save(tokens, for: account.id)
             store.save(account, password: "")
             accounts = store.accounts
             IMAPReader.shared.refresh(force: true)

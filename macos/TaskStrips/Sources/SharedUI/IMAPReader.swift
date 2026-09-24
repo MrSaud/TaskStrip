@@ -49,6 +49,7 @@ final class IMAPReader: ObservableObject {
         let passwords = accounts.reduce(into: [UUID: String]()) { result, account in
             result[account.id] = store.password(for: account)
         }
+        let store = self.store
 
         Task {
             var collected: [MailMessage] = []
@@ -59,9 +60,9 @@ final class IMAPReader: ObservableObject {
             await withTaskGroup(of: (String, Result<[MailMessage], Error>).self) { group in
                 for account in accounts {
                     let password = passwords[account.id] ?? ""
-                    // A Microsoft account keeps a token rather than a password; everyone else
-                    // without one is an account that would fail every time it was asked.
-                    guard account.signsInWithMicrosoft || !password.isEmpty else {
+                    // An account signed in with Microsoft or Google keeps a token rather than a
+                    // password; anyone else without one would fail every time they were asked.
+                    guard account.usesToken || !password.isEmpty else {
                         failures.append("\(account.name): no password saved")
                         continue
                     }
@@ -109,12 +110,22 @@ final class IMAPReader: ObservableObject {
         }
     }
 
-    /// Whichever client this account speaks through.
+    /// Whichever client this account speaks through, with whatever it signs in with.
     static func newest(from account: IMAPAccount, password: String) async throws -> [MailMessage] {
         if account.signsInWithMicrosoft {
             return try await GraphMailClient(account: account).fetchNewest()
         }
-        return try await IMAPConnection(account: account, password: password).fetchNewest()
+        return try await IMAPConnection(account: account, password: secret(for: account, password: password))
+            .fetchNewest()
+    }
+
+    /// The token for an account that signs in with one, and the saved password for the rest.
+    ///
+    /// Google's token stands exactly where a password stood: the IMAP and SMTP conversations are
+    /// the same, with one line changed.
+    static func secret(for account: IMAPAccount, password: String) async throws -> String {
+        guard account.signsInWithGoogle else { return password }
+        return try await GoogleTokens.shared.access(for: account.id)
     }
 
     /// A message, or why it couldn't be read. Not `Result`: the failure here is a sentence for
@@ -139,7 +150,7 @@ final class IMAPReader: ObservableObject {
         else {
             return .failure("This message was read before the app could ask for its text — refresh the inbox.")
         }
-        guard account.signsInWithMicrosoft || store.password(for: account) != nil else {
+        guard account.usesToken || store.password(for: account) != nil else {
             return .failure("No password saved for \(account.name).")
         }
         do {
@@ -149,7 +160,7 @@ final class IMAPReader: ObservableObject {
                 }
                 return .success(try await GraphMailClient(account: account).fetchBody(remoteID: remoteID))
             }
-            let password = store.password(for: account) ?? ""
+            let password = try await Self.secret(for: account, password: store.password(for: account) ?? "")
             let body = try await IMAPConnection(account: account, password: password).fetchBody(uid: uid, limit: limit)
             return .success(body)
         } catch {
@@ -184,22 +195,25 @@ final class IMAPReader: ObservableObject {
                 return .failed(error.localizedDescription)
             }
         }
-        guard let password = store.password(for: account) else {
+        guard account.usesToken || store.password(for: account) != nil else {
             return .failed("No password saved for \(account.name).")
         }
         let written: String
         do {
+            let secret = try await Self.secret(for: account, password: store.password(for: account) ?? "")
             written = try await SMTPConnection(
                 host: account.outgoingHost,
                 port: account.outgoingPort,
                 email: account.email,
-                password: password
+                password: secret,
+                usesToken: account.signsInWithGoogle
             ).send(draft)
         } catch {
             return .failed(error.localizedDescription)
         }
         do {
-            let mailbox = try await IMAPConnection(account: account, password: password)
+            let secret = try await Self.secret(for: account, password: store.password(for: account) ?? "")
+            let mailbox = try await IMAPConnection(account: account, password: secret)
                 .appendToSent(written)
             return .sent(filedIn: mailbox)
         } catch {

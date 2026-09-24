@@ -32,11 +32,16 @@ actor SMTPConnection {
     private var connection: NWConnection?
     private var buffer = ""
 
-    init(host: String, port: Int = SMTPHost.port, email: String, password: String) {
+    /// `usesToken` says whether `password` is a password or an access token — the difference is
+    /// one command, and everything after it is the same.
+    private let usesToken: Bool
+
+    init(host: String, port: Int = SMTPHost.port, email: String, password: String, usesToken: Bool = false) {
         self.host = host
         self.port = port
         self.email = email
         self.password = password
+        self.usesToken = usesToken
     }
 
     /// Sends one message and returns what was actually sent, so a copy of exactly those bytes can
@@ -53,11 +58,20 @@ actor SMTPConnection {
 
         try await expect(nil, positive: "greeting")
         try await expect(SMTPCommand.ehlo(), positive: "EHLO")
-        // AUTH LOGIN asks for the two halves separately, each one base64, each one answered with
-        // a 334 until the last.
-        try await expect(SMTPCommand.authLogin, positive: "AUTH", failure: Failure.refused)
-        try await expect(SMTPCommand.base64(email), positive: "username", failure: Failure.refused)
-        try await expect(SMTPCommand.base64(password), positive: "password", failure: Failure.refused)
+        if usesToken {
+            // One line: the token carries both who and what.
+            try await expect(
+                XOAUTH2.smtpCommand(email: email, accessToken: password),
+                positive: "AUTH XOAUTH2",
+                failure: Failure.refused
+            )
+        } else {
+            // AUTH LOGIN asks for the two halves separately, each one base64, each one answered
+            // with a 334 until the last.
+            try await expect(SMTPCommand.authLogin, positive: "AUTH", failure: Failure.refused)
+            try await expect(SMTPCommand.base64(email), positive: "username", failure: Failure.refused)
+            try await expect(SMTPCommand.base64(password), positive: "password", failure: Failure.refused)
+        }
 
         try await expect(SMTPCommand.mailFrom(draft.from), positive: "MAIL FROM")
         for recipient in draft.recipients {
