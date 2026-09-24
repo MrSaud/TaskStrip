@@ -23,6 +23,18 @@ struct TaskStripsiOSApp: App {
         let marker = Keychain(location: .iCloud(accessGroup: Keychain.sharedAccessGroup))
             .value(service: "com.saud.taskstrip.integration-check", account: Keychain.crossDeviceMarkerAccount)
         print("KEYCHAIN-CHECK", marker.map { "found marker written \($0)" } ?? "no marker yet")
+        // `-TurnOnSync`: the same thing the Turn On button does, including resetting this
+        // device's sync bookkeeping first — which is what stops a stale engine state from an
+        // earlier test run being resumed against the real board.
+        if ProcessInfo.processInfo.arguments.contains("-TurnOnSync") {
+            let container = Self.sharedModelContainer
+            Task { @MainActor in
+                BoardSync.shared.start(container: container)
+                BoardSync.shared.turnOn()
+                print("SYNC turned on")
+                fflush(stdout)
+            }
+        }
         SampleBoard.seedIfAsked(into: Self.sharedModelContainer)
         Self.startSyncIfAllowed()
         // Phase 4: puts the CloudKit schema into the Development environment. Never automatic.

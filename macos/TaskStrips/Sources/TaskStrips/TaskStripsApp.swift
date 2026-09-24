@@ -122,6 +122,18 @@ struct TaskStripsApp: App {
                 fflush(stdout)
             }
         }
+        // `-TurnOnSync`: the same thing the Turn On button does, including resetting this
+        // device's sync bookkeeping first — which is what stops a stale engine state from an
+        // earlier test run being resumed against the real board.
+        if ProcessInfo.processInfo.arguments.contains("-TurnOnSync") {
+            let container = Self.sharedModelContainer
+            Task { @MainActor in
+                BoardSync.shared.start(container: container)
+                BoardSync.shared.turnOn()
+                print("SYNC turned on")
+                fflush(stdout)
+            }
+        }
         if ProcessInfo.processInfo.arguments.contains("-OpenNewestMessage") {
             Task { @MainActor in
                 try? await Task.sleep(for: .seconds(20))
