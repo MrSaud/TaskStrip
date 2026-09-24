@@ -306,12 +306,16 @@ struct TaskEditView: View {
                     store: attachmentStore,
                     onAdded: { addedAttachments.append($0) },
                     onRemoved: { removedAttachments.append($0) },
-                    onDateFound: { found, use in
-                        // Read off a document and put straight on the strip, rather than read by
+                    onDateFound: { found, document, use in
+                        // Read off a document and put straight on the board, rather than read by
                         // a person and typed in.
-                        hasDueDate = true
-                        dueAt = found.date
-                        if use == .reminder { hasReminder = true }
+                        switch use {
+                        case .dueDate:
+                            hasDueDate = true
+                            dueAt = found.date
+                        case .reminder:
+                            makeReminder(from: found, document: document)
+                        }
                     }
                 )
             }
@@ -470,6 +474,24 @@ struct TaskEditView: View {
         )
         // The next nudge counts from now, so chasing buys another round of days.
         ReminderScheduler.shared.schedule(for: task)
+    }
+
+    /// A reminder of its own, in the reminders list, rather than the strip's due-date alarm.
+    ///
+    /// The two are different things: a due date says when work is expected, and a reminder is for
+    /// a moment in time with no work attached — a document that expires in eighteen months has
+    /// nothing to do today and shouldn't sit on the board until the month it matters.
+    private func makeReminder(from found: FoundDate, document: String) {
+        let reminder = Reminder(
+            text: DocumentReminder.title(for: found, document: document, strip: title),
+            triggerAt: DocumentReminder.triggerAt(found.date),
+            details: DocumentReminder.details(for: found, document: document),
+            leadMinutesBefore: DocumentReminder.leadMinutes(for: found.kind),
+            tag: tags.first ?? ""
+        )
+        modelContext.insert(reminder)
+        try? modelContext.save()
+        ReminderScheduler.shared.schedule(for: reminder)
     }
 
     private func save() {

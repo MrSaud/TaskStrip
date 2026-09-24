@@ -139,7 +139,7 @@ struct DocumentDatesView: View {
                 .buttonStyle(.bordered)
                 Button {
                     onUse(date, .reminder)
-                    used = "Reminder added for \(date.date.formatted(date: .abbreviated, time: .omitted))."
+                    used = reminderNote(for: date)
                 } label: {
                     Label("Remind me", systemImage: "bell")
                 }
@@ -148,6 +148,18 @@ struct DocumentDatesView: View {
             .font(.callout)
         }
         .padding(.vertical, 6)
+    }
+
+    /// Says what was made and when it will speak — a week early for a deadline, which is the
+    /// whole reason a reminder beats a date sitting on a strip.
+    private func reminderNote(for date: FoundDate) -> String {
+        let when = DocumentReminder.triggerAt(date.date)
+        guard let lead = DocumentReminder.leadMinutes(for: date.kind) else {
+            return "Reminder added for \(when.formatted(date: .abbreviated, time: .shortened))."
+        }
+        let warning = Calendar.current.date(byAdding: .minute, value: -lead, to: when) ?? when
+        return "Reminder added for \(when.formatted(date: .abbreviated, time: .omitted)) — "
+            + "it'll speak on \(warning.formatted(date: .abbreviated, time: .omitted))."
     }
 
     private func colour(for meaning: DocumentDates.Meaning) -> Color {

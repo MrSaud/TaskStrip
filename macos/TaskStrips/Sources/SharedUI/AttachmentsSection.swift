@@ -20,7 +20,8 @@ struct AttachmentsSection: View {
     let onRemoved: (TaskAttachment) -> Void
     /// Called with a date read out of a document, to put on the strip being edited. The sheet
     /// owns the due date and the reminder, so it does the putting.
-    var onDateFound: (FoundDate, DocumentDatesView.Use) -> Void = { _, _ in }
+    /// Called with a date read out of a document, the file it came from, and what to do with it.
+    var onDateFound: (FoundDate, String, DocumentDatesView.Use) -> Void = { _, _, _ in }
 
     @State private var failure: String?
     @State private var isPickingFromLibrary = false
@@ -38,7 +39,7 @@ struct AttachmentsSection: View {
                     title: attachment.name,
                     url: store.url(for: attachment),
                     attachment: attachment,
-                    onUse: onDateFound
+                    onUse: { found, use in onDateFound(found, attachment.name, use) }
                 )
             }
     }
