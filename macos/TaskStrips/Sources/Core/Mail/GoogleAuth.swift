@@ -6,13 +6,17 @@ import Foundation
 /// second mail client. It swaps one line of the conversation: a token instead of a password, and
 /// everything after it is the client that already works.
 enum GoogleAuth {
-    /// Google gives every app its own client id, and the redirect is that id backwards. Kept in
-    /// settings rather than in the source because it belongs to whoever builds the app, and
-    /// somebody else's copy should carry their own.
+    /// This app's own registration with Google. Public by design — like Microsoft's, it names the
+    /// app and authorises nothing; there is no secret, which is the point of signing in with PKCE.
+    static let registeredClientID = "769209934256-jjttej8i359t4casanmrbnkf571fbjj6.apps.googleusercontent.com"
+
+    /// A different one can be put in Settings — for a build of this app that isn't this one, or
+    /// while a new registration is being tried out. Empty there means the registered one.
     static let clientIDKey = "googleClientID"
 
     static func clientID(_ defaults: UserDefaults = .standard) -> String {
-        (defaults.string(forKey: clientIDKey) ?? "").trimmingCharacters(in: .whitespaces)
+        let typed = (defaults.string(forKey: clientIDKey) ?? "").trimmingCharacters(in: .whitespaces)
+        return typed.isEmpty ? registeredClientID : typed
     }
 
     /// `123-abc.apps.googleusercontent.com` → `com.googleusercontent.apps.123-abc`, which is the

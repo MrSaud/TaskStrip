@@ -16,7 +16,6 @@ struct IMAPAccountsView: View {
     @State private var editingSignature: IMAPAccount?
     @State private var signingInWithMicrosoft = false
     @State private var signingInWithGoogle = false
-    @AppStorage(GoogleAuth.clientIDKey) private var googleClientID = ""
     /// What DNS said about the address being typed, once it has said it.
     @State private var provider: MailHost.Provider?
     @State private var lookingUp = false
@@ -103,18 +102,14 @@ struct IMAPAccountsView: View {
                         systemImage: "person.badge.key"
                     )
                 }
-                .disabled(signingInWithGoogle || googleClientID.isEmpty)
-                TextField("Google client ID", text: $googleClientID)
-                    #if os(iOS)
-                    .textInputAutocapitalization(.never)
-                    #endif
+                .disabled(signingInWithGoogle)
             } header: {
                 Text("Gmail")
             } footer: {
                 Text("Signing in with Google means no app password to make or to keep — the "
-                     + "password is typed on Google's own page and the app keeps only the token. "
-                     + "Google gives each app its own client ID: make one for an iOS app in the "
-                     + "Google Cloud console and paste it above.")
+                     + "password is typed on Google's own page and the app keeps only the token, "
+                     + "in your iCloud keychain. An account already set up with an app password "
+                     + "goes on working as it is.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

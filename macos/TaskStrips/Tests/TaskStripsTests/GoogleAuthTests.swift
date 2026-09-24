@@ -127,3 +127,31 @@ final class XOAUTH2Tests: XCTestCase {
         XCTAssertFalse(account.signsInWithGoogle)
     }
 }
+
+/// The app's own registration, which ships with it.
+final class GoogleRegistrationTests: XCTestCase {
+    private let suite = "GoogleRegistrationTests"
+
+    override func tearDown() {
+        UserDefaults().removePersistentDomain(forName: suite)
+        super.tearDown()
+    }
+
+    /// Nobody using the app has to make one of these: a client id names the app, not the person.
+    func testTheAppCarriesItsOwnClientId() {
+        let defaults = UserDefaults(suiteName: suite)!
+        XCTAssertEqual(GoogleAuth.clientID(defaults), GoogleAuth.registeredClientID)
+        XCTAssertTrue(GoogleAuth.registeredClientID.hasSuffix(".apps.googleusercontent.com"))
+        XCTAssertFalse(GoogleAuth.redirectURI(clientID: GoogleAuth.clientID(defaults)).isEmpty)
+    }
+
+    /// A different build, or a registration being tried out, can still override it.
+    func testOneTypedInSettingsWinsWhileItIsThere() {
+        let defaults = UserDefaults(suiteName: suite)!
+        defaults.set("999-other.apps.googleusercontent.com", forKey: GoogleAuth.clientIDKey)
+        XCTAssertEqual(GoogleAuth.clientID(defaults), "999-other.apps.googleusercontent.com")
+
+        defaults.set("   ", forKey: GoogleAuth.clientIDKey)
+        XCTAssertEqual(GoogleAuth.clientID(defaults), GoogleAuth.registeredClientID, "blank means the app's own")
+    }
+}
