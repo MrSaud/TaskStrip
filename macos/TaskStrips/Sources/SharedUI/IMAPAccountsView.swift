@@ -14,6 +14,7 @@ struct IMAPAccountsView: View {
     @State private var problem: String?
     @State private var isTesting = false
     @State private var editingSignature: IMAPAccount?
+    @State private var signingInWithMicrosoft = false
     /// What DNS said about the address being typed, once it has said it.
     @State private var provider: MailHost.Provider?
     @State private var lookingUp = false
@@ -28,13 +29,17 @@ struct IMAPAccountsView: View {
                         HStack {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(account.email)
-                                Text("\(account.host):\(account.port)")
+                                Text(account.signsInWithMicrosoft
+                                     ? "Microsoft 365 · signed in"
+                                     : "\(account.host):\(account.port)")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
-                                // Where a message sent from this account goes out through.
-                                Text("sends via \(account.outgoingHost):\(account.outgoingPort)")
-                                    .font(.caption)
-                                    .foregroundStyle(.tertiary)
+                                if !account.signsInWithMicrosoft {
+                                    // Where a message sent from this account goes out through.
+                                    Text("sends via \(account.outgoingHost):\(account.outgoingPort)")
+                                        .font(.caption)
+                                        .foregroundStyle(.tertiary)
+                                }
                                 if let signature = account.signature, !signature.isEmpty {
                                     Text("signature: \(signature.text.split(separator: "\n").first.map(String.init) ?? "")")
                                         .font(.caption)
@@ -62,6 +67,27 @@ struct IMAPAccountsView: View {
                         }
                     }
                 }
+            }
+
+            Section {
+                Button {
+                    Task { await signInWithMicrosoft() }
+                } label: {
+                    Label(
+                        signingInWithMicrosoft ? "Signing in…" : "Sign in with Microsoft",
+                        systemImage: "person.badge.key"
+                    )
+                }
+                .disabled(signingInWithMicrosoft)
+            } header: {
+                Text("Exchange and Outlook")
+            } footer: {
+                Text("Microsoft no longer accepts a password over IMAP, so a work account signs in "
+                     + "on Microsoft's own page and the app keeps only the token it hands back. "
+                     + "If your organisation asks an administrator to approve the app, that "
+                     + "happens once for everyone there.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
 
             Section {
@@ -155,6 +181,29 @@ struct IMAPAccountsView: View {
                     accounts = store.accounts
                 }
             }
+        }
+    }
+
+    /// Microsoft's own sign-in, in a sheet this app can't see inside. What comes back is a
+    /// token, which goes to the keychain — there is no password here to keep or to lose.
+    @MainActor
+    private func signInWithMicrosoft() async {
+        signingInWithMicrosoft = true
+        problem = nil
+        defer { signingInWithMicrosoft = false }
+        do {
+            let (tokens, address) = try await MicrosoftSignIn.shared.signIn()
+            // Signing in again as somebody already here refreshes them rather than listing them
+            // twice.
+            let existing = accounts.first { $0.email.caseInsensitiveCompare(address) == .orderedSame }
+            var account = existing ?? IMAPAccount.microsoft(email: address)
+            account.provider = .microsoft
+            await MicrosoftTokens.shared.save(tokens, for: account.id)
+            store.save(account, password: "")
+            accounts = store.accounts
+            IMAPReader.shared.refresh(force: true)
+        } catch {
+            problem = error.localizedDescription
         }
     }
 

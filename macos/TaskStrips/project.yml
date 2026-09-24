@@ -57,6 +57,11 @@ targets:
         NSLocationWhenInUseUsageDescription: The board shows the temperature where you are, to the nearest neighbourhood.
         NSCalendarsWriteOnlyAccessUsageDescription: Blocking time for a strip puts an event in your calendar.
         NSCalendarsFullAccessUsageDescription: Showing what today already costs means reading today's events.
+        # Microsoft's sign-in hands the app back control through this scheme. It has to be
+        # claimed here or the redirect at the end of signing in goes nowhere.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.saud.taskstrip.microsoft
+            CFBundleURLSchemes: [msauth.com.saud.taskstrip]
         LSApplicationCategoryType: public.app-category.productivity
         NSHumanReadableCopyright: ""
         NSMicrophoneUsageDescription: "Task Strips records voice notes onto a strip. Nothing is recorded until you press Record, and the audio stays on this Mac."
@@ -135,6 +140,11 @@ targets:
         NSLocationWhenInUseUsageDescription: The board shows the temperature where you are, to the nearest neighbourhood.
         NSCalendarsWriteOnlyAccessUsageDescription: Blocking time for a strip puts an event in your calendar.
         NSCalendarsFullAccessUsageDescription: Showing what today already costs means reading today's events.
+        # Microsoft's sign-in hands the app back control through this scheme. It has to be
+        # claimed here or the redirect at the end of signing in goes nowhere.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.saud.taskstrip.microsoft
+            CFBundleURLSchemes: [msauth.com.saud.taskstrip]
         # CKSyncEngine is woken by a silent push when another device changed the board.
         UIBackgroundModes: [remote-notification]
         UISupportedInterfaceOrientations:

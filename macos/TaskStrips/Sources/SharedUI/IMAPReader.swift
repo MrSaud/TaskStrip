@@ -58,13 +58,16 @@ final class IMAPReader: ObservableObject {
             // come back in doesn't matter, since dates decide the list.
             await withTaskGroup(of: (String, Result<[MailMessage], Error>).self) { group in
                 for account in accounts {
-                    guard let password = passwords[account.id] else {
+                    let password = passwords[account.id] ?? ""
+                    // A Microsoft account keeps a token rather than a password; everyone else
+                    // without one is an account that would fail every time it was asked.
+                    guard account.signsInWithMicrosoft || !password.isEmpty else {
                         failures.append("\(account.name): no password saved")
                         continue
                     }
                     group.addTask {
                         do {
-                            let read = try await IMAPConnection(account: account, password: password).fetchNewest()
+                            let read = try await Self.newest(from: account, password: password)
                             // The server doesn't say whose mailbox this was; the account that
                             // asked does.
                             return (account.name, .success(read.map {
@@ -106,6 +109,14 @@ final class IMAPReader: ObservableObject {
         }
     }
 
+    /// Whichever client this account speaks through.
+    static func newest(from account: IMAPAccount, password: String) async throws -> [MailMessage] {
+        if account.signsInWithMicrosoft {
+            return try await GraphMailClient(account: account).fetchNewest()
+        }
+        return try await IMAPConnection(account: account, password: password).fetchNewest()
+    }
+
     /// A message, or why it couldn't be read. Not `Result`: the failure here is a sentence for
     /// someone to read, not an error to be thrown further.
     enum Outcome {
@@ -122,15 +133,23 @@ final class IMAPReader: ObservableObject {
     /// for the whole message is a second, deliberate fetch, made when someone wants a file out
     /// of it.
     func body(for message: MailMessage, limit: Int = MailBodyParser.byteLimit) async -> Outcome {
-        guard let accountID = message.accountID, let uid = message.uid,
-              let account = store.accounts.first(where: { $0.id == accountID })
+        guard let accountID = message.accountID,
+              let account = store.accounts.first(where: { $0.id == accountID }),
+              let uid = message.uid ?? (message.remoteID == nil ? nil : 0)
         else {
             return .failure("This message was read before the app could ask for its text — refresh the inbox.")
         }
-        guard let password = store.password(for: account) else {
+        guard account.signsInWithMicrosoft || store.password(for: account) != nil else {
             return .failure("No password saved for \(account.name).")
         }
         do {
+            if account.signsInWithMicrosoft {
+                guard let remoteID = message.remoteID else {
+                    return .failure("This message was read before the app could ask for its text — refresh the inbox.")
+                }
+                return .success(try await GraphMailClient(account: account).fetchBody(remoteID: remoteID))
+            }
+            let password = store.password(for: account) ?? ""
             let body = try await IMAPConnection(account: account, password: password).fetchBody(uid: uid, limit: limit)
             return .success(body)
         } catch {
@@ -149,7 +168,22 @@ final class IMAPReader: ObservableObject {
         case failed(String)
     }
 
-    func send(_ draft: MailDraft, from account: IMAPAccount) async -> SendOutcome {
+    func send(_ draft: MailDraft, from account: IMAPAccount, replyingTo remoteID: String? = nil) async -> SendOutcome {
+        // Graph sends and files its own copy in Sent, so there's nothing to append afterwards —
+        // and a reply goes through the message it answers, which is what threads it.
+        if account.signsInWithMicrosoft {
+            do {
+                let client = GraphMailClient(account: account)
+                if let remoteID {
+                    try await client.reply(draft, to: remoteID)
+                } else {
+                    try await client.send(draft)
+                }
+                return .sent(filedIn: "Sent Items")
+            } catch {
+                return .failed(error.localizedDescription)
+            }
+        }
         guard let password = store.password(for: account) else {
             return .failed("No password saved for \(account.name).")
         }

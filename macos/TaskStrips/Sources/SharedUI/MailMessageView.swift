@@ -32,7 +32,11 @@ struct MailMessageView: View {
         .background(TaskStripTheme.bayBackground)
         .task { await read() }
         .sheet(item: $replying) { draft in
-            MailComposeView(draft: draft, accounts: IMAPReader.shared.accounts)
+            MailComposeView(
+                draft: draft,
+                accounts: IMAPReader.shared.accounts,
+                replyingTo: message.remoteID
+            )
         }
         .canvasPresentation(item: $markingUp) { opening in
             NavigationStack {

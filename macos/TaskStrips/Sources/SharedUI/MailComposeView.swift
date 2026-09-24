@@ -10,6 +10,9 @@ struct MailComposeView: View {
     var draft: MailDraft
     /// Which account it goes from. The first one unless someone picks another.
     var accounts: [IMAPAccount]
+    /// The message being answered, as Microsoft knows it. A reply through Graph goes through the
+    /// original — that's what keeps it in the conversation — where SMTP threads on headers alone.
+    var replyingTo: String?
 
     @Environment(\.dismiss) private var dismiss
     @State private var to: String
@@ -31,9 +34,10 @@ struct MailComposeView: View {
 
     private enum Field { case to, cc }
 
-    init(draft: MailDraft, accounts: [IMAPAccount]) {
+    init(draft: MailDraft, accounts: [IMAPAccount], replyingTo: String? = nil) {
         self.draft = draft
         self.accounts = accounts
+        self.replyingTo = replyingTo
         _to = State(initialValue: draft.to)
         _cc = State(initialValue: draft.cc)
         _showsCc = State(initialValue: !draft.cc.isEmpty)
@@ -234,7 +238,7 @@ struct MailComposeView: View {
         isSending = true
         problem = nil
         sentNote = nil
-        switch await IMAPReader.shared.send(readyDraft, from: account) {
+        switch await IMAPReader.shared.send(readyDraft, from: account, replyingTo: replyingTo) {
         case .sent(let mailbox):
             // Said plainly, because a copy in Sent is what makes the message exist on the Mac
             // and the iPad too — and some accounts have nowhere to put it.

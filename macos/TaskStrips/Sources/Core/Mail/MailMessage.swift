@@ -17,6 +17,9 @@ struct MailMessage: Identifiable, Equatable, Codable {
     /// needed to go back and ask the server for the message itself.
     var accountID: UUID?
     var uid: Int?
+    /// What the server calls this message where that isn't a number — Graph's own id, which is
+    /// what fetching its body and replying to it both need.
+    var remoteID: String?
     /// Who else it went to, and where the sender wants replies. Optional because a list cached
     /// before the app could reply to everyone doesn't carry them.
     var to: String?

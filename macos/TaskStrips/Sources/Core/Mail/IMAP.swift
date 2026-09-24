@@ -4,6 +4,15 @@ import Foundation
 ///
 /// The password never lives here — it goes in the keychain the credentials already use, which is
 /// the iCloud one, so an account set up on the Mac is set up on the phone too.
+/// How an account signs in and how its mail is fetched.
+///
+/// Two, because Microsoft leaves no choice: everyone else takes a password over IMAP, and
+/// Exchange takes an OAuth token over Graph.
+enum MailProvider: String, Codable, Equatable {
+    case password
+    case microsoft
+}
+
 struct IMAPAccount: Codable, Equatable, Identifiable {
     var id: UUID = UUID()
     var email: String
@@ -21,7 +30,19 @@ struct IMAPAccount: Codable, Equatable, Identifiable {
     /// work mail is not the one on personal mail.
     var signature: MailSignature?
 
+    /// Optional so every account saved before Exchange was possible still decodes — and reads as
+    /// what it is, an account with a password.
+    var provider: MailProvider?
+
     var name: String { label.isEmpty ? email : label }
+
+    var signsInWithMicrosoft: Bool { provider == .microsoft }
+
+    /// An account Microsoft signs in for. It has no host of its own: Graph is one address for
+    /// everybody, and which mailbox is decided by the token.
+    static func microsoft(email: String) -> IMAPAccount {
+        IMAPAccount(email: email, host: "graph.microsoft.com", port: 443, provider: .microsoft)
+    }
 
     var outgoingHost: String { smtpHost ?? SMTPHost.guess(forIMAPHost: host) }
     var outgoingPort: Int { smtpPort ?? SMTPHost.port }
